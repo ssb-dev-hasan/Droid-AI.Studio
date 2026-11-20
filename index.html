@@ -17,20 +17,9 @@
 
       const STORAGE_KEY = "droid_ai_studio_projects_v1";
 
-      function createAndroidProject({
-        id,
-        name,
-        packageName,
-        description,
-        logoDataUrl,
-        logoFileName,
-        existingFiles
-      }) {
-        const safeName = (name || "IMO Studio App").trim();
-        const pkg = (packageName || "com.example.imostudio").trim();
+      function buildDefaultFiles(safeName, pkg) {
         const pkgPath = pkg.replace(/\./g, "/");
-
-        const defaultFiles = [
+        return [
           {
             path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
             language: "kotlin",
@@ -128,6 +117,20 @@ android {
 `
           }
         ];
+      }
+
+      function createAndroidProject({
+        id,
+        name,
+        packageName,
+        description,
+        logoDataUrl,
+        logoFileName,
+        existingFiles
+      }) {
+        const safeName = (name || "IMO Studio App").trim();
+        const pkg = (packageName || "com.example.imostudio").trim();
+        const pkgPath = pkg.replace(/\./g, "/");
 
         let files =
           Array.isArray(existingFiles) && existingFiles.length > 0
@@ -138,9 +141,25 @@ android {
                     content: `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">${safeName}</string>\n</resources>\n`
                   };
                 }
+                if (f.path.endsWith("build.gradle.kts")) {
+                  return {
+                    ...f,
+                    content: f.content
+                      .replace(/namespace\s*=\s*"[^"]*"/, `namespace = "${pkg}"`)
+                      .replace(/applicationId\s*=\s*"[^"]*"/, `applicationId = "${pkg}"`)
+                  };
+                }
+                if (f.path.endsWith("MainActivity.kt")) {
+                  const updatedPkg = f.content.replace(/^package\s+[^\s]+/m, `package ${pkg}`);
+                  return {
+                    path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
+                    language: "kotlin",
+                    content: updatedPkg
+                  };
+                }
                 return f;
               })
-            : defaultFiles;
+            : buildDefaultFiles(safeName, pkg);
 
         files = files.filter(
           (f) => f.path !== "app/src/main/res/drawable/app_logo_base64.txt"
@@ -381,7 +400,7 @@ Return ONLY valid JSON:
 
             <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-[2rem] border-4 border-slate-800 bg-slate-950 shadow-2xl">
               <div className="flex items-center justify-between bg-slate-900 px-4 py-1.5 text-[10px] text-slate-400">
-                <span>17:40</span>
+                <span>18:00</span>
                 <span>Android Preview</span>
                 <span>100%</span>
               </div>
@@ -945,7 +964,8 @@ Return ONLY valid JSON:
 
               <main className={`flex flex-col p-3 ${isChatOpen ? "lg:col-span-5" : "lg:col-span-9"}`}>
                 {!isRunnerFolded && (
-                  <RunAppDrawer onFold="{()" project="{project}"> setIsRunnerFolded(true)} />
+                  <RunAppDrawer key="{project.id}" onFold="{()" project="{project}"> setIsRunnerFolded(true)}
+                  />
                 )}
 
                 <div className="mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
