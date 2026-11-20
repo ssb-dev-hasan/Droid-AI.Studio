@@ -13,14 +13,24 @@
     <div id="root"></div>
 
     <script type="text/babel">
-      const { useState, useMemo } = React;
+      const { useState, useMemo, useEffect } = React;
 
-      function createAndroidProject({ name, packageName, description, logoDataUrl, logoFileName }) {
+      const STORAGE_KEY = "droid_ai_studio_projects_v1";
+
+      function createAndroidProject({
+        id,
+        name,
+        packageName,
+        description,
+        logoDataUrl,
+        logoFileName,
+        existingFiles
+      }) {
         const safeName = (name || "IMO Studio App").trim();
         const pkg = (packageName || "com.example.imostudio").trim();
         const pkgPath = pkg.replace(/\./g, "/");
 
-        const files = [
+        const defaultFiles = [
           {
             path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
             language: "kotlin",
@@ -119,6 +129,19 @@ android {
           }
         ];
 
+        let files = Array.isArray(existingFiles) && existingFiles.length > 0
+          ? existingFiles.map((f) => {
+              if (f.path.endsWith("strings.xml")) {
+                return {
+                  ...f,
+                  content: `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">${safeName}</string>\n</resources>\n`
+                };
+              }
+              return f;
+            })
+          : defaultFiles;
+
+        files = files.filter((f) => f.path !== "app/src/main/res/drawable/app_logo_base64.txt");
         if (logoDataUrl) {
           files.push({
             path: "app/src/main/res/drawable/app_logo_base64.txt",
@@ -128,11 +151,13 @@ android {
         }
 
         return {
+          id: id || `proj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           name: safeName,
           packageName: pkg,
           description: description || `${safeName} Android Project`,
-          logoDataUrl,
-          logoFileName,
+          logoDataUrl: logoDataUrl || "",
+          logoFileName: logoFileName || "",
+          updatedAt: new Date().toLocaleString("bn-BD"),
           files
         };
       }
@@ -310,16 +335,244 @@ Return ONLY valid JSON:
         return count;
       }
 
-      function App() {
-        const [project, setProject] = useState(() =>
-          createAndroidProject({
-            name: "IMO Studio App",
-            packageName: "com.example.imostudio",
-            description: "Android Messaging & Calling App"
-          })
+      function RunAppDrawer({ project, onFold }) {
+        const [tab, setTab] = useState("home");
+        const [chatInput, setChatInput] = useState("");
+        const [chatList, setChatList] = useState([
+          { id: 1, sender: "Friend", text: `স্বাগতম ${project.name} অ্যাপে!` },
+          { id: 2, sender: "Me", text: "লাইভ প্রিভিউ রান হচ্ছে।" }
+        ]);
+        const [callStatus, setCallStatus] = useState("");
+
+        const mainFile = project.files.find((f) => f.path.endsWith("MainActivity.kt"));
+        const hasChatFeature = mainFile?.content.toLowerCase().includes("chat") || true;
+        const hasCallFeature = mainFile?.content.toLowerCase().includes("call") || true;
+
+        const handleSendChat = (e) => {
+          e.preventDefault();
+          if (!chatInput.trim()) return;
+          setChatList((prev) => [
+            ...prev,
+            { id: Date.now(), sender: "Me", text: chatInput.trim() }
+          ]);
+          setChatInput("");
+        };
+
+        return (
+          <div className="mb-4 rounded-2xl border border-amber-500/40 bg-slate-900 p-4 shadow-xl">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                  Live App Runner — {project.name}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onFold}
+                className="rounded-lg bg-slate-800 px-3 py-1 text-xs font-semibold text-amber-300 hover:bg-slate-700"
+              >
+                ▲ ফোল্ড করুন
+              </button>
+            </div>
+
+            <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-[2rem] border-4 border-slate-800 bg-slate-950 shadow-2xl">
+              <div className="flex items-center justify-between bg-slate-900 px-4 py-1.5 text-[10px] text-slate-400">
+                <span>17:40</span>
+                <span>Android Preview</span>
+                <span>100%</span>
+              </div>
+
+              <div className="flex items-center gap-3 bg-emerald-600 px-4 py-2.5 text-white">
+                {project.logoDataUrl ? (
+                  <img
+                    src={project.logoDataUrl}
+                    alt="Logo"
+                    className="h-9 w-9 rounded-full border border-white/40 bg-white object-cover"
+                  />
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
+                    {project.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-bold">{project.name}</div>
+                  <div className="truncate text-[10px] text-emerald-100">{project.packageName}</div>
+                </div>
+              </div>
+
+              <div className="min-h-[240px] p-3">
+                {tab === "home" && (
+                  <div className="space-y-2.5">
+                    <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
+                      {project.description}
+                    </div>
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-[11px] text-slate-400">
+                      মোট ফাইল: <span className="text-emerald-400 font-semibold">{project.files.length}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      {hasChatFeature && (
+                        <button
+                          type="button"
+                          onClick={() => setTab("chats")}
+                          className="rounded-xl bg-emerald-600 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
+                        >
+                          চ্যাট খুলুন
+                        </button>
+                      )}
+                      {hasCallFeature && (
+                        <button
+                          type="button"
+                          onClick={() => setTab("calls")}
+                          className="rounded-xl bg-blue-600 py-2 text-xs font-semibold text-white hover:bg-blue-500"
+                        >
+                          কল স্ক্রিন
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {tab === "chats" && (
+                  <div className="flex h-[215px] flex-col">
+                    <div className="mb-2 flex-1 space-y-1.5 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 p-2">
+                      {chatList.map((item) => (
+                        <div
+                          key={item.id}
+                          className={`rounded-lg px-2.5 py-1.5 text-xs ${
+                            item.sender === "Me"
+                              ? "ml-6 bg-emerald-600 text-white"
+                              : "mr-6 bg-slate-800 text-slate-200"
+                          }`}
+                        >
+                          <div className="text-[9px] opacity-75">{item.sender}</div>
+                          <div>{item.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <form onSubmit={handleSendChat} className="flex gap-1.5">
+                      <input
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder="মেসেজ লিখুন..."
+                        className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs"
+                      />
+                      <button
+                        type="submit"
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Send
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {tab === "calls" && (
+                  <div className="flex h-[215px] flex-col items-center justify-center gap-3 text-center">
+                    <div className="text-2xl">📞</div>
+                    <div className="text-xs font-bold text-slate-200">Audio & Video Call</div>
+                    {callStatus && <div className="text-[11px] text-emerald-400">{callStatus}</div>}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCallStatus("অডিও কল সংযুক্ত হচ্ছে...")}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Audio Call
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCallStatus("ভিডিও কল সংযুক্ত হচ্ছে...")}
+                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Video Call
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 border-t border-slate-800 bg-slate-900 py-1.5 text-center text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setTab("home")}
+                  className={`py-1 font-semibold ${tab === "home" ? "text-emerald-400" : "text-slate-400"}`}
+                >
+                  Home
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("chats")}
+                  className={`py-1 font-semibold ${tab === "chats" ? "text-emerald-400" : "text-slate-400"}`}
+                >
+                  Chats
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("calls")}
+                  className={`py-1 font-semibold ${tab === "calls" ? "text-emerald-400" : "text-slate-400"}`}
+                >
+                  Calls
+                </button>
+              </div>
+            </div>
+          </div>
         );
-        const [selectedPath, setSelectedPath] = useState(project.files[0]?.path || "");
+      }
+
+      function App() {
+        const [projects, setProjects] = useState(() => {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+          } catch (_) {}
+          return [
+            createAndroidProject({
+              id: "proj-imo-default",
+              name: "IMO Studio App",
+              packageName: "com.example.imostudio",
+              description: "Android Messaging & Calling App"
+            })
+          ];
+        });
+
+        const [activeProjectId, setActiveProjectId] = useState(() => projects[0]?.id || "");
+
+        const project = useMemo(
+          () => projects.find((p) => p.id === activeProjectId) || projects[0],
+          [projects, activeProjectId]
+        );
+
+        useEffect(() => {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+          } catch (_) {}
+        }, [projects]);
+
+        const updateCurrentProject = (updater) => {
+          setProjects((prev) =>
+            prev.map((item) => {
+              if (item.id !== project.id) return item;
+              const next = typeof updater === "function" ? updater(item) : updater;
+              return { ...next, updatedAt: new Date().toLocaleString("bn-BD") };
+            })
+          );
+        };
+
+        const [selectedPath, setSelectedPath] = useState(project?.files[0]?.path || "");
+
+        useEffect(() => {
+          if (project && !project.files.some((f) => f.path === selectedPath)) {
+            setSelectedPath(project.files[0]?.path || "");
+          }
+        }, [project, selectedPath]);
+
         const [isSetupOpen, setIsSetupOpen] = useState(false);
+        const [editingProjectId, setEditingProjectId] = useState(null);
+        const [isRunnerFolded, setIsRunnerFolded] = useState(true);
         const [isChatOpen, setIsChatOpen] = useState(true);
         const [isReviewOpen, setIsReviewOpen] = useState(false);
         const [isPushOpen, setIsPushOpen] = useState(false);
@@ -347,16 +600,40 @@ Return ONLY valid JSON:
             id: "m-1",
             role: "assistant",
             content:
-              "স্বাগতম! নতুন Android প্রজেক্ট খুলুন, লোগো আপলোড করুন, নিচে কমান্ড দিন আমি ফাইলগুলোতে কোড লিখব, এবং সরাসরি GitHub-এ পুশ করুন।"
+              "স্বাগতম! একাধিক Android প্রজেক্ট তৈরি ও হিস্ট্রি থেকে এডিট করুন, লোগো আপলোড করুন, AI কমান্ড দিন এবং ফোল্ডিং Run বাটন দিয়ে লাইভ প্রিভিউ দেখুন।"
           }
         ]);
 
         const activeFile = useMemo(
-          () => project.files.find((f) => f.path === selectedPath) || project.files[0],
-          [project.files, selectedPath]
+          () => project?.files.find((f) => f.path === selectedPath) || project?.files[0],
+          [project, selectedPath]
         );
 
-        const issues = useMemo(() => validateProjectFiles(project.files), [project.files]);
+        const issues = useMemo(
+          () => validateProjectFiles(project?.files || []),
+          [project]
+        );
+
+        const openNewProjectModal = () => {
+          setEditingProjectId(null);
+          setSetupName("");
+          setSetupPkg("com.example.newapp");
+          setSetupDesc("New Android App");
+          setSetupLogoUrl("");
+          setSetupLogoName("");
+          setIsSetupOpen(true);
+        };
+
+        const openEditProjectModal = (targetProj) => {
+          setEditingProjectId(targetProj.id);
+          setActiveProjectId(targetProj.id);
+          setSetupName(targetProj.name);
+          setSetupPkg(targetProj.packageName);
+          setSetupDesc(targetProj.description);
+          setSetupLogoUrl(targetProj.logoDataUrl || "");
+          setSetupLogoName(targetProj.logoFileName || "");
+          setIsSetupOpen(true);
+        };
 
         const handleLogoUpload = (e) => {
           const file = e.target.files?.[0];
@@ -371,34 +648,78 @@ Return ONLY valid JSON:
           reader.readAsDataURL(file);
         };
 
-        const handleCreateNewProject = (e) => {
+        const handleSaveProjectForm = (e) => {
           e.preventDefault();
-          const created = createAndroidProject({
-            name: setupName,
-            packageName: setupPkg,
-            description: setupDesc,
-            logoDataUrl: setupLogoUrl || undefined,
-            logoFileName: setupLogoName || undefined
-          });
-          setProject(created);
-          setSelectedPath(created.files[0]?.path || "");
-          setGhPrefix(`generated-projects/${created.name.toLowerCase().replace(/\s+/g, "-")}`);
-          setIsSetupOpen(false);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `m-${Date.now()}`,
-              role: "assistant",
-              content: `"${created.name}" (${created.packageName}) প্রজেক্ট তৈরি হয়েছে।${
-                created.logoFileName ? ` লোগো যুক্ত হয়েছে: ${created.logoFileName}` : ""
-              }`
-            }
-          ]);
+          if (editingProjectId) {
+            const oldProj = projects.find((p) => p.id === editingProjectId);
+            const updated = createAndroidProject({
+              id: editingProjectId,
+              name: setupName,
+              packageName: setupPkg,
+              description: setupDesc,
+              logoDataUrl: setupLogoUrl || undefined,
+              logoFileName: setupLogoName || undefined,
+              existingFiles: oldProj?.files
+            });
+            setProjects((prev) => prev.map((p) => (p.id === editingProjectId ? updated : p)));
+            setActiveProjectId(editingProjectId);
+            setSelectedPath(updated.files[0]?.path || "");
+            setGhPrefix(`generated-projects/${updated.name.toLowerCase().replace(/\s+/g, "-")}`);
+            setIsSetupOpen(false);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `m-${Date.now()}`,
+                role: "assistant",
+                content: `"${updated.name}" প্রজেক্টের তথ্য আপডেট করা হয়েছে।`
+              }
+            ]);
+          } else {
+            const created = createAndroidProject({
+              name: setupName,
+              packageName: setupPkg,
+              description: setupDesc,
+              logoDataUrl: setupLogoUrl || undefined,
+              logoFileName: setupLogoName || undefined
+            });
+            setProjects((prev) => [created, ...prev]);
+            setActiveProjectId(created.id);
+            setSelectedPath(created.files[0]?.path || "");
+            setGhPrefix(`generated-projects/${created.name.toLowerCase().replace(/\s+/g, "-")}`);
+            setIsSetupOpen(false);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `m-${Date.now()}`,
+                role: "assistant",
+                content: `নতুন প্রজেক্ট "${created.name}" (${created.packageName}) হিস্ট্রিতে যুক্ত হয়েছে।${
+                  created.logoFileName ? ` লোগো: ${created.logoFileName}` : ""
+                }`
+              }
+            ]);
+          }
+        };
+
+        const handleSelectHistoryProject = (proj) => {
+          setActiveProjectId(proj.id);
+          setSelectedPath(proj.files[0]?.path || "");
+          setGhPrefix(`generated-projects/${proj.name.toLowerCase().replace(/\s+/g, "-")}`);
+        };
+
+        const handleDeleteHistoryProject = (e, targetId) => {
+          e.stopPropagation();
+          if (projects.length <= 1) return;
+          const remaining = projects.filter((p) => p.id !== targetId);
+          setProjects(remaining);
+          if (activeProjectId === targetId) {
+            setActiveProjectId(remaining[0].id);
+            setSelectedPath(remaining[0].files[0]?.path || "");
+          }
         };
 
         const handleCodeEdit = (val) => {
           if (!activeFile) return;
-          setProject((prev) => ({
+          updateCurrentProject((prev) => ({
             ...prev,
             files: prev.files.map((f) =>
               f.path === activeFile.path ? { ...f, content: val } : f
@@ -422,7 +743,7 @@ Return ONLY valid JSON:
               apiKey
             });
 
-            setProject((prev) => {
+            updateCurrentProject((prev) => {
               const map = new Map();
               for (const f of prev.files) map.set(f.path, f);
               for (const u of res.updatedFiles) map.set(u.path, u);
@@ -494,24 +815,46 @@ Return ONLY valid JSON:
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => setIsSetupOpen(true)}
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+                  type="button"
+                  onClick={() => setIsRunnerFolded((v) => !v)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition ${
+                    !isRunnerFolded
+                      ? "bg-amber-600 hover:bg-amber-500"
+                      : "bg-amber-500/90 text-slate-950 hover:bg-amber-400"
+                  }`}
                 >
-                  + প্রজেক্ট / লোগো
+                  {isRunnerFolded ? "▶ Run App (ফোল্ড)" : "▼ Run App খোলা"}
                 </button>
                 <button
+                  type="button"
+                  onClick={openNewProjectModal}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+                >
+                  + নতুন প্রজেক্ট
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openEditProjectModal(project)}
+                  className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-slate-700"
+                >
+                  এডিট প্রজেক্ট
+                </button>
+                <button
+                  type="button"
                   onClick={() => setIsReviewOpen(true)}
                   className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold hover:bg-slate-700"
                 >
                   রিভিউ ({issues.length})
                 </button>
                 <button
+                  type="button"
                   onClick={() => setIsChatOpen((v) => !v)}
                   className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500"
                 >
                   AI কমান্ড
                 </button>
                 <button
+                  type="button"
                   onClick={() => setIsPushOpen(true)}
                   className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
                 >
@@ -521,28 +864,87 @@ Return ONLY valid JSON:
             </header>
 
             <div className="grid flex-1 grid-cols-1 lg:grid-cols-12">
-              <aside className="border-b border-slate-800 bg-slate-900/60 p-3 lg:col-span-3 lg:border-b-0 lg:border-r">
-                <div className="mb-2 text-xs font-semibold uppercase text-slate-400">
-                  প্রজেক্ট ফাইলসমূহ ({project.files.length})
+              <aside className="flex flex-col gap-4 border-b border-slate-800 bg-slate-900/60 p-3 lg:col-span-3 lg:border-b-0 lg:border-r">
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase text-amber-300">
+                    <span>প্রজেক্ট হিস্ট্রি ({projects.length})</span>
+                  </div>
+                  <div className="max-h-52 space-y-1.5 overflow-y-auto pr-1">
+                    {projects.map((p) => {
+                      const isCurrent = p.id === project.id;
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => handleSelectHistoryProject(p)}
+                          className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-xs transition ${
+                            isCurrent
+                              ? "border-emerald-500/60 bg-emerald-600/20 text-white"
+                              : "border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-semibold">{p.name}</div>
+                            <div className="truncate font-mono text-[10px] text-slate-400">
+                              {p.packageName}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditProjectModal(p);
+                              }}
+                              className="rounded bg-slate-800 px-2 py-1 text-[10px] text-emerald-300 hover:bg-slate-700"
+                              title="প্রজেক্ট এডিট করুন"
+                            >
+                              এডিট
+                            </button>
+                            {projects.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteHistoryProject(e, p.id)}
+                                className="rounded bg-slate-800 px-1.5 py-1 text-[10px] text-rose-400 hover:bg-rose-950"
+                                title="মুছুন"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  {project.files.map((file) => (
-                    <button
-                      key={file.path}
-                      onClick={() => setSelectedPath(file.path)}
-                      className={`block w-full truncate rounded-lg px-3 py-2 text-left font-mono text-xs ${
-                        activeFile?.path === file.path
-                          ? "border border-emerald-500/40 bg-emerald-600/20 text-emerald-300"
-                          : "text-slate-300 hover:bg-slate-800"
-                      }`}
-                    >
-                      {file.path}
-                    </button>
-                  ))}
+
+                <div className="border-t border-slate-800 pt-3">
+                  <div className="mb-2 text-xs font-semibold uppercase text-slate-400">
+                    প্রজেক্ট ফাইলসমূহ ({project.files.length})
+                  </div>
+                  <div className="space-y-1">
+                    {project.files.map((file) => (
+                      <button
+                        key={file.path}
+                        type="button"
+                        onClick={() => setSelectedPath(file.path)}
+                        className={`block w-full truncate rounded-lg px-3 py-2 text-left font-mono text-xs ${
+                          activeFile?.path === file.path
+                            ? "border border-emerald-500/40 bg-emerald-600/20 text-emerald-300"
+                            : "text-slate-300 hover:bg-slate-800"
+                        }`}
+                      >
+                        {file.path}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </aside>
 
               <main className={`flex flex-col p-3 ${isChatOpen ? "lg:col-span-5" : "lg:col-span-9"}`}>
+                {!isRunnerFolded && (
+                  <RunAppDrawer onFold="{()" project="{project}"> setIsRunnerFolded(true)} />
+                )}
+
                 <div className="mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
                   <span className="truncate font-mono text-xs text-emerald-400">
                     {activeFile?.path || "কোনো ফাইল নেই"}
@@ -564,6 +966,7 @@ Return ONLY valid JSON:
                       AI কোড জেনারেটর
                     </h2>
                     <button
+                      type="button"
                       onClick={() => setIsChatOpen(false)}
                       className="text-xs text-slate-400 hover:text-white"
                     >
@@ -627,12 +1030,14 @@ Return ONLY valid JSON:
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
                 <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-5">
                   <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-base font-bold">নতুন প্রজেক্ট ও লোগো</h3>
-                    <button onClick={() => setIsSetupOpen(false)} className="text-slate-400">
+                    <h3 className="text-base font-bold">
+                      {editingProjectId ? "পুরনো প্রজেক্ট এডিট করুন" : "নতুন প্রজেক্ট ও লোগো"}
+                    </h3>
+                    <button type="button" onClick={() => setIsSetupOpen(false)} className="text-slate-400">
                       ✕
                     </button>
                   </div>
-                  <form onSubmit={handleCreateNewProject} className="space-y-3">
+                  <form onSubmit={handleSaveProjectForm} className="space-y-3">
                     <div>
                       <label className="mb-1 block text-xs text-slate-300">অ্যাপের নাম</label>
                       <input
@@ -690,7 +1095,7 @@ Return ONLY valid JSON:
                         type="submit"
                         className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
                       >
-                        তৈরি করুন
+                        {editingProjectId ? "আপডেট করুন" : "তৈরি করুন"}
                       </button>
                     </div>
                   </form>
@@ -704,6 +1109,7 @@ Return ONLY valid JSON:
                   <div className="mb-4 flex items-center justify-between border-b border-slate-800 pb-3">
                     <h3 className="text-lg font-bold">কোড রিভিউ ও চেক</h3>
                     <button
+                      type="button"
                       onClick={() => setIsReviewOpen(false)}
                       className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs"
                     >
@@ -742,7 +1148,7 @@ Return ONLY valid JSON:
                 <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-5">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-base font-bold">GitHub-এ পুশ করুন</h3>
-                    <button onClick={() => setIsPushOpen(false)} className="text-slate-400">
+                    <button type="button" onClick={() => setIsPushOpen(false)} className="text-slate-400">
                       ✕
                     </button>
                   </div>
