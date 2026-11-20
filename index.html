@@ -129,19 +129,22 @@ android {
           }
         ];
 
-        let files = Array.isArray(existingFiles) && existingFiles.length > 0
-          ? existingFiles.map((f) => {
-              if (f.path.endsWith("strings.xml")) {
-                return {
-                  ...f,
-                  content: `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">${safeName}</string>\n</resources>\n`
-                };
-              }
-              return f;
-            })
-          : defaultFiles;
+        let files =
+          Array.isArray(existingFiles) && existingFiles.length > 0
+            ? existingFiles.map((f) => {
+                if (f.path.endsWith("strings.xml")) {
+                  return {
+                    ...f,
+                    content: `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">${safeName}</string>\n</resources>\n`
+                  };
+                }
+                return f;
+              })
+            : defaultFiles;
 
-        files = files.filter((f) => f.path !== "app/src/main/res/drawable/app_logo_base64.txt");
+        files = files.filter(
+          (f) => f.path !== "app/src/main/res/drawable/app_logo_base64.txt"
+        );
         if (logoDataUrl) {
           files.push({
             path: "app/src/main/res/drawable/app_logo_base64.txt",
