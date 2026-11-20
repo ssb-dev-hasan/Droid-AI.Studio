@@ -11,16 +11,31 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <!-- React 18 & Babel Standalone -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Firebase v10.12.2 Compat SDKs for Email Auth & Firestore Tracking -->
+    <!-- Firebase v10.12.2 Compat SDKs (App, Auth, Realtime Database) -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
     <style>
       body {
         font-family: "Inter", sans-serif;
+      }
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #020617;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #1e293b;
+        border-radius: 9999px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #334155;
       }
     </style>
   </head>
@@ -32,8 +47,8 @@
 
       // =========================================================================
       // 🔥 MANUAL FIREBASE CONFIGURATION (এখানে ম্যানুয়ালি আপনার Firebase Config বসান)
-      // ফাঁকা রাখলে বা প্লেসহোল্ডার থাকলে অ্যাপ লোকাল সিমুলেশন মোডে চলবে।
-      // UI-তে কোনো Firebase সেটআপ বাটন রাখা হয়নি।
+      // ফাঁকা রাখলে অ্যাপ স্বয়ংক্রিয়ভাবে লোকাল স্টোরেজ মোডে নিরাপদে চলবে।
+      // UI-তে কোনো Firebase সেটআপ বাটন বা কনফিগ মডাল রাখা হয়নি।
       // =========================================================================
       const firebaseConfig = {
   apiKey: "AIzaSyDFFHWazvKFE0VOKtlQoyzKNahQTks2_MU",
@@ -46,11 +61,11 @@
   measurementId: "G-PN9RNW0TW6"
 };
 
-      const STORAGE_PROJECTS_KEY = "droid_ai_studio_projects_v3";
-      const STORAGE_AUTH_USERS_KEY = "droid_ai_studio_local_users_v1";
-      const STORAGE_SESSION_KEY = "droid_ai_studio_session_v1";
+      const STORAGE_PROJECTS_KEY = "droid_ai_studio_projects_v4";
+      const STORAGE_AUTH_USERS_KEY = "droid_ai_studio_local_users_v2";
+      const STORAGE_SESSION_KEY = "droid_ai_studio_session_v2";
 
-      // All 7 Android Studio Project Language Options
+      // 7 Android Studio Project Templates / Languages
       const ANDROID_LANGUAGES = [
         { id: "kotlin-compose", label: "Kotlin + Jetpack Compose", short: "Kotlin Compose", ext: "kt" },
         { id: "kotlin-xml", label: "Kotlin + XML Views", short: "Kotlin XML", ext: "kt" },
@@ -61,7 +76,7 @@
         { id: "kmp-android", label: "Kotlin Multiplatform (Android)", short: "KMP Android", ext: "kt" }
       ];
 
-      // Target / Compile SDK Options (API 36 down to API 29)
+      // Target / Compile SDK Options (API 29 - 36)
       const TARGET_SDK_OPTIONS = [
         { api: 36, name: "Android 16 (Baklava)", tag: "Latest / Play Target" },
         { api: 35, name: "Android 15 (VanillaIceCream)", tag: "Recommended" },
@@ -71,7 +86,7 @@
         { api: 29, name: "Android 10 (Q)", tag: "Scoped Storage" }
       ];
 
-      // Minimum SDK Options (API 21 up to API 30) with device coverage percentages
+      // Minimum SDK Options (API 21 - 30) with Device Coverage Metrics
       const MIN_SDK_OPTIONS = [
         { api: 21, name: "Android 5.0 Lollipop", coverage: "~99.8%", note: "সর্বোচ্চ ডিভাইস সাপোর্ট (প্রায় সব ফোনে চলে)" },
         { api: 23, name: "Android 6.0 Marshmallow", coverage: "~99.6%", note: "Runtime Permissions + Doze" },
@@ -81,7 +96,7 @@
         { api: 30, name: "Android 11 (R)", coverage: "~92.0%", note: "Recent Devices Only" }
       ];
 
-      // ErrorBoundary so runtime/render issues show a helpful message instead of a blank screen
+      // ErrorBoundary to catch any runtime error cleanly
       class ErrorBoundary extends Component {
         constructor(props) {
           super(props);
@@ -94,11 +109,11 @@
           if (this.state.error) {
             return (
               <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">
-                <div className="max-w-lg rounded-2xl border border-rose-500/40 bg-slate-900 p-5 shadow-2xl">
+                <div className="max-w-lg rounded-2xl border border-rose-500/40 bg-slate-900 p-6 shadow-2xl">
                   <h2 className="mb-2 text-base font-bold text-rose-400">
                     অ্যাপ রেন্ডার করতে সমস্যা হয়েছে
                   </h2>
-                  <pre className="overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-rose-200">
+                  <pre className="overflow-auto rounded-xl bg-slate-950 p-3 text-xs text-rose-200">
                     {String(
                       this.state.error && this.state.error.message
                         ? this.state.error.message
@@ -108,7 +123,7 @@
                   <button
                     type="button"
                     onClick={() => window.location.reload()}
-                    className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
+                    className="mt-4 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
                   >
                     পেজ রিলোড করুন
                   </button>
@@ -120,9 +135,12 @@
         }
       }
 
+      // Check whether hardcoded FIREBASE_CONFIG has real credentials
       function isFirebaseConfigured() {
         return Boolean(
-          FIREBASE_CONFIG.apiKey &&
+          typeof FIREBASE_CONFIG !== "undefined" &&
+            FIREBASE_CONFIG &&
+            FIREBASE_CONFIG.apiKey &&
             FIREBASE_CONFIG.authDomain &&
             FIREBASE_CONFIG.projectId &&
             FIREBASE_CONFIG.appId &&
@@ -141,8 +159,8 @@
               ? window.firebase.app()
               : window.firebase.initializeApp(FIREBASE_CONFIG);
           const auth = window.firebase.auth ? window.firebase.auth() : null;
-          const db = window.firebase.firestore ? window.firebase.firestore() : null;
-          firebaseServicesCache = { app, auth, db };
+          const rtdb = window.firebase.database ? window.firebase.database() : null;
+          firebaseServicesCache = { app, auth, rtdb };
           return firebaseServicesCache;
         } catch (err) {
           console.error("Firebase init error:", err);
@@ -182,6 +200,7 @@
         return ANDROID_LANGUAGES.find((l) => l.id === langId) || ANDROID_LANGUAGES[0];
       }
 
+      // Generate starter Android Studio files for selected language & SDKs
       function buildDefaultFiles(safeName, pkg, languageId, minSdk, targetSdk, hasLogo) {
         const pkgPath = pkg.split(".").join("/");
         const lang = getLanguageInfo(languageId);
@@ -214,6 +233,30 @@
               lang.short +
               ')");\n' +
               "        setContentView(tv);\n" +
+              "    }\n" +
+              "}\n"
+          });
+        } else if (languageId === "kotlin-xml") {
+          files.push({
+            path: "app/src/main/java/" + pkgPath + "/MainActivity.kt",
+            language: "kotlin",
+            content:
+              "package " +
+              pkg +
+              "\n\n" +
+              "import android.os.Bundle\n" +
+              "import android.widget.TextView\n" +
+              "import androidx.appcompat.app.AppCompatActivity\n\n" +
+              "class MainActivity : AppCompatActivity() {\n" +
+              "    override fun onCreate(savedInstanceState: Bundle?) {\n" +
+              "        super.onCreate(savedInstanceState)\n" +
+              "        val tv = TextView(this).apply {\n" +
+              '            text = "' +
+              safeName +
+              ' (Kotlin + XML)"\n' +
+              "            textSize = 20f\n" +
+              "        }\n" +
+              "        setContentView(tv)\n" +
               "    }\n" +
               "}\n"
           });
@@ -286,6 +329,22 @@
               "add_library(nativeapp SHARED native-lib.cpp)\n" +
               "find_library(log-lib log)\n" +
               "target_link_libraries(nativeapp ${log-lib})\n"
+          });
+        }
+
+        if (languageId === "kmp-android") {
+          files.push({
+            path: "shared/src/commonMain/kotlin/" + pkgPath + "/PlatformGreeting.kt",
+            language: "kotlin",
+            content:
+              "package " +
+              pkg +
+              "\n\n" +
+              "class PlatformGreeting {\n" +
+              '    fun greet(): String = "Hello from KMP Shared Module (' +
+              safeName +
+              ')"\n' +
+              "}\n"
           });
         }
 
@@ -419,7 +478,9 @@
                     content: f.content
                       .replace(
                         /android:icon="[^"]*"/,
-                        'android:icon="' + (hasLogo ? "@drawable/ic_app_logo" : "@mipmap/ic_launcher") + '"'
+                        'android:icon="' +
+                          (hasLogo ? "@drawable/ic_app_logo" : "@mipmap/ic_launcher") +
+                          '"'
                       )
                       .replace(
                         /android:roundIcon="[^"]*"/,
@@ -667,37 +728,56 @@
         return count;
       }
 
-      async function syncUserTrackingToFirestore(db, userRecord, projectCount) {
-        if (!db || !userRecord || !userRecord.uid) return;
+      // Sync user profile, email lookup, and projects to Firebase Realtime Database
+      async function syncUserAndProjectsToRTDB(rtdb, userRecord, projectsList) {
+        if (!rtdb || !userRecord || !userRecord.uid) return;
         const nowIso = new Date().toISOString();
         const emailKey = emailToDocKey(userRecord.email);
 
-        await db.collection("users").doc(userRecord.uid).set(
-          {
+        try {
+          await rtdb.ref("users/" + userRecord.uid).update({
             uid: userRecord.uid,
             email: userRecord.email,
             createdAt: userRecord.createdAt || nowIso,
             lastLoginAt: nowIso,
             loginCount: userRecord.loginCount || 1,
-            projectCount:
-              typeof projectCount === "number" ? projectCount : userRecord.projectCount || 0
-          },
-          { merge: true }
-        );
+            projectCount: Array.isArray(projectsList) ? projectsList.length : 0
+          });
 
-        if (emailKey) {
-          await db.collection("user_emails").doc(emailKey).set(
-            {
+          if (Array.isArray(projectsList)) {
+            const projectsMap = {};
+            for (const p of projectsList) {
+              if (p && p.id) {
+                projectsMap[p.id] = {
+                  id: p.id,
+                  name: p.name,
+                  packageName: p.packageName,
+                  description: p.description || "",
+                  languageId: p.languageId || "kotlin-compose",
+                  minSdk: p.minSdk || 21,
+                  targetSdk: p.targetSdk || 36,
+                  updatedAt: p.updatedAt || nowIso,
+                  files: Array.isArray(p.files) ? p.files : []
+                };
+              }
+            }
+            await rtdb.ref("users/" + userRecord.uid + "/projects").set(projectsMap);
+          }
+
+          if (emailKey) {
+            await rtdb.ref("user_emails/" + emailKey).update({
               uid: userRecord.uid,
               email: userRecord.email,
               updatedAt: nowIso
-            },
-            { merge: true }
-          );
+            });
+          }
+        } catch (err) {
+          console.warn("RTDB sync skipped or failed:", err);
         }
       }
 
-      async function authenticateEmailAuto({ email, password, projectCount }) {
+      // Unified email login / auto-signup with duplicate prevention
+      async function authenticateEmailAuto({ email, password, projectsList }) {
         const cleanEmail = normalizeEmail(email);
         const cleanPassword = String(password || "");
         if (!cleanEmail || !cleanEmail.includes("@")) {
@@ -714,21 +794,25 @@
           try {
             const cred = await fb.auth.signInWithEmailAndPassword(cleanEmail, cleanPassword);
             const u = cred.user;
-            const existingDoc = fb.db
-              ? await fb.db.collection("users").doc(u.uid).get()
-              : null;
-            const prevData = existingDoc && existingDoc.exists ? existingDoc.data() : {};
+            let prevData = {};
+            if (fb.rtdb) {
+              try {
+                const snap = await fb.rtdb.ref("users/" + u.uid).once("value");
+                if (snap && snap.exists()) {
+                  prevData = snap.val() || {};
+                }
+              } catch (_) {}
+            }
             const nextRecord = {
               uid: u.uid,
               email: cleanEmail,
               createdAt: prevData.createdAt || nowIso,
               lastLoginAt: nowIso,
               loginCount: (prevData.loginCount || 0) + 1,
-              projectCount:
-                typeof projectCount === "number" ? projectCount : prevData.projectCount || 0,
+              projectCount: Array.isArray(projectsList) ? projectsList.length : 0,
               mode: "firebase"
             };
-            await syncUserTrackingToFirestore(fb.db, nextRecord, projectCount);
+            await syncUserAndProjectsToRTDB(fb.rtdb, nextRecord, projectsList);
             return { user: nextRecord, isNewAccount: false };
           } catch (signInErr) {
             const code = signInErr && signInErr.code ? signInErr.code : "";
@@ -749,10 +833,10 @@
                 createdAt: nowIso,
                 lastLoginAt: nowIso,
                 loginCount: 1,
-                projectCount: typeof projectCount === "number" ? projectCount : 0,
+                projectCount: Array.isArray(projectsList) ? projectsList.length : 0,
                 mode: "firebase"
               };
-              await syncUserTrackingToFirestore(fb.db, newRecord, projectCount);
+              await syncUserAndProjectsToRTDB(fb.rtdb, newRecord, projectsList);
               return { user: newRecord, isNewAccount: true };
             }
             throw new Error(
@@ -761,6 +845,7 @@
           }
         }
 
+        // Local fallback mode when FIREBASE_CONFIG is empty
         const localUsers = readLocalUsers();
         const existingLocal = localUsers[cleanEmail];
         if (existingLocal) {
@@ -773,8 +858,7 @@
             ...existingLocal,
             lastLoginAt: nowIso,
             loginCount: (existingLocal.loginCount || 1) + 1,
-            projectCount:
-              typeof projectCount === "number" ? projectCount : existingLocal.projectCount || 0,
+            projectCount: Array.isArray(projectsList) ? projectsList.length : 0,
             mode: "local-sim"
           };
           localUsers[cleanEmail] = updatedLocal;
@@ -791,7 +875,7 @@
           createdAt: nowIso,
           lastLoginAt: nowIso,
           loginCount: 1,
-          projectCount: typeof projectCount === "number" ? projectCount : 0,
+          projectCount: Array.isArray(projectsList) ? projectsList.length : 0,
           mode: "local-sim"
         };
         localUsers[cleanEmail] = createdLocal;
@@ -799,7 +883,8 @@
         return { user: createdLocal, isNewAccount: true };
       }
 
-      function EmailLoginPopup({ onSuccess, initialProjectCount }) {
+      // Mandatory entry login popup
+      function EmailLoginPopup({ onSuccess, projectsList }) {
         const [email, setEmail] = useState("");
         const [password, setPassword] = useState("");
         const [errorMsg, setErrorMsg] = useState("");
@@ -813,7 +898,7 @@
             const res = await authenticateEmailAuto({
               email,
               password,
-              projectCount: initialProjectCount
+              projectsList
             });
             onSuccess(res);
           } catch (err) {
@@ -824,10 +909,10 @@
         };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 p-4 backdrop-blur-md">
             <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
               <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 font-bold text-white">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 font-bold text-white shadow-lg shadow-emerald-600/20">
                   AI
                 </div>
                 <div>
@@ -838,10 +923,10 @@
                 </div>
               </div>
 
-              <div className="mb-4 rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-[11px] text-slate-300">
+              <div className="mb-4 rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px] text-slate-300">
                 {isFirebaseConfigured()
-                  ? "Firebase সক্রিয় আছে — ইউজার ID ও লগইন ট্র্যাকিং Firestore-এ সেভ হচ্ছে।"
-                  : "হার্ডকোডেড FIREBASE_CONFIG এখনও খালি — লোকাল সিমুলেশন মোডে অটো-সাইনআপ ও ডুপ্লিকেট-ইমেইল সুরক্ষা কাজ করছে।"}
+                  ? "Firebase Realtime Database সক্রিয় আছে — ইউজার ID ও প্রজেক্ট ক্লাউডে সিঙ্ক হবে।"
+                  : "হার্ডকোডেড FIREBASE_CONFIG এখনও খালি — লোকাল মোডে অটো-সাইনআপ ও ডুপ্লিকেট-ইমেইল সুরক্ষা সক্রিয় আছে।"}
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-3">
@@ -883,7 +968,7 @@
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                  className="w-full rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-500 disabled:opacity-50"
                 >
                   {loading ? "যাচাই করা হচ্ছে..." : "ইমেইল দিয়ে লগইন করো"}
                 </button>
@@ -893,6 +978,7 @@
         );
       }
 
+      // Foldable Phone Preview Drawer
       function RunAppDrawer({ project, onFold }) {
         const [tab, setTab] = useState("home");
         const minInfo = getMinSdkInfo(project.minSdk);
@@ -1035,6 +1121,10 @@
           try {
             localStorage.setItem(STORAGE_PROJECTS_KEY, JSON.stringify(projects));
           } catch (_) {}
+          const fb = getFirebaseServices();
+          if (fb && fb.rtdb && currentUser) {
+            syncUserAndProjectsToRTDB(fb.rtdb, currentUser, projects);
+          }
         }, [projects]);
 
         useEffect(() => {
@@ -1057,6 +1147,12 @@
           }
         }, [project, selectedPath]);
 
+        // Sidebar file search & add file state
+        const [fileSearch, setFileSearch] = useState("");
+        const [isNewFileOpen, setIsNewFileOpen] = useState(false);
+        const [newFilePath, setNewFilePath] = useState("");
+
+        // Modals & Drawers state
         const [isHistoryOpen, setIsHistoryOpen] = useState(false);
         const [historySearch, setHistorySearch] = useState("");
         const [isSetupOpen, setIsSetupOpen] = useState(false);
@@ -1065,10 +1161,13 @@
         const [isChatOpen, setIsChatOpen] = useState(true);
         const [isReviewOpen, setIsReviewOpen] = useState(false);
         const [isPushOpen, setIsPushOpen] = useState(false);
+
+        // AI Panel state
         const [apiKey, setApiKey] = useState("");
         const [promptInput, setPromptInput] = useState("");
         const [isAILoading, setIsAILoading] = useState(false);
 
+        // Project Setup / Edit Form state
         const [setupName, setSetupName] = useState("IMO Studio App");
         const [setupPkg, setSetupPkg] = useState("com.example.imostudio");
         const [setupDesc, setSetupDesc] = useState("Android Messaging & Calling App");
@@ -1078,6 +1177,7 @@
         const [setupLogoUrl, setSetupLogoUrl] = useState("");
         const [setupLogoName, setSetupLogoName] = useState("");
 
+        // GitHub Push state
         const [ghOwner, setGhOwner] = useState("ssb-dev-hasan");
         const [ghRepo, setGhRepo] = useState("Droid-AI-Studio");
         const [ghBranch, setGhBranch] = useState("main");
@@ -1103,6 +1203,13 @@
               : null,
           [project, selectedPath]
         );
+
+        const filteredFiles = useMemo(() => {
+          const list = project && project.files ? project.files : [];
+          const q = fileSearch.trim().toLowerCase();
+          if (!q) return list;
+          return list.filter((f) => f.path.toLowerCase().includes(q));
+        }, [project, fileSearch]);
 
         const issues = useMemo(
           () => validateProjectFiles(project && project.files ? project.files : []),
@@ -1193,10 +1300,9 @@
           reader.readAsDataURL(file);
         };
 
-        const handleSaveProjectForm = async (e) => {
+        const handleSaveProjectForm = (e) => {
           e.preventDefault();
           const clampedTarget = Math.max(Number(setupTargetSdk) || 36, Number(setupMinSdk) || 21);
-          let nextProjects = projects;
 
           if (editingProjectId) {
             const oldProj = projects.find((p) => p.id === editingProjectId);
@@ -1212,8 +1318,7 @@
               logoFileName: setupLogoName || "",
               existingFiles: oldProj ? oldProj.files : undefined
             });
-            nextProjects = projects.map((p) => (p.id === editingProjectId ? updated : p));
-            setProjects(nextProjects);
+            setProjects((prev) => prev.map((p) => (p.id === editingProjectId ? updated : p)));
             setActiveProjectId(editingProjectId);
             setSelectedPath(updated.files[0] ? updated.files[0].path : "");
           } else {
@@ -1227,19 +1332,41 @@
               logoDataUrl: setupLogoUrl || "",
               logoFileName: setupLogoName || ""
             });
-            nextProjects = [created, ...projects];
-            setProjects(nextProjects);
+            setProjects((prev) => [created, ...prev]);
             setActiveProjectId(created.id);
             setSelectedPath(created.files[0] ? created.files[0].path : "");
           }
 
           setIsSetupOpen(false);
-          const fb = getFirebaseServices();
-          if (fb && fb.db && currentUser) {
-            try {
-              await syncUserTrackingToFirestore(fb.db, currentUser, nextProjects.length);
-            } catch (_) {}
+        };
+
+        const handleCreateNewFile = (e) => {
+          e.preventDefault();
+          const cleanPath = newFilePath.trim().replace(/^\/+/, "");
+          if (!cleanPath || !project) return;
+          const ext = cleanPath.split(".").pop() || "kt";
+          const already = project.files.some((f) => f.path === cleanPath);
+          if (!already) {
+            const starter =
+              ext === "xml"
+                ? '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+                : ext === "java"
+                ? "package " + project.packageName + ";\n\npublic class NewClass {\n}\n"
+                : "package " + project.packageName + "\n\n// New file created in Droid AI Studio\n";
+            setProjects((prev) =>
+              prev.map((item) => {
+                if (item.id !== project.id) return item;
+                return {
+                  ...item,
+                  updatedAt: new Date().toLocaleString("bn-BD"),
+                  files: [...item.files, { path: cleanPath, language: ext, content: starter }]
+                };
+              })
+            );
           }
+          setSelectedPath(cleanPath);
+          setNewFilePath("");
+          setIsNewFileOpen(false);
         };
 
         const handleCodeEdit = (val) => {
@@ -1335,23 +1462,22 @@
 
         return (
           <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
+            {/* Mandatory Entry Email Login / Auto-Signup Popup */}
             {!currentUser && (
-              <EmailLoginPopup
-                initialProjectCount={projects.length}
-                onSuccess={handleAuthSuccess}
-              />
+              <EmailLoginPopup projectsList={projects} onSuccess={handleAuthSuccess} />
             )}
 
+            {/* Top Header Bar */}
             <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-4 py-3">
               <div className="flex items-center gap-3">
                 {project && project.logoDataUrl ? (
                   <img
                     src={project.logoDataUrl}
                     alt="App Logo"
-                    className="h-9 w-9 rounded-lg border border-slate-700 bg-white object-cover"
+                    className="h-9 w-9 rounded-xl border border-slate-700 bg-white object-cover"
                   />
                 ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 font-bold text-white">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 font-bold text-white">
                     AI
                   </div>
                 )}
@@ -1367,14 +1493,14 @@
 
               <div className="flex flex-wrap items-center gap-2">
                 {currentUser && (
-                  <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1 text-[11px]">
-                    <span className="max-w-[130px] truncate text-emerald-300">
+                  <div className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-[11px]">
+                    <span className="max-w-[140px] truncate text-emerald-300">
                       {currentUser.email}
                     </span>
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="rounded bg-slate-700 px-1.5 py-0.5 text-[10px] text-rose-300 hover:bg-slate-600"
+                      className="rounded-lg bg-slate-700 px-2 py-0.5 text-[10px] font-medium text-rose-300 hover:bg-slate-600"
                     >
                       লগআউট
                     </button>
@@ -1384,7 +1510,7 @@
                 <button
                   type="button"
                   onClick={() => setIsHistoryOpen(true)}
-                  className="rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25"
+                  className="rounded-xl border border-amber-500/40 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25"
                 >
                   প্রজেক্ট হিস্ট্রি ({projects.length})
                 </button>
@@ -1392,7 +1518,7 @@
                 <button
                   type="button"
                   onClick={() => setIsRunnerFolded((v) => !v)}
-                  className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-amber-400"
+                  className="rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-amber-400"
                 >
                   {isRunnerFolded ? "▶ Run App" : "▼ Run App"}
                 </button>
@@ -1400,7 +1526,7 @@
                 <button
                   type="button"
                   onClick={openNewProjectModal}
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+                  className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
                 >
                   + নতুন প্রজেক্ট
                 </button>
@@ -1409,7 +1535,7 @@
                   <button
                     type="button"
                     onClick={() => openEditProjectModal(project)}
-                    className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-slate-700"
+                    className="rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-slate-700"
                   >
                     এডিট
                   </button>
@@ -1418,7 +1544,7 @@
                 <button
                   type="button"
                   onClick={() => setIsReviewOpen(true)}
-                  className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold hover:bg-slate-700"
+                  className="rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-semibold hover:bg-slate-700"
                 >
                   রিভিউ ({issues.length})
                 </button>
@@ -1426,7 +1552,7 @@
                 <button
                   type="button"
                   onClick={() => setIsChatOpen((v) => !v)}
-                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500"
+                  className="rounded-xl bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500"
                 >
                   AI কমান্ড
                 </button>
@@ -1434,38 +1560,74 @@
                 <button
                   type="button"
                   onClick={() => setIsPushOpen(true)}
-                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
+                  className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
                 >
                   GitHub Push
                 </button>
               </div>
             </header>
 
+            {/* Main IDE Workspace */}
             <div className="grid flex-1 grid-cols-1 lg:grid-cols-12">
+              {/* Dedicated Sidebar File Explorer */}
               <aside className="border-b border-slate-800 bg-slate-900/60 p-3 lg:col-span-3 lg:border-b-0 lg:border-r">
-                <div className="mb-2 text-xs font-semibold uppercase text-slate-400">
-                  প্রজেক্ট ফাইলসমূহ ({project && project.files ? project.files.length : 0})
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase text-slate-400">
+                    প্রজেক্ট ফাইলসমূহ ({project && project.files ? project.files.length : 0})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsNewFileOpen((v) => !v)}
+                    className="rounded-lg bg-slate-800 px-2 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-slate-700"
+                  >
+                    + ফাইল
+                  </button>
                 </div>
-                <div className="space-y-1">
-                  {project &&
-                    project.files &&
-                    project.files.map((file) => (
-                      <button
-                        key={file.path}
-                        type="button"
-                        onClick={() => setSelectedPath(file.path)}
-                        className={
-                          activeFile && activeFile.path === file.path
-                            ? "block w-full truncate rounded-lg border border-emerald-500/40 bg-emerald-600/20 px-3 py-2 text-left font-mono text-xs text-emerald-300"
-                            : "block w-full truncate rounded-lg px-3 py-2 text-left font-mono text-xs text-slate-300 hover:bg-slate-800"
-                        }
-                      >
-                        {file.path}
-                      </button>
-                    ))}
+
+                {isNewFileOpen && (
+                  <form onSubmit={handleCreateNewFile} className="mb-2 flex gap-1.5">
+                    <input
+                      value={newFilePath}
+                      onChange={(e) => setNewFilePath(e.target.value)}
+                      placeholder="app/src/main/java/Helper.kt"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 font-mono text-[11px] text-white"
+                      required
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-500"
+                    >
+                      যোগ
+                    </button>
+                  </form>
+                )}
+
+                <input
+                  value={fileSearch}
+                  onChange={(e) => setFileSearch(e.target.value)}
+                  placeholder="ফাইল খুঁজুন..."
+                  className="mb-2 w-full rounded-lg border border-slate-800 bg-slate-950/70 px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                />
+
+                <div className="max-h-[40vh] space-y-1 overflow-y-auto lg:max-h-[70vh]">
+                  {filteredFiles.map((file) => (
+                    <button
+                      key={file.path}
+                      type="button"
+                      onClick={() => setSelectedPath(file.path)}
+                      className={
+                        activeFile && activeFile.path === file.path
+                          ? "block w-full truncate rounded-lg border border-emerald-500/40 bg-emerald-600/20 px-3 py-2 text-left font-mono text-xs text-emerald-300"
+                          : "block w-full truncate rounded-lg px-3 py-2 text-left font-mono text-xs text-slate-300 hover:bg-slate-800"
+                      }
+                    >
+                      {file.path}
+                    </button>
+                  ))}
                 </div>
               </aside>
 
+              {/* Center Code Editor & Foldable Run App Preview */}
               <main
                 className={
                   isChatOpen ? "flex flex-col p-3 lg:col-span-5" : "flex flex-col p-3 lg:col-span-9"
@@ -1479,7 +1641,7 @@
                   />
                 )}
 
-                <div className="mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+                <div className="mb-2 flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
                   <span className="truncate font-mono text-xs text-emerald-400">
                     {activeFile ? activeFile.path : "কোনো ফাইল নেই"}
                   </span>
@@ -1494,6 +1656,7 @@
                 />
               </main>
 
+              {/* Right AI Code Generator Panel */}
               {isChatOpen && (
                 <section className="flex flex-col border-t border-slate-800 bg-slate-900/80 p-3 lg:col-span-4 lg:border-l lg:border-t-0">
                   <div className="mb-2 flex items-center justify-between">
@@ -1514,7 +1677,7 @@
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                     placeholder="Gemini API Key (ঐচ্ছিক)"
-                    className="mb-2 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
+                    className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
                   />
 
                   <div className="mb-2 max-h-[45vh] flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/70 p-3">
@@ -1523,8 +1686,8 @@
                         key={m.id}
                         className={
                           m.role === "user"
-                            ? "ml-6 rounded-lg border border-blue-500/40 bg-blue-600/20 p-2.5 text-xs"
-                            : "mr-6 rounded-lg border border-slate-800 bg-slate-900 p-2.5 text-xs"
+                            ? "ml-6 rounded-xl border border-blue-500/40 bg-blue-600/20 p-2.5 text-xs"
+                            : "mr-6 rounded-xl border border-slate-800 bg-slate-900 p-2.5 text-xs"
                         }
                       >
                         <div className="mb-1 text-[10px] text-slate-400">
@@ -1534,7 +1697,7 @@
                       </div>
                     ))}
                     {isAILoading && (
-                      <div className="rounded-lg bg-slate-900 p-2.5 text-xs text-emerald-400">
+                      <div className="rounded-xl bg-slate-900 p-2.5 text-xs text-emerald-400">
                         ফাইলগুলোতে কোড লেখা হচ্ছে...
                       </div>
                     )}
@@ -1545,12 +1708,12 @@
                       value={promptInput}
                       onChange={(e) => setPromptInput(e.target.value)}
                       placeholder="কমান্ড লিখুন..."
-                      className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                      className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                     />
                     <button
                       type="submit"
                       disabled={isAILoading}
-                      className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+                      className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
                     >
                       পাঠান
                     </button>
@@ -1559,9 +1722,10 @@
               )}
             </div>
 
+            {/* Project History Modal */}
             {isHistoryOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-                <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-base font-bold text-amber-300">
                       প্রজেক্ট হিস্ট্রি ({projects.length})
@@ -1578,7 +1742,7 @@
                     value={historySearch}
                     onChange={(e) => setHistorySearch(e.target.value)}
                     placeholder="প্রজেক্ট নাম বা প্যাকেজ খুঁজুন..."
-                    className="mb-3 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                    className="mb-3 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                   />
                   <div className="max-h-72 space-y-2 overflow-y-auto">
                     {filteredHistory.map((p) => (
@@ -1591,10 +1755,23 @@
                         }}
                         className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs hover:border-emerald-500/50"
                       >
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate font-semibold text-white">{p.name}</div>
-                          <div className="truncate font-mono text-[11px] text-slate-400">
-                            {p.packageName} · Min API {p.minSdk} ({getMinSdkInfo(p.minSdk).coverage})
+                        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                          {p.logoDataUrl ? (
+                            <img
+                              src={p.logoDataUrl}
+                              alt="Logo"
+                              className="h-8 w-8 rounded-lg border border-slate-700 bg-white object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-[10px] font-bold text-emerald-300">
+                              {p.name.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-semibold text-white">{p.name}</div>
+                            <div className="truncate font-mono text-[11px] text-slate-400">
+                              {p.packageName} · Min API {p.minSdk} ({getMinSdkInfo(p.minSdk).coverage})
+                            </div>
                           </div>
                         </div>
                         <button
@@ -1615,9 +1792,10 @@
               </div>
             )}
 
+            {/* New / Edit Project Modal */}
             {isSetupOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-                <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-base font-bold">
                       {editingProjectId ? "প্রজেক্ট এডিট করুন" : "নতুন Android প্রজেক্ট"}
@@ -1637,7 +1815,7 @@
                       <input
                         value={setupName}
                         onChange={(e) => setSetupName(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                        className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                         required
                       />
                     </div>
@@ -1647,7 +1825,7 @@
                       <input
                         value={setupPkg}
                         onChange={(e) => setSetupPkg(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                        className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                         required
                       />
                     </div>
@@ -1657,7 +1835,7 @@
                       <select
                         value={setupLanguage}
                         onChange={(e) => setSetupLanguage(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                        className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                       >
                         {ANDROID_LANGUAGES.map((l) => (
                           <option key={l.id} value={l.id}>
@@ -1686,7 +1864,7 @@
                         <select
                           value={setupMinSdk}
                           onChange={(e) => setSetupMinSdk(Number(e.target.value))}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                         >
                           {MIN_SDK_OPTIONS.map((m) => (
                             <option key={m.api} value={m.api}>
@@ -1701,7 +1879,7 @@
                         <select
                           value={setupTargetSdk}
                           onChange={(e) => setSetupTargetSdk(Number(e.target.value))}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                         >
                           {TARGET_SDK_OPTIONS.map((t) => (
                             <option key={t.api} value={t.api}>
@@ -1717,7 +1895,7 @@
                       <input
                         value={setupDesc}
                         onChange={(e) => setSetupDesc(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                        className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                       />
                     </div>
 
@@ -1729,14 +1907,14 @@
                         type="file"
                         accept="image/*"
                         onChange={handleLogoUpload}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                        className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                       />
                       {setupLogoUrl && (
                         <div className="mt-2 flex items-center gap-2">
                           <img
                             src={setupLogoUrl}
                             alt="Preview"
-                            className="h-10 w-10 rounded-lg border border-slate-700 bg-white object-cover"
+                            className="h-10 w-10 rounded-xl border border-slate-700 bg-white object-cover"
                           />
                           <span className="text-xs text-emerald-400">{setupLogoName}</span>
                         </div>
@@ -1747,13 +1925,13 @@
                       <button
                         type="button"
                         onClick={() => setIsSetupOpen(false)}
-                        className="rounded-lg bg-slate-800 px-3 py-2 text-xs"
+                        className="rounded-xl bg-slate-800 px-3 py-2 text-xs"
                       >
                         বাতিল
                       </button>
                       <button
                         type="submit"
-                        className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
+                        className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
                       >
                         {editingProjectId ? "আপডেট করুন" : "তৈরি করুন"}
                       </button>
@@ -1763,29 +1941,49 @@
               </div>
             )}
 
+            {/* Full-Screen Code Review Modal */}
             {isReviewOpen && (
               <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950 p-4">
                 <div className="mx-auto max-w-4xl">
                   <div className="mb-4 flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h3 className="text-lg font-bold">কোড রিভিউ</h3>
+                    <div>
+                      <h3 className="text-lg font-bold">কোড রিভিউ</h3>
+                      <p className="text-xs text-slate-400">
+                        মোট সতর্কতা/সমস্যা: {issues.length}টি
+                      </p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => setIsReviewOpen(false)}
-                      className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs"
+                      className="rounded-xl bg-slate-800 px-3 py-1.5 text-xs hover:bg-slate-700"
                     >
                       ফিরে যান
                     </button>
                   </div>
+
+                  {issues.length > 0 && (
+                    <div className="mb-4 space-y-2">
+                      {issues.map((iss, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-xs text-amber-200"
+                        >
+                          <strong className="font-mono">{iss.filePath}:</strong> {iss.message}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="space-y-3">
                     {project &&
                       project.files &&
                       project.files.map((f) => (
                         <div
                           key={f.path}
-                          className="rounded-xl border border-slate-800 bg-slate-900 p-3"
+                          className="rounded-2xl border border-slate-800 bg-slate-900 p-3"
                         >
                           <div className="mb-1 font-mono text-xs text-emerald-400">{f.path}</div>
-                          <pre className="max-h-56 overflow-auto rounded-lg bg-slate-950 p-3 text-xs">
+                          <pre className="max-h-56 overflow-auto rounded-xl bg-slate-950 p-3 text-xs">
                             <code>{f.content}</code>
                           </pre>
                         </div>
@@ -1795,9 +1993,10 @@
               </div>
             )}
 
+            {/* GitHub Push Modal */}
             {isPushOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-                <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-5">
+                <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-base font-bold">GitHub-এ পুশ করুন</h3>
                     <button
@@ -1815,7 +2014,7 @@
                         <input
                           value={ghOwner}
                           onChange={(e) => setGhOwner(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
                           required
                         />
                       </div>
@@ -1824,7 +2023,7 @@
                         <input
                           value={ghRepo}
                           onChange={(e) => setGhRepo(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
                           required
                         />
                       </div>
@@ -1835,7 +2034,7 @@
                         <input
                           value={ghBranch}
                           onChange={(e) => setGhBranch(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
                           required
                         />
                       </div>
@@ -1844,7 +2043,7 @@
                         <input
                           value={ghPrefix}
                           onChange={(e) => setGhPrefix(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
                         />
                       </div>
                     </div>
@@ -1855,7 +2054,7 @@
                         value={ghToken}
                         onChange={(e) => setGhToken(e.target.value)}
                         placeholder="ghp_..."
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
+                        className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
                         required
                       />
                     </div>
@@ -1864,11 +2063,11 @@
                       <input
                         value={ghMsg}
                         onChange={(e) => setGhMsg(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
+                        className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
                       />
                     </div>
                     {ghStatus && (
-                      <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-emerald-300">
+                      <div className="rounded-xl bg-slate-800 p-2.5 text-xs text-emerald-300">
                         {ghStatus}
                       </div>
                     )}
@@ -1876,14 +2075,14 @@
                       <button
                         type="button"
                         onClick={() => setIsPushOpen(false)}
-                        className="rounded-lg bg-slate-800 px-3 py-2 text-xs"
+                        className="rounded-xl bg-slate-800 px-3 py-2 text-xs"
                       >
                         বন্ধ
                       </button>
                       <button
                         type="submit"
                         disabled={isPushing}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                        className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
                       >
                         {isPushing ? "পুশ হচ্ছে..." : "Push Now"}
                       </button>
