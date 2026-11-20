@@ -748,7 +748,8 @@
 
       async function getActiveGeminiModels(apiKey) {
         const cleanKey = String(apiKey || "").trim();
-        if (!cleanKey) return ["gemini-3.8-flash", "gemini-2.5-flash"];
+        const strictPrimaryModels = ["gemini-3.8-flash", "gemini-2.5-flash"];
+        if (!cleanKey) return strictPrimaryModels;
         if (detectedModelsCache.has(cleanKey)) {
           return detectedModelsCache.get(cleanKey);
         }
@@ -769,40 +770,44 @@
             const json = await res.json();
             const list = Array.isArray(json && json.models) ? json.models : [];
             const supported = list
-              .filter(
-                (m) =>
-                  m &&
-                  typeof m.name === "string" &&
-                  Array.isArray(m.supportedGenerationMethods) &&
-                  m.supportedGenerationMethods.includes("generateContent") &&
-                  !m.name.includes("gemini-2.0-flash") &&
-                  !m.name.includes("embedding") &&
-                  !m.name.includes("imagen") &&
-                  !m.name.includes("veo")
-              )
+              .filter((m) => {
+                if (!m || typeof m.name !== "string") return false;
+                const lowerName = m.name.toLowerCase();
+                const methods = Array.isArray(m.supportedGenerationMethods)
+                  ? m.supportedGenerationMethods
+                  : [];
+                return (
+                  methods.includes("generateContent") &&
+                  !lowerName.includes("gemini-2.0") &&
+                  !lowerName.includes("gemini-1.5") &&
+                  !lowerName.includes("gemini-1.0") &&
+                  !lowerName.includes("gemini-pro-vision") &&
+                  !lowerName.includes("embedding") &&
+                  !lowerName.includes("imagen") &&
+                  !lowerName.includes("veo") &&
+                  !lowerName.includes("aqa")
+                );
+              })
               .map((m) => m.name.replace(/^models\//, ""));
 
-            if (supported.length > 0) {
-              const ordered = [];
-              for (const pref of fallbackPriority) {
-                if (supported.includes(pref) && !ordered.includes(pref)) {
-                  ordered.push(pref);
-                }
+            const ordered = ["gemini-3.8-flash", "gemini-2.5-flash"];
+            for (const pref of fallbackPriority) {
+              if (supported.includes(pref) && !ordered.includes(pref)) {
+                ordered.push(pref);
               }
-              for (const mName of supported) {
-                if (mName.includes("flash") && !ordered.includes(mName)) {
-                  ordered.push(mName);
-                }
-              }
-              for (const mName of supported) {
-                if (!ordered.includes(mName)) {
-                  ordered.push(mName);
-                }
-              }
-              const topModels = ordered.slice(0, 4);
-              detectedModelsCache.set(cleanKey, topModels);
-              return topModels;
             }
+            for (const mName of supported) {
+              if (
+                mName.includes("flash") &&
+                !mName.includes("2.0") &&
+                !ordered.includes(mName)
+              ) {
+                ordered.push(mName);
+              }
+            }
+            const topModels = ordered.slice(0, 4);
+            detectedModelsCache.set(cleanKey, topModels);
+            return topModels;
           }
         } catch (_) {}
 
