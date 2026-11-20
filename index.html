@@ -14,6 +14,10 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Firebase v10.14.1 Compat SDKs for Live Email Auth & Firestore User/Project Sync -->
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
     <style>
       body {
         font-family: "Inter", sans-serif;
@@ -26,580 +30,182 @@
     <script type="text/babel">
       const { useState, useMemo, useEffect } = React;
 
-      // Persistent localStorage key preserved so no existing projects are lost
-      const STORAGE_KEY = "droid_ai_studio_projects_v1";
+      // =========================================================================
+      // 🔥 MANUAL FIREBASE CONFIGURATION (এখানে আপনার Firebase Config পেস্ট করুন)
+      // Firebase Console -> Project Settings -> General -> Your apps -> Web app
+      // =========================================================================
+      const FIREBASE_CONFIG = {
+        apiKey: "YOUR_FIREBASE_API_KEY",
+        authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_PROJECT_ID.appspot.com",
+        messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+        appId: "YOUR_APP_ID"
+      };
 
-      // All 7 Android Studio project language options
+      /*
+       * 🔒 RECOMMENDED FIRESTORE SECURITY RULES (Firebase Console -> Firestore -> Rules):
+       *
+       * rules_version = '2';
+       * service cloud.firestore {
+       *   match /databases/{database}/documents {
+       *     match /users/{uid} {
+       *       allow read, write: if request.auth != null && request.auth.uid == uid;
+       *       match /projects/{projectId} {
+       *         allow read, write: if request.auth != null && request.auth.uid == uid;
+       *       }
+       *     }
+       *     match /user_emails/{emailKey} {
+       *       allow read: if true;
+       *       allow write: if request.auth != null;
+       *     }
+       *   }
+       * }
+       */
+      // =========================================================================
+
+      // Persistent localStorage keys
+      const STORAGE_KEY = "droid_ai_studio_projects_v1";
+      const SIM_USERS_STORAGE_KEY = "droid_ai_studio_sim_users_v1";
+      const SIM_SESSION_STORAGE_KEY = "droid_ai_studio_sim_session_v1";
+
+      function isFirebaseConfigReady(cfg) {
+        return Boolean(
+          cfg &&
+            typeof cfg.apiKey === "string" &&
+            cfg.apiKey.trim().length > 10 &&
+            !cfg.apiKey.includes("YOUR_FIREBASE_API_KEY") &&
+            !cfg.apiKey.includes("YOUR_API_KEY") &&
+            typeof cfg.projectId === "string" &&
+            cfg.projectId.trim().length > 2 &&
+            !cfg.projectId.includes("YOUR_PROJECT_ID")
+        );
+      }
+
+      function normalizeEmailKey(email) {
+        return String(email || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9@._-]/g, "_");
+      }
+
+      function generateBackendUid() {
+        if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+          return "uid_" + crypto.randomUUID().replace(/-/g, "").slice(0, 24);
+        }
+        return "uid_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 14);
+      }
+
+      function initFirebaseServices(cfg) {
+        if (!isFirebaseConfigReady(cfg) || typeof firebase === "undefined") {
+          return { mode: "local", app: null, auth: null, db: null };
+        }
+        try {
+          const appName = "droid-studio-" + cfg.projectId.trim() + "-" + cfg.apiKey.trim().slice(-6);
+          const existingApp = firebase.apps?.find((a) => a.name === appName);
+          const app = existingApp || firebase.initializeApp(cfg, appName);
+          const auth = firebase.auth(app);
+          const db = firebase.firestore(app);
+          return { mode: "firebase", app, auth, db };
+        } catch (err) {
+          console.error("Firebase initialization failed:", err);
+          return { mode: "local", app: null, auth: null, db: null, error: String(err) };
+        }
+      }
+
+      // All 7 Android Studio Project Language Options
       const LANGUAGE_OPTIONS = [
         {
           id: "kotlin-compose",
-          label: "Kotlin + Jetpack Compose",
-          shortLabel: "Kotlin Compose",
-          defaultLang: "kotlin"
+          label: "Kotlin (Jetpack Compose — Modern UI)",
+          shortLabel: "Kotlin • Compose",
+          ext: "kt"
         },
         {
           id: "kotlin-xml",
-          label: "Kotlin + XML Views",
-          shortLabel: "Kotlin XML",
-          defaultLang: "kotlin"
+          label: "Kotlin (XML Views — Traditional)",
+          shortLabel: "Kotlin • XML",
+          ext: "kt"
         },
         {
           id: "java-xml",
-          label: "Java + XML Views",
-          shortLabel: "Java XML",
-          defaultLang: "java"
+          label: "Java (XML Views — Classic)",
+          shortLabel: "Java • XML",
+          ext: "java"
         },
         {
           id: "java-compose",
-          label: "Java + Compose / Material",
-          shortLabel: "Java Compose",
-          defaultLang: "java"
+          label: "Java (Jetpack Compose)",
+          shortLabel: "Java • Compose",
+          ext: "java"
         },
         {
-          id: "cpp-kotlin",
-          label: "C++ Native JNI + Kotlin",
-          shortLabel: "C++ Kotlin JNI",
-          defaultLang: "kotlin"
+          id: "cpp-kotlin-jni",
+          label: "C++ / Native JNI (Kotlin + CMake)",
+          shortLabel: "C++ • Kotlin JNI",
+          ext: "kt"
         },
         {
-          id: "cpp-java",
-          label: "C++ Native JNI + Java",
-          shortLabel: "C++ Java JNI",
-          defaultLang: "java"
+          id: "cpp-java-jni",
+          label: "C++ / Native JNI (Java + CMake)",
+          shortLabel: "C++ • Java JNI",
+          ext: "java"
         },
         {
           id: "kmp-android",
-          label: "Kotlin Multiplatform (Android Target)",
-          shortLabel: "KMP Android",
-          defaultLang: "kotlin"
+          label: "Kotlin Multiplatform (KMP Android Target)",
+          shortLabel: "KMP • Android",
+          ext: "kt"
         }
       ];
 
-      // Target / Compile SDK options (API 36 down to API 28)
+      // Target / Compile SDK Options (API 36 Android 16 down to API 28 Android 9)
       const TARGET_SDK_OPTIONS = [
-        { api: 36, androidVersion: "Android 16", badge: "API 36 (Android 16)" },
-        { api: 35, androidVersion: "Android 15", badge: "API 35 (Android 15)" },
-        { api: 34, androidVersion: "Android 14", badge: "API 34 (Android 14)" },
-        { api: 33, androidVersion: "Android 13", badge: "API 33 (Android 13)" },
-        { api: 32, androidVersion: "Android 12L", badge: "API 32 (Android 12L)" },
-        { api: 31, androidVersion: "Android 12", badge: "API 31 (Android 12)" },
-        { api: 30, androidVersion: "Android 11", badge: "API 30 (Android 11)" },
-        { api: 29, androidVersion: "Android 10", badge: "API 29 (Android 10)" },
-        { api: 28, androidVersion: "Android 9 Pie", badge: "API 28 (Android 9)" }
+        { api: 36, label: "API 36 — Android 16 (Baklava / Latest)", version: "16" },
+        { api: 35, label: "API 35 — Android 15 (Vanilla Ice Cream)", version: "15" },
+        { api: 34, label: "API 34 — Android 14 (Upside Down Cake)", version: "14" },
+        { api: 33, label: "API 33 — Android 13 (Tiramisu)", version: "13" },
+        { api: 32, label: "API 32 — Android 12L (Sv2)", version: "12L" },
+        { api: 31, label: "API 31 — Android 12 (Snow Cone)", version: "12" },
+        { api: 30, label: "API 30 — Android 11 (Red Velvet Cake)", version: "11" },
+        { api: 29, label: "API 29 — Android 10 (Quince Tart)", version: "10" },
+        { api: 28, label: "API 28 — Android 9 (Pie)", version: "9" }
       ];
 
-      // Minimum SDK options (API 31 down to API 21) with cumulative device support percentages
+      // Minimum SDK Options (API 31 down to API 21) with cumulative device support percentages
       const MIN_SDK_OPTIONS = [
-        {
-          api: 31,
-          androidVersion: "Android 12",
-          coverage: "~84.5%",
-          label: "API 31 (Android 12) — ~84.5% ফোনে সাপোর্ট"
-        },
-        {
-          api: 29,
-          androidVersion: "Android 10",
-          coverage: "~94.2%",
-          label: "API 29 (Android 10) — ~94.2% ফোনে সাপোর্ট"
-        },
-        {
-          api: 28,
-          androidVersion: "Android 9 Pie",
-          coverage: "~97.5%",
-          label: "API 28 (Android 9) — ~97.5% ফোনে সাপোর্ট"
-        },
-        {
-          api: 26,
-          androidVersion: "Android 8.0 Oreo",
-          coverage: "~99.0%",
-          label: "API 26 (Android 8.0) — ~99.0% ফোনে সাপোর্ট"
-        },
-        {
-          api: 24,
-          androidVersion: "Android 7.0 Nougat",
-          coverage: "~99.4%",
-          label: "API 24 (Android 7.0) — ~99.4% ফোনে সাপোর্ট"
-        },
-        {
-          api: 23,
-          androidVersion: "Android 6.0 Marshmallow",
-          coverage: "~99.7%",
-          label: "API 23 (Android 6.0) — ~99.7% ফোনে সাপোর্ট"
-        },
-        {
-          api: 21,
-          androidVersion: "Android 5.0 Lollipop",
-          coverage: "~99.8%",
-          label: "API 21 (Android 5.0) — ~99.8% ফোনে সাপোর্ট (সর্বোচ্চ)"
-        }
+        { api: 21, label: "API 21 — Android 5.0 (Lollipop)", coverage: "~99.8%" },
+        { api: 22, label: "API 22 — Android 5.1 (Lollipop MR1)", coverage: "~99.7%" },
+        { api: 23, label: "API 23 — Android 6.0 (Marshmallow)", coverage: "~99.6%" },
+        { api: 24, label: "API 24 — Android 7.0 (Nougat)", coverage: "~99.4%" },
+        { api: 25, label: "API 25 — Android 7.1 (Nougat MR1)", coverage: "~99.2%" },
+        { api: 26, label: "API 26 — Android 8.0 (Oreo)", coverage: "~99.0%" },
+        { api: 27, label: "API 27 — Android 8.1 (Oreo MR1)", coverage: "~98.6%" },
+        { api: 28, label: "API 28 — Android 9 (Pie)", coverage: "~97.8%" },
+        { api: 29, label: "API 29 — Android 10 (Q)", coverage: "~95.4%" },
+        { api: 30, label: "API 30 — Android 11 (R)", coverage: "~91.2%" },
+        { api: 31, label: "API 31 — Android 12 (S)", coverage: "~84.5%" }
       ];
 
-      function getLanguageMeta(languageId) {
-        return LANGUAGE_OPTIONS.find((item) => item.id === languageId) || LANGUAGE_OPTIONS[0];
+      function getLanguageMeta(langId) {
+        return LANGUAGE_OPTIONS.find((l) => l.id === langId) || LANGUAGE_OPTIONS[0];
       }
 
-      function getTargetSdkMeta(targetSdk) {
-        const numeric = Number(targetSdk) || 36;
-        return (
-          TARGET_SDK_OPTIONS.find((item) => item.api === numeric) || {
-            api: numeric,
-            androidVersion: `Android API ${numeric}`,
-            badge: `API ${numeric}`
-          }
-        );
+      function getMinSdkMeta(api) {
+        return MIN_SDK_OPTIONS.find((m) => m.api === Number(api)) || MIN_SDK_OPTIONS[0];
       }
 
-      function getMinSdkMeta(minSdk) {
-        const numeric = Number(minSdk) || 21;
-        return (
-          MIN_SDK_OPTIONS.find((item) => item.api === numeric) || {
-            api: numeric,
-            androidVersion: `Android API ${numeric}`,
-            coverage: numeric <= 21 ? "~99.8%" : "~98.5%",
-            label: `API ${numeric} — ${numeric <= 21 ? "~99.8%" : "~98.5%"} ফোনে সাপোর্ট`
-          }
-        );
+      function getTargetSdkMeta(api) {
+        return TARGET_SDK_OPTIONS.find((t) => t.api === Number(api)) || TARGET_SDK_OPTIONS[0];
       }
 
-      function escapeXmlValue(str) {
-        return String(str || "")
-          .replace(/&/g, "&amp;")
-          .replace(/"/g, "&quot;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-      }
-
-      /**
-       * Generates app/build.gradle.kts with explicit minSdk, compileSdk, targetSdk, and native CMake block when needed.
-       */
-      function buildGradleContent(languageId, pkg, targetSdk, minSdk) {
-        const isNativeCpp = languageId === "cpp-kotlin" || languageId === "cpp-java";
-        const usesKotlin =
-          languageId === "kotlin-compose" ||
-          languageId === "kotlin-xml" ||
-          languageId === "cpp-kotlin" ||
-          languageId === "kmp-android";
-
-        const pluginsText = usesKotlin
-          ? `plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-}`
-          : `plugins {
-    id("com.android.application")
-}`;
-
-        const nativeBlock = isNativeCpp
-          ? `
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            cppFlags += "-std=c++17"
-        }
-    }
-`
-          : "";
-
-        return `${pluginsText}
-
-android {
-    namespace = "${pkg}"
-    compileSdk = ${targetSdk}
-
-    defaultConfig {
-        applicationId = "${pkg}"
-        minSdk = ${minSdk}
-        targetSdk = ${targetSdk}
-        versionCode = 1
-        versionName = "1.0"
-    }
-${nativeBlock}}
-`;
-      }
-
-      /**
-       * Generates app/src/main/AndroidManifest.xml bound directly to the uploaded app logo when present.
-       */
-      function buildManifestContent(safeName, targetSdk, minSdk, hasLogo) {
-        const boundLogoAttrs = hasLogo
-          ? `\n        android:logo="@drawable/app_logo_base64"`
-          : "";
-        return `<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Target SDK: API ${targetSdk} | Min SDK: API ${minSdk} | Bound Logo: ${hasLogo ? "Attached" : "Default"} -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.CAMERA" />
-
-    <application
-        android:allowBackup="true"
-        android:label="@string/app_name"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"${boundLogoAttrs}
-        android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-    </application>
-</manifest>
-`;
-      }
-
-      /**
-       * Generates activity_main.xml layout file for XML-based Android projects.
-       */
-      function buildActivityMainXml(safeName, targetSdk, minSdk) {
-        const minMeta = getMinSdkMeta(minSdk);
-        return `<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:padding="24dp">
-
-    <ImageView
-        android:id="@+id/appLogoView"
-        android:layout_width="72dp"
-        android:layout_height="72dp"
-        android:contentDescription="@string/app_name"
-        android:src="@mipmap/ic_launcher" />
-
-    <TextView
-        android:id="@+id/titleText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="${escapeXmlValue(safeName)}"
-        android:textSize="22sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/sdkInfoText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Target API ${targetSdk} • Min API ${minSdk} (${minMeta.coverage})"
-        android:textSize="14sp" />
-</LinearLayout>
-`;
-      }
-
-      /**
-       * Generates CMakeLists.txt and native-lib.cpp for C++ Native JNI projects.
-       */
-      function buildCppNativeFiles(pkg) {
-        const jniSymbol = `Java_${pkg.replace(/\./g, "_")}_MainActivity_stringFromJNI`;
-        return [
-          {
-            path: "app/src/main/cpp/CMakeLists.txt",
-            language: "cmake",
-            content: `cmake_minimum_required(VERSION 3.22.1)
-project("droidnative")
-
-add_library(
-    droidnative
-    SHARED
-    native-lib.cpp
-)
-
-find_library(
-    log-lib
-    log
-)
-
-target_link_libraries(
-    droidnative
-    \${log-lib}
-)
-`
-          },
-          {
-            path: "app/src/main/cpp/native-lib.cpp",
-            language: "cpp",
-            content: `#include <jni.h>
-#include <string>
-
-extern "C" JNIEXPORT jstring JNICALL
-${jniSymbol}(JNIEnv* env, jobject /* thiz */) {
-    std::string message = "Native C++ JNI active in Droid AI Studio!";
-    return env->NewStringUTF(message.c_str());
-}
-`
-          }
-        ];
-      }
-
-      /**
-       * Builds full starter project files based on selected Android Studio language, SDKs, and bound logo.
-       */
-      function buildDefaultFiles(safeName, pkg, languageId, targetSdk, minSdk, hasLogo) {
+      function buildStarterFiles({ safeName, pkg, languageId, minSdk, targetSdk }) {
         const pkgPath = pkg.replace(/\./g, "/");
-        const minMeta = getMinSdkMeta(minSdk);
-        const logoComment = hasLogo
-          ? "Bound App Logo: app/src/main/res/drawable/app_logo_base64.txt"
-          : "Bound App Logo: None uploaded yet";
+        const jniPkg = pkg.replace(/\./g, "_");
+        const files = [];
 
-        const stringsXml = {
-          path: "app/src/main/res/values/strings.xml",
-          language: "xml",
-          content: `<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">${escapeXmlValue(safeName)}</string>
-</resources>
-`
-        };
-
-        const manifestXml = {
-          path: "app/src/main/AndroidManifest.xml",
-          language: "xml",
-          content: buildManifestContent(safeName, targetSdk, minSdk, hasLogo)
-        };
-
-        const gradleKts = {
-          path: "app/build.gradle.kts",
-          language: "kotlin",
-          content: buildGradleContent(languageId, pkg, targetSdk, minSdk)
-        };
-
-        if (languageId === "kotlin-xml") {
-          return [
-            {
-              path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
-              language: "kotlin",
-              content: `package ${pkg}
-
-import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
-
-// ${logoComment}
-class MainActivity : AppCompatActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-    }
-}
-`
-            },
-            {
-              path: "app/src/main/res/layout/activity_main.xml",
-              language: "xml",
-              content: buildActivityMainXml(safeName, targetSdk, minSdk)
-            },
-            stringsXml,
-            manifestXml,
-            gradleKts
-          ];
-        }
-
-        if (languageId === "java-xml") {
-          return [
-            {
-              path: `app/src/main/java/${pkgPath}/MainActivity.java`,
-              language: "java",
-              content: `package ${pkg};
-
-import android.os.Bundle;
-import androidx.appcompat.app.AppCompatActivity;
-
-// ${logoComment}
-public class MainActivity extends AppCompatActivity {
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-    }
-}
-`
-            },
-            {
-              path: "app/src/main/res/layout/activity_main.xml",
-              language: "xml",
-              content: buildActivityMainXml(safeName, targetSdk, minSdk)
-            },
-            stringsXml,
-            manifestXml,
-            gradleKts
-          ];
-        }
-
-        if (languageId === "java-compose") {
-          return [
-            {
-              path: `app/src/main/java/${pkgPath}/MainActivity.java`,
-              language: "java",
-              content: `package ${pkg};
-
-import android.os.Bundle;
-import android.widget.TextView;
-import androidx.activity.ComponentActivity;
-
-// ${logoComment}
-public class MainActivity extends ComponentActivity {
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        TextView composeHostLabel = new TextView(this);
-        composeHostLabel.setText("${safeName} • Java Compose / Material • API ${targetSdk} (Min ${minSdk})");
-        setContentView(composeHostLabel);
-    }
-}
-`
-            },
-            stringsXml,
-            manifestXml,
-            gradleKts
-          ];
-        }
-
-        if (languageId === "cpp-kotlin") {
-          return [
-            {
-              path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
-              language: "kotlin",
-              content: `package ${pkg}
-
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-
-// ${logoComment}
-class MainActivity : ComponentActivity() {
-    external fun stringFromJNI(): String
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val nativeText = try {
-            stringFromJNI()
-        } catch (_: UnsatisfiedLinkError) {
-            "Native C++ Ready (Target API ${targetSdk}, Min API ${minSdk})"
-        }
-        setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Text(text = "${safeName}", style = MaterialTheme.typography.headlineMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = nativeText)
-                    }
-                }
-            }
-        }
-    }
-
-    companion object {
-        init {
-            System.loadLibrary("droidnative")
-        }
-    }
-}
-`
-            },
-            ...buildCppNativeFiles(pkg),
-            stringsXml,
-            manifestXml,
-            gradleKts
-          ];
-        }
-
-        if (languageId === "cpp-java") {
-          return [
-            {
-              path: `app/src/main/java/${pkgPath}/MainActivity.java`,
-              language: "java",
-              content: `package ${pkg};
-
-import android.os.Bundle;
-import android.widget.TextView;
-import androidx.appcompat.app.AppCompatActivity;
-
-// ${logoComment}
-public class MainActivity extends AppCompatActivity {
-    static {
-        System.loadLibrary("droidnative");
-    }
-
-    public native String stringFromJNI();
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        TextView tv = new TextView(this);
-        tv.setText("${safeName} • C++ JNI + Java • API ${targetSdk} (Min ${minSdk})");
-        setContentView(tv);
-    }
-}
-`
-            },
-            ...buildCppNativeFiles(pkg),
-            stringsXml,
-            manifestXml,
-            gradleKts
-          ];
-        }
-
-        if (languageId === "kmp-android") {
-          return [
-            {
-              path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
-              language: "kotlin",
-              content: `package ${pkg}
-
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-
-// Kotlin Multiplatform (Android Target) • ${logoComment}
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Text(text = "${safeName} (KMP)", style = MaterialTheme.typography.headlineMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "Target API ${targetSdk} • Min API ${minSdk} (${minMeta.coverage})")
-                    }
-                }
-            }
-        }
-    }
-}
-`
-            },
-            {
-              path: "shared/src/commonMain/kotlin/SharedApp.kt",
-              language: "kotlin",
-              content: `class SharedApp {
-    fun summary(appName: String, targetApi: Int, minApi: Int): String =
-        "\$appName KMP Shared Module (Target API \$targetApi, Min API \$minApi)"
-}
-`
-            },
-            stringsXml,
-            manifestXml,
-            gradleKts
-          ];
-        }
-
-        // Default: kotlin-compose
-        return [
-          {
+        if (languageId === "kotlin-compose" || languageId === "kmp-android") {
+          files.push({
             path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
             language: "kotlin",
             content: `package ${pkg}
@@ -613,17 +219,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-// ${logoComment}
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    MainScreen(
-                        appName = "${safeName}",
-                        sdkLabel = "Target API ${targetSdk} • Min API ${minSdk} (${minMeta.coverage})"
-                    )
+                    MainScreen("${safeName}")
                 }
             }
         }
@@ -631,107 +233,428 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(appName: String, sdkLabel: String) {
+fun MainScreen(appName: String) {
     Column(modifier = Modifier.padding(24.dp)) {
         Text(text = appName, style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(text = sdkLabel, style = MaterialTheme.typography.labelMedium)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Created with Droid AI Studio")
+        Text(text = "Language: ${getLanguageMeta(languageId).shortLabel} | minSdk ${minSdk}, targetSdk ${targetSdk}")
     }
 }
 `
-          },
-          stringsXml,
-          manifestXml,
-          gradleKts
-        ];
+          });
+        } else if (languageId === "kotlin-xml") {
+          files.push({
+            path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
+            language: "kotlin",
+            content: `package ${pkg}
+
+import android.os.Bundle
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+
+class MainActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        findViewById<TextView>(R.id.tvAppTitle)?.text = "${safeName}"
+    }
+}
+`
+          });
+          files.push({
+            path: "app/src/main/res/layout/activity_main.xml",
+            language: "xml",
+            content: `<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <ImageView
+        android:id="@+id/ivAppLogo"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:src="@mipmap/ic_launcher"
+        android:contentDescription="@string/app_name" />
+
+    <TextView
+        android:id="@+id/tvAppTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/app_name"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+</LinearLayout>
+`
+          });
+        } else if (languageId === "java-xml" || languageId === "java-compose") {
+          files.push({
+            path: `app/src/main/java/${pkgPath}/MainActivity.java`,
+            language: "java",
+            content: `package ${pkg};
+
+import android.os.Bundle;
+import android.widget.TextView;
+import androidx.appcompat.app.AppCompatActivity;
+
+public class MainActivity extends AppCompatActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        TextView titleView = findViewById(R.id.tvAppTitle);
+        if (titleView != null) {
+            titleView.setText("${safeName}");
+        }
+    }
+}
+`
+          });
+          files.push({
+            path: "app/src/main/res/layout/activity_main.xml",
+            language: "xml",
+            content: `<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <ImageView
+        android:id="@+id/ivAppLogo"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:src="@mipmap/ic_launcher"
+        android:contentDescription="@string/app_name" />
+
+    <TextView
+        android:id="@+id/tvAppTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/app_name"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+</LinearLayout>
+`
+          });
+        } else if (languageId === "cpp-kotlin-jni") {
+          files.push({
+            path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
+            language: "kotlin",
+            content: `package ${pkg}
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+class MainActivity : ComponentActivity() {
+    companion object {
+        init {
+            System.loadLibrary("native-lib")
+        }
+    }
+
+    external fun stringFromJNI(): String
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val nativeBanner = stringFromJNI()
+        setContent {
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text(text = "${safeName}", style = MaterialTheme.typography.headlineMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = nativeBanner)
+                    }
+                }
+            }
+        }
+    }
+}
+`
+          });
+          files.push({
+            path: "app/src/main/cpp/native-lib.cpp",
+            language: "cpp",
+            content: `#include <jni.h>
+#include <string>
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_${jniPkg}_MainActivity_stringFromJNI(JNIEnv* env, jobject /* this */) {
+    std::string hello = "C++ JNI Engine Active for ${safeName}";
+    return env->NewStringUTF(hello.c_str());
+}
+`
+          });
+          files.push({
+            path: "app/src/main/cpp/CMakeLists.txt",
+            language: "cmake",
+            content: `cmake_minimum_required(VERSION 3.22.1)
+project("${safeName.replace(/[^a-zA-Z0-9_]/g, "_")}")
+
+add_library(native-lib SHARED native-lib.cpp)
+
+find_library(log-lib log)
+target_link_libraries(native-lib \${log-lib})
+`
+          });
+        } else if (languageId === "cpp-java-jni") {
+          files.push({
+            path: `app/src/main/java/${pkgPath}/MainActivity.java`,
+            language: "java",
+            content: `package ${pkg};
+
+import android.os.Bundle;
+import android.widget.TextView;
+import androidx.appcompat.app.AppCompatActivity;
+
+public class MainActivity extends AppCompatActivity {
+    static {
+        System.loadLibrary("native-lib");
+    }
+
+    public native String stringFromJNI();
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        TextView tv = new TextView(this);
+        tv.setText("${safeName} — " + stringFromJNI());
+        setContentView(tv);
+    }
+}
+`
+          });
+          files.push({
+            path: "app/src/main/cpp/native-lib.cpp",
+            language: "cpp",
+            content: `#include <jni.h>
+#include <string>
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_${jniPkg}_MainActivity_stringFromJNI(JNIEnv* env, jobject /* this */) {
+    std::string hello = "C++ Java JNI Active for ${safeName}";
+    return env->NewStringUTF(hello.c_str());
+}
+`
+          });
+          files.push({
+            path: "app/src/main/cpp/CMakeLists.txt",
+            language: "cmake",
+            content: `cmake_minimum_required(VERSION 3.22.1)
+project("${safeName.replace(/[^a-zA-Z0-9_]/g, "_")}")
+
+add_library(native-lib SHARED native-lib.cpp)
+
+find_library(log-lib log)
+target_link_libraries(native-lib \${log-lib})
+`
+          });
+        }
+
+        // Common Android resource & build files
+        files.push({
+          path: "app/src/main/res/values/strings.xml",
+          language: "xml",
+          content: `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">${safeName}</string>
+</resources>
+`
+        });
+
+        files.push({
+          path: "app/src/main/AndroidManifest.xml",
+          language: "xml",
+          content: `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <application
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+`
+        });
+
+        const isCpp = languageId.startsWith("cpp-");
+        files.push({
+          path: "app/build.gradle.kts",
+          language: "kotlin",
+          content: `plugins {
+    id("com.android.application")
+    ${languageId.includes("java") && !languageId.includes("kotlin") ? "" : 'id("org.jetbrains.kotlin.android")'}
+}
+
+android {
+    namespace = "${pkg}"
+    compileSdk = ${targetSdk}
+
+    defaultConfig {
+        applicationId = "${pkg}"
+        minSdk = ${minSdk}
+        targetSdk = ${targetSdk}
+        versionCode = 1
+        versionName = "1.0"
+    }${
+      isCpp
+        ? `
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }`
+        : ""
+    }
+}
+`
+        });
+
+        return files;
       }
 
-      /**
-       * Creates or updates a project while keeping minSdk <= targetSdk and binding logo resources directly.
-       */
+      function applyLogoBindingToFiles(files, logoDataUrl, logoFileName) {
+        let nextFiles = files.filter(
+          (f) =>
+            f.path !== "app/src/main/res/drawable/app_logo_base64.txt" &&
+            f.path !== "app/src/main/res/values/app_logo_config.xml"
+        );
+
+        nextFiles = nextFiles.map((f) => {
+          if (f.path.endsWith("AndroidManifest.xml")) {
+            const updatedManifest = f.content
+              .replace(/android:icon="[^"]*"/, 'android:icon="@mipmap/ic_launcher"')
+              .replace(/android:roundIcon="[^"]*"/, 'android:roundIcon="@mipmap/ic_launcher_round"');
+            return { ...f, content: updatedManifest };
+          }
+          return f;
+        });
+
+        if (logoDataUrl) {
+          nextFiles.push({
+            path: "app/src/main/res/values/app_logo_config.xml",
+            language: "xml",
+            content: `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_logo_filename">${logoFileName || "ic_launcher.png"}</string>
+    <bool name="has_custom_app_logo">true</bool>
+</resources>
+`
+          });
+          nextFiles.push({
+            path: "app/src/main/res/drawable/app_logo_base64.txt",
+            language: "text",
+            content: `Bound App Logo File: ${logoFileName || "ic_launcher.png"}\nTarget Resource: @mipmap/ic_launcher & @mipmap/ic_launcher_round\nData URL:\n${logoDataUrl}`
+          });
+        }
+
+        return nextFiles;
+      }
+
       function createAndroidProject({
         id,
         name,
         packageName,
         description,
-        languageId,
-        targetSdk,
-        minSdk,
+        languageId = "kotlin-compose",
+        minSdk = 21,
+        targetSdk = 36,
         logoDataUrl,
         logoFileName,
         existingFiles,
-        regenerateStarterFiles = false
+        regenerateStarter = false
       }) {
         const safeName = (name || "IMO Studio App").trim();
         const pkg = (packageName || "com.example.imostudio").trim();
-        const langMeta = getLanguageMeta(languageId);
-        const parsedTargetSdk = Number(targetSdk) || 36;
-        const parsedMinSdk = Math.min(Number(minSdk) || 21, parsedTargetSdk);
+        const safeMinSdk = Math.min(Number(minSdk) || 21, Number(targetSdk) || 36);
+        const safeTargetSdk = Math.max(Number(targetSdk) || 36, safeMinSdk);
         const pkgPath = pkg.replace(/\./g, "/");
-        const hasLogo = Boolean(logoDataUrl);
 
-        let files =
-          !regenerateStarterFiles && Array.isArray(existingFiles) && existingFiles.length > 0
-            ? existingFiles.map((f) => {
-                if (f.path.endsWith("strings.xml")) {
-                  return {
-                    ...f,
-                    content: `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">${escapeXmlValue(safeName)}</string>\n</resources>\n`
-                  };
-                }
-                if (f.path.endsWith("AndroidManifest.xml")) {
-                  return {
-                    ...f,
-                    content: buildManifestContent(safeName, parsedTargetSdk, parsedMinSdk, hasLogo)
-                  };
-                }
-                if (f.path.endsWith("build.gradle.kts")) {
-                  return {
-                    ...f,
-                    content: buildGradleContent(langMeta.id, pkg, parsedTargetSdk, parsedMinSdk)
-                  };
-                }
-                if (f.path.endsWith("MainActivity.kt")) {
-                  const updatedPkg = f.content.replace(/^package\s+[^\s]+/m, `package ${pkg}`);
-                  return {
-                    path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
-                    language: "kotlin",
-                    content: updatedPkg
-                  };
-                }
-                if (f.path.endsWith("MainActivity.java")) {
-                  const updatedPkg = f.content.replace(/^package\s+[^\s;]+/m, `package ${pkg}`);
-                  return {
-                    path: `app/src/main/java/${pkgPath}/MainActivity.java`,
-                    language: "java",
-                    content: updatedPkg
-                  };
-                }
-                return f;
-              })
-            : buildDefaultFiles(safeName, pkg, langMeta.id, parsedTargetSdk, parsedMinSdk, hasLogo);
-
-        files = files.filter(
-          (f) => f.path !== "app/src/main/res/drawable/app_logo_base64.txt"
-        );
-        if (hasLogo) {
-          files.push({
-            path: "app/src/main/res/drawable/app_logo_base64.txt",
-            language: "text",
-            content: `Bound App Logo File: ${logoFileName || "logo.png"}\nBound To App: ${safeName} (${pkg})\nManifest Icon/Logo: Bound\nData URL:\n${logoDataUrl}`
+        let files;
+        if (!regenerateStarter && Array.isArray(existingFiles) && existingFiles.length > 0) {
+          files = existingFiles.map((f) => {
+            if (f.path.endsWith("strings.xml")) {
+              return {
+                ...f,
+                content: `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">${safeName}</string>\n</resources>\n`
+              };
+            }
+            if (f.path.endsWith("build.gradle.kts")) {
+              return {
+                ...f,
+                content: f.content
+                  .replace(/namespace\s*=\s*"[^"]*"/, `namespace = "${pkg}"`)
+                  .replace(/applicationId\s*=\s*"[^"]*"/, `applicationId = "${pkg}"`)
+                  .replace(/compileSdk\s*=\s*\d+/, `compileSdk = ${safeTargetSdk}`)
+                  .replace(/minSdk\s*=\s*\d+/, `minSdk = ${safeMinSdk}`)
+                  .replace(/targetSdk\s*=\s*\d+/, `targetSdk = ${safeTargetSdk}`)
+              };
+            }
+            if (f.path.endsWith("MainActivity.kt")) {
+              const updatedPkg = f.content.replace(/^package\s+[^\s]+/m, `package ${pkg}`);
+              return {
+                path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
+                language: "kotlin",
+                content: updatedPkg
+              };
+            }
+            if (f.path.endsWith("MainActivity.java")) {
+              const updatedPkg = f.content.replace(/^package\s+[^;]+;/m, `package ${pkg};`);
+              return {
+                path: `app/src/main/java/${pkgPath}/MainActivity.java`,
+                language: "java",
+                content: updatedPkg
+              };
+            }
+            return f;
+          });
+        } else {
+          files = buildStarterFiles({
+            safeName,
+            pkg,
+            languageId,
+            minSdk: safeMinSdk,
+            targetSdk: safeTargetSdk
           });
         }
+
+        files = applyLogoBindingToFiles(files, logoDataUrl, logoFileName);
 
         return {
           id: id || `proj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           name: safeName,
           packageName: pkg,
           description: description || `${safeName} Android Project`,
-          languageId: langMeta.id,
-          targetSdk: parsedTargetSdk,
-          minSdk: parsedMinSdk,
+          languageId,
+          minSdk: safeMinSdk,
+          targetSdk: safeTargetSdk,
           logoDataUrl: logoDataUrl || "",
           logoFileName: logoFileName || "",
           updatedAt: new Date().toLocaleString("bn-BD"),
@@ -739,27 +662,10 @@ fun MainScreen(appName: String, sdkLabel: String) {
         };
       }
 
-      /**
-       * Validates SDK boundaries, empty files, XML headers, and logo attachment.
-       */
-      function validateProjectFiles(files, targetSdk = 36, minSdk = 21, hasLogo = false) {
+      function validateProjectFiles(files) {
         const issues = [];
         if (!files || files.length === 0) {
           return [{ filePath: "project", message: "প্রজেক্টে কোনো ফাইল নেই।", severity: "error" }];
-        }
-        if (Number(minSdk) > Number(targetSdk)) {
-          issues.push({
-            filePath: "app/build.gradle.kts",
-            message: `Min SDK (API ${minSdk}) Target SDK (API ${targetSdk})-এর চেয়ে বড় হতে পারে না।`,
-            severity: "error"
-          });
-        }
-        if (!hasLogo) {
-          issues.push({
-            filePath: "app/src/main/AndroidManifest.xml",
-            message: "অ্যাপের সাথে কাস্টম লোগো যুক্ত করা হয়নি (ডিফল্ট আইকন ব্যবহৃত হচ্ছে)।",
-            severity: "warning"
-          });
         }
         for (const f of files) {
           if (!f.content || !f.content.trim()) {
@@ -768,13 +674,6 @@ fun MainScreen(appName: String, sdkLabel: String) {
           if (f.path.endsWith(".xml") && !f.content.includes("<?xml")) {
             issues.push({ filePath: f.path, message: "XML ফাইলে <?xml ...?> হেডার রাখা ভালো।", severity: "warning" });
           }
-          if (f.path.endsWith("build.gradle.kts") && !f.content.includes(`compileSdk = ${targetSdk}`)) {
-            issues.push({
-              filePath: f.path,
-              message: `Gradle ফাইলে compileSdk = ${targetSdk} থাকা উচিত।`,
-              severity: "warning"
-            });
-          }
         }
         return issues;
       }
@@ -782,16 +681,16 @@ fun MainScreen(appName: String, sdkLabel: String) {
       function localFallbackEdit(prompt, project, activeFile) {
         const target = activeFile || project.files[0];
         if (!target) return [];
-        const langMeta = getLanguageMeta(project.languageId);
         const comment = target.path.endsWith(".xml")
-          ? `<!-- AI Command (${langMeta.shortLabel}, Target API ${project.targetSdk}, Min API ${project.minSdk}): ${prompt} -->\n`
-          : `// AI Command (${langMeta.shortLabel}, Target API ${project.targetSdk}, Min API ${project.minSdk}): ${prompt}\n`;
+          ? `<!-- AI Command: ${prompt} -->\n`
+          : target.path.endsWith(".txt")
+          ? `# AI Command: ${prompt}\n`
+          : `// AI Command: ${prompt}\n`;
         return [{ ...target, content: `${comment}${target.content}` }];
       }
 
       async function runAICommand({ prompt, project, activeFile, apiKey }) {
         const langMeta = getLanguageMeta(project.languageId);
-        const targetMeta = getTargetSdkMeta(project.targetSdk);
         const minMeta = getMinSdkMeta(project.minSdk);
 
         if (apiKey && apiKey.trim().length > 10) {
@@ -802,9 +701,7 @@ fun MainScreen(appName: String, sdkLabel: String) {
 
             const sysPrompt = `You are Droid AI Studio's Android code generator for "${project.name}" (${project.packageName}).
 Project Language: ${langMeta.label}
-Target / Compile SDK: ${targetMeta.badge}
-Minimum SDK: ${minMeta.label}
-Logo Bound Directly to App: ${project.logoDataUrl ? "Yes" : "No"}
+Min SDK: API ${project.minSdk} (${minMeta.coverage} device coverage), Target/Compile SDK: API ${project.targetSdk}
 Return ONLY valid JSON:
 {
   "reply": "Short explanation in Bengali",
@@ -945,25 +842,7 @@ Return ONLY valid JSON:
         return count;
       }
 
-      function AppLogoBadge({ project, sizeClass = "h-9 w-9", textClass = "text-xs" }) {
-        if (project.logoDataUrl) {
-          return (
-            <img
-              src={project.logoDataUrl}
-              alt={`${project.name} Logo`}
-              className={`${sizeClass} shrink-0 rounded-full border border-white/40 bg-white object-cover`}
-            />
-          );
-        }
-        return (
-          <div
-            className={`${sizeClass} shrink-0 flex items-center justify-center rounded-full bg-white/20 font-bold text-white ${textClass}`}
-          >
-            {project.name.slice(0, 2).toUpperCase()}
-          </div>
-        );
-      }
-
+      // Foldable Live App Preview Drawer with Direct Logo Binding on Every Screen
       function RunAppDrawer({ project, onFold }) {
         const [tab, setTab] = useState("home");
         const [chatInput, setChatInput] = useState("");
@@ -974,7 +853,6 @@ Return ONLY valid JSON:
         const [callStatus, setCallStatus] = useState("");
 
         const langMeta = getLanguageMeta(project.languageId);
-        const targetMeta = getTargetSdkMeta(project.targetSdk);
         const minMeta = getMinSdkMeta(project.minSdk);
 
         const handleSendChat = (e) => {
@@ -990,16 +868,13 @@ Return ONLY valid JSON:
         return (
           <div className="mb-4 rounded-2xl border border-amber-500/40 bg-slate-900 p-4 shadow-xl">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2">
                 <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
                 <span className="text-xs font-bold uppercase tracking-wider text-amber-300">
                   Live App Runner — {project.name}
                 </span>
-                <span className="rounded-full bg-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300">
-                  {langMeta.shortLabel}
-                </span>
-                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  Target API {targetMeta.api} • Min API {minMeta.api} ({minMeta.coverage})
+                <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-emerald-300">
+                  {langMeta.shortLabel} • {minMeta.coverage} ফোন সাপোর্ট
                 </span>
               </div>
               <button
@@ -1013,54 +888,63 @@ Return ONLY valid JSON:
 
             <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-[2rem] border-4 border-slate-800 bg-slate-950 shadow-2xl">
               <div className="flex items-center justify-between bg-slate-900 px-4 py-1.5 text-[10px] text-slate-400">
-                <span>20:55</span>
-                <span>{targetMeta.badge}</span>
+                <span>18:15</span>
+                <span>API {project.minSdk || 21}–{project.targetSdk || 36}</span>
                 <span>100%</span>
               </div>
 
+              {/* Top App Bar with Direct Bound Logo */}
               <div className="flex items-center gap-3 bg-emerald-600 px-4 py-2.5 text-white">
-                <AppLogoBadge project={project} sizeClass="h-9 w-9" />
+                {project.logoDataUrl ? (
+                  <img
+                    src={project.logoDataUrl}
+                    alt="App Logo"
+                    className="h-9 w-9 rounded-full border border-white/50 bg-white object-cover shadow"
+                  />
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
+                    {project.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-bold">{project.name}</div>
-                  <div className="truncate text-[10px] text-emerald-100">
-                    {langMeta.shortLabel} • Min API {minMeta.api} ({minMeta.coverage})
-                  </div>
+                  <div className="truncate text-[10px] text-emerald-100">{project.packageName}</div>
                 </div>
               </div>
 
-              <div className="min-h-[245px] p-3">
+              <div className="min-h-[250px] p-3">
                 {tab === "home" && (
                   <div className="space-y-2.5">
-                    <div className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900 p-2.5">
-                      <AppLogoBadge project={project} sizeClass="h-10 w-10" />
+                    <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3">
+                      {project.logoDataUrl ? (
+                        <img
+                          src={project.logoDataUrl}
+                          alt="Bound Logo"
+                          className="h-12 w-12 rounded-xl border border-emerald-500/40 bg-white object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600/20 text-sm font-bold text-emerald-300">
+                          {project.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-semibold text-slate-100">
-                          {project.name}
-                        </div>
-                        <div className="truncate text-[10px] text-slate-400">
-                          {project.logoDataUrl
-                            ? `লোগো যুক্ত: ${project.logoFileName || "app_logo"}`
-                            : "ডিফল্ট লোগো (প্রজেক্ট এডিটে লোগো যুক্ত করুন)"}
-                        </div>
+                        <div className="truncate text-xs font-bold text-white">{project.name}</div>
+                        <div className="text-[11px] text-slate-300">{project.description}</div>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
-                      {project.description}
-                    </div>
-                    <div className="space-y-1 rounded-xl border border-slate-800 bg-slate-900/70 p-2.5 text-[11px] text-slate-300">
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2.5 text-[11px] text-slate-300">
                       <div>
-                        ভাষা: <span className="font-semibold text-purple-300">{langMeta.label}</span>
+                        ভাষা: <span className="font-semibold text-emerald-300">{langMeta.shortLabel}</span>
                       </div>
-                      <div>
-                        Target / Compile:{" "}
-                        <span className="font-semibold text-emerald-400">{targetMeta.badge}</span>
-                      </div>
-                      <div>
-                        Minimum SDK:{" "}
-                        <span className="font-semibold text-amber-300">{minMeta.label}</span>
+                      <div className="mt-0.5">
+                        ডিভাইস সাপোর্ট:{" "}
+                        <span className="font-semibold text-amber-300">
+                          API {project.minSdk || 21} ({minMeta.coverage} ফোনে চলবে)
+                        </span>
                       </div>
                     </div>
+
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <button
                         type="button"
@@ -1081,39 +965,19 @@ Return ONLY valid JSON:
                 )}
 
                 {tab === "chats" && (
-                  <div className="flex h-[220px] flex-col">
+                  <div className="flex h-[225px] flex-col">
                     <div className="mb-2 flex-1 space-y-1.5 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 p-2">
                       {chatList.map((item) => (
                         <div
                           key={item.id}
-                          className={`flex items-start gap-1.5 ${
-                            item.sender === "Me" ? "justify-end" : "justify-start"
+                          className={`rounded-lg px-2.5 py-1.5 text-xs ${
+                            item.sender === "Me"
+                              ? "ml-6 bg-emerald-600 text-white"
+                              : "mr-6 bg-slate-800 text-slate-200"
                           }`}
                         >
-                          {item.sender !== "Me" && (
-                            <AppLogoBadge
-                              project={project}
-                              sizeClass="h-6 w-6"
-                              textClass="text-[9px]"
-                            />
-                          )}
-                          <div
-                            className={`rounded-lg px-2.5 py-1.5 text-xs ${
-                              item.sender === "Me"
-                                ? "bg-emerald-600 text-white"
-                                : "bg-slate-800 text-slate-200"
-                            }`}
-                          >
-                            <div className="text-[9px] opacity-75">{item.sender}</div>
-                            <div>{item.text}</div>
-                          </div>
-                          {item.sender === "Me" && (
-                            <AppLogoBadge
-                              project={project}
-                              sizeClass="h-6 w-6"
-                              textClass="text-[9px]"
-                            />
-                          )}
+                          <div className="text-[9px] opacity-75">{item.sender}</div>
+                          <div>{item.text}</div>
                         </div>
                       ))}
                     </div>
@@ -1122,7 +986,7 @@ Return ONLY valid JSON:
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         placeholder="মেসেজ লিখুন..."
-                        className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-100"
+                        className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs"
                       />
                       <button
                         type="submit"
@@ -1135,15 +999,17 @@ Return ONLY valid JSON:
                 )}
 
                 {tab === "calls" && (
-                  <div className="flex h-[220px] flex-col items-center justify-center gap-3 text-center">
-                    <AppLogoBadge
-                      project={project}
-                      sizeClass="h-14 w-14"
-                      textClass="text-sm"
-                    />
-                    <div className="text-xs font-bold text-slate-200">
-                      {project.name} • Audio & Video Call
-                    </div>
+                  <div className="flex h-[225px] flex-col items-center justify-center gap-3 text-center">
+                    {project.logoDataUrl ? (
+                      <img
+                        src={project.logoDataUrl}
+                        alt="Caller Logo"
+                        className="h-14 w-14 rounded-full border-2 border-emerald-400 bg-white object-cover shadow"
+                      />
+                    ) : (
+                      <div className="text-2xl">📞</div>
+                    )}
+                    <div className="text-xs font-bold text-slate-200">{project.name} — Audio & Video Call</div>
                     {callStatus && <div className="text-[11px] text-emerald-400">{callStatus}</div>}
                     <div className="flex gap-2">
                       <button
@@ -1199,7 +1065,14 @@ Return ONLY valid JSON:
             const raw = localStorage.getItem(STORAGE_KEY);
             if (raw) {
               const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                return parsed.map((p) => ({
+                  ...p,
+                  languageId: p.languageId || "kotlin-compose",
+                  minSdk: p.minSdk || 21,
+                  targetSdk: p.targetSdk || 36
+                }));
+              }
             }
           } catch (_) {}
           return [
@@ -1209,8 +1082,8 @@ Return ONLY valid JSON:
               packageName: "com.example.imostudio",
               description: "Android Messaging & Calling App",
               languageId: "kotlin-compose",
-              targetSdk: 36,
-              minSdk: 21
+              minSdk: 21,
+              targetSdk: 36
             })
           ];
         });
@@ -1239,7 +1112,9 @@ Return ONLY valid JSON:
         };
 
         const [selectedPath, setSelectedPath] = useState(project?.files[0]?.path || "");
-        const [fileSearchQuery, setFileSearchQuery] = useState("");
+        const [fileSearch, setFileSearch] = useState("");
+        const [isNewFileModalOpen, setIsNewFileModalOpen] = useState(false);
+        const [newFilePath, setNewFilePath] = useState("app/src/main/java/com/example/imostudio/Helper.kt");
 
         useEffect(() => {
           if (project && !project.files.some((f) => f.path === selectedPath)) {
@@ -1247,10 +1122,11 @@ Return ONLY valid JSON:
           }
         }, [project, selectedPath]);
 
+        // Modals & Drawers State
+        const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+        const [historySearch, setHistorySearch] = useState("");
         const [isSetupOpen, setIsSetupOpen] = useState(false);
         const [editingProjectId, setEditingProjectId] = useState(null);
-        const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-        const [historyQuery, setHistoryQuery] = useState("");
         const [isRunnerFolded, setIsRunnerFolded] = useState(true);
         const [isChatOpen, setIsChatOpen] = useState(true);
         const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -1259,16 +1135,445 @@ Return ONLY valid JSON:
         const [promptInput, setPromptInput] = useState("");
         const [isAILoading, setIsAILoading] = useState(false);
 
+        // Firebase Auth & Firestore User/Project Sync State (Hardcoded FIREBASE_CONFIG)
+        const firebaseServices = useMemo(() => initFirebaseServices(FIREBASE_CONFIG), []);
+
+        const [currentUser, setCurrentUser] = useState(null);
+        const [authChecked, setAuthChecked] = useState(false);
+        const [cloudSyncStatus, setCloudSyncStatus] = useState("idle"); // idle | syncing | synced | error
+        const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+        const [authEmail, setAuthEmail] = useState("");
+        const [authPassword, setAuthPassword] = useState("");
+        const [authBusy, setAuthBusy] = useState(false);
+        const [authError, setAuthError] = useState("");
+        const [authSuccess, setAuthSuccess] = useState("");
+
+        // Pull user's cloud-synced projects from Firestore and merge cleanly with local projects
+        const loadCloudProjectsForUser = async (uid) => {
+          if (firebaseServices.mode !== "firebase" || !firebaseServices.db || !uid) return;
+          try {
+            setCloudSyncStatus("syncing");
+            const snap = await firebaseServices.db
+              .collection("users")
+              .doc(uid)
+              .collection("projects")
+              .get();
+
+            if (!snap.empty) {
+              const cloudProjects = [];
+              snap.forEach((doc) => {
+                const data = doc.data();
+                if (data && data.id && Array.isArray(data.files) && data.files.length > 0) {
+                  cloudProjects.push({
+                    ...data,
+                    languageId: data.languageId || "kotlin-compose",
+                    minSdk: data.minSdk || 21,
+                    targetSdk: data.targetSdk || 36
+                  });
+                }
+              });
+
+              if (cloudProjects.length > 0) {
+                setProjects((prev) => {
+                  const map = new Map();
+                  for (const lp of prev) map.set(lp.id, lp);
+                  for (const cp of cloudProjects) map.set(cp.id, cp);
+                  return Array.from(map.values());
+                });
+              }
+            }
+            setCloudSyncStatus("synced");
+          } catch (err) {
+            console.warn("Cloud project load warning:", err);
+            setCloudSyncStatus("error");
+          }
+        };
+
+        // Sync Firestore user activity profile (users/{uid} & user_emails/{emailKey})
+        const syncUserTrackingRecord = async ({
+          uid,
+          email,
+          incrementLogin = false,
+          overrideProjectCount,
+          overrideLastProject,
+          overrideLanguage,
+          overrideMinSdk
+        }) => {
+          const cleanEmail = String(email || "").trim().toLowerCase();
+          const emailKey = normalizeEmailKey(cleanEmail);
+          const nowIso = new Date().toISOString();
+          const projCount =
+            typeof overrideProjectCount === "number" ? overrideProjectCount : projects.length;
+          const activeProjName = overrideLastProject || project?.name || "IMO Studio App";
+          const prefLang = overrideLanguage || project?.languageId || "kotlin-compose";
+          const prefMinSdk = Number(overrideMinSdk || project?.minSdk || 21);
+
+          if (firebaseServices.mode === "firebase" && firebaseServices.db) {
+            const db = firebaseServices.db;
+            const userRef = db.collection("users").doc(uid);
+            const emailRef = db.collection("user_emails").doc(emailKey);
+
+            const snap = await userRef.get();
+            const existingData = snap.exists ? snap.data() : {};
+            const prevLogins = Number(existingData?.loginCount || 0);
+            const nextLogins = incrementLogin ? prevLogins + 1 : Math.max(prevLogins, 1);
+
+            const profilePayload = {
+              uid,
+              email: cleanEmail,
+              createdAt: existingData?.createdAt || nowIso,
+              lastLoginAt: incrementLogin ? nowIso : existingData?.lastLoginAt || nowIso,
+              loginCount: nextLogins,
+              projectCount: projCount,
+              lastActiveProject: activeProjName,
+              preferredLanguage: prefLang,
+              preferredMinSdk: prefMinSdk
+            };
+
+            await userRef.set(profilePayload, { merge: true });
+            await emailRef.set(
+              {
+                uid,
+                email: cleanEmail,
+                updatedAt: nowIso
+              },
+              { merge: true }
+            );
+            setCurrentUser(profilePayload);
+            return profilePayload;
+          }
+
+          // Local Simulation fallback when hardcoded FIREBASE_CONFIG placeholders are still present
+          let simMap = {};
+          try {
+            simMap = JSON.parse(localStorage.getItem(SIM_USERS_STORAGE_KEY) || "{}");
+          } catch (_) {
+            simMap = {};
+          }
+          const existing = simMap[emailKey] || {};
+          const prevLogins = Number(existing.loginCount || 0);
+          const profilePayload = {
+            uid: existing.uid || uid,
+            email: cleanEmail,
+            passwordHash: existing.passwordHash || "",
+            createdAt: existing.createdAt || nowIso,
+            lastLoginAt: incrementLogin ? nowIso : existing.lastLoginAt || nowIso,
+            loginCount: incrementLogin ? prevLogins + 1 : Math.max(prevLogins, 1),
+            projectCount: projCount,
+            lastActiveProject: activeProjName,
+            preferredLanguage: prefLang,
+            preferredMinSdk: prefMinSdk
+          };
+          simMap[emailKey] = profilePayload;
+          try {
+            localStorage.setItem(SIM_USERS_STORAGE_KEY, JSON.stringify(simMap));
+            localStorage.setItem(
+              SIM_SESSION_STORAGE_KEY,
+              JSON.stringify({ email: cleanEmail, uid: profilePayload.uid })
+            );
+          } catch (_) {}
+
+          const { passwordHash, ...safeProfile } = profilePayload;
+          setCurrentUser(safeProfile);
+          return safeProfile;
+        };
+
+        // Listen to Firebase Auth state or restore local simulation session
+        useEffect(() => {
+          if (firebaseServices.mode === "firebase" && firebaseServices.auth) {
+            const unsub = firebaseServices.auth.onAuthStateChanged(async (fbUser) => {
+              if (fbUser && fbUser.email) {
+                try {
+                  await syncUserTrackingRecord({
+                    uid: fbUser.uid,
+                    email: fbUser.email,
+                    incrementLogin: false
+                  });
+                  await loadCloudProjectsForUser(fbUser.uid);
+                } catch (_) {
+                  setCurrentUser({
+                    uid: fbUser.uid,
+                    email: fbUser.email,
+                    createdAt: new Date().toISOString(),
+                    lastLoginAt: new Date().toISOString(),
+                    loginCount: 1,
+                    projectCount: projects.length,
+                    lastActiveProject: project?.name || "IMO Studio App",
+                    preferredLanguage: project?.languageId || "kotlin-compose",
+                    preferredMinSdk: project?.minSdk || 21
+                  });
+                }
+              } else {
+                setCurrentUser(null);
+                setCloudSyncStatus("idle");
+              }
+              setAuthChecked(true);
+            });
+            return () => unsub();
+          } else {
+            try {
+              const rawSession = localStorage.getItem(SIM_SESSION_STORAGE_KEY);
+              if (rawSession) {
+                const parsed = JSON.parse(rawSession);
+                if (parsed?.email) {
+                  const simMap = JSON.parse(
+                    localStorage.getItem(SIM_USERS_STORAGE_KEY) || "{}"
+                  );
+                  const record = simMap[normalizeEmailKey(parsed.email)];
+                  if (record) {
+                    const { passwordHash, ...safeRecord } = record;
+                    setCurrentUser(safeRecord);
+                  }
+                }
+              }
+            } catch (_) {}
+            setAuthChecked(true);
+          }
+        }, [firebaseServices]);
+
+        // Automatically sync user activity & active projects to Firestore (`users/{uid}/projects/{projectId}`)
+        useEffect(() => {
+          if (!currentUser?.uid || !currentUser?.email) return;
+
+          syncUserTrackingRecord({
+            uid: currentUser.uid,
+            email: currentUser.email,
+            incrementLogin: false,
+            overrideProjectCount: projects.length,
+            overrideLastProject: project?.name || "IMO Studio App",
+            overrideLanguage: project?.languageId || "kotlin-compose",
+            overrideMinSdk: project?.minSdk || 21
+          }).catch(() => {});
+
+          if (firebaseServices.mode === "firebase" && firebaseServices.db && project?.id) {
+            setCloudSyncStatus("syncing");
+            const safeFilesForFirestore = project.files.map((f) => {
+              if (
+                f.path === "app/src/main/res/drawable/app_logo_base64.txt" &&
+                f.content.length > 750000
+              ) {
+                return {
+                  ...f,
+                  content: `Bound App Logo File: ${project.logoFileName || "ic_launcher.png"} (Stored locally)`
+                };
+              }
+              return f;
+            });
+
+            const safeLogoForFirestore =
+              project.logoDataUrl && project.logoDataUrl.length <= 200000
+                ? project.logoDataUrl
+                : "";
+
+            firebaseServices.db
+              .collection("users")
+              .doc(currentUser.uid)
+              .collection("projects")
+              .doc(project.id)
+              .set(
+                {
+                  id: project.id,
+                  name: project.name,
+                  packageName: project.packageName,
+                  description: project.description,
+                  languageId: project.languageId || "kotlin-compose",
+                  minSdk: project.minSdk || 21,
+                  targetSdk: project.targetSdk || 36,
+                  logoDataUrl: safeLogoForFirestore,
+                  logoFileName: project.logoFileName || "",
+                  updatedAt: project.updatedAt || new Date().toLocaleString("bn-BD"),
+                  files: safeFilesForFirestore
+                },
+                { merge: true }
+              )
+              .then(() => setCloudSyncStatus("synced"))
+              .catch(() => setCloudSyncStatus("error"));
+          }
+        }, [
+          projects.length,
+          project?.id,
+          project?.name,
+          project?.updatedAt,
+          project?.languageId,
+          project?.minSdk,
+          project?.targetSdk,
+          firebaseServices
+        ]);
+
+        // Unified Email Auto Sign-Up & Existing Account Login (No Duplicate Accounts)
+        const handleUnifiedEmailAuth = async (e) => {
+          e.preventDefault();
+          const cleanEmail = authEmail.trim().toLowerCase();
+          const pass = authPassword;
+          setAuthError("");
+          setAuthSuccess("");
+
+          if (!cleanEmail || !cleanEmail.includes("@")) {
+            setAuthError("অনুগ্রহ করে একটি সঠিক ইমেইল ঠিকানা লিখুন।");
+            return;
+          }
+          if (!pass || pass.length < 6) {
+            setAuthError("পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।");
+            return;
+          }
+
+          setAuthBusy(true);
+          try {
+            if (firebaseServices.mode === "firebase" && firebaseServices.auth && firebaseServices.db) {
+              const auth = firebaseServices.auth;
+              const db = firebaseServices.db;
+              const emailKey = normalizeEmailKey(cleanEmail);
+
+              try {
+                // Step 1: Attempt sign-in into existing account first
+                const signInCred = await auth.signInWithEmailAndPassword(cleanEmail, pass);
+                const profile = await syncUserTrackingRecord({
+                  uid: signInCred.user.uid,
+                  email: cleanEmail,
+                  incrementLogin: true
+                });
+                await loadCloudProjectsForUser(signInCred.user.uid);
+                setAuthSuccess(
+                  `পুরনো অ্যাকাউন্টে লগইন সফল! (UID: ${profile.uid.slice(0, 10)}...)`
+                );
+                setAuthPassword("");
+                return;
+              } catch (signInErr) {
+                const code = signInErr?.code || "";
+
+                // Check Firestore email registry to prevent duplicate sign-up on wrong password
+                let emailAlreadyInFirestore = false;
+                try {
+                  const emailDoc = await db.collection("user_emails").doc(emailKey).get();
+                  emailAlreadyInFirestore = emailDoc.exists;
+                } catch (_) {}
+
+                if (code === "auth/wrong-password" || emailAlreadyInFirestore) {
+                  setAuthError(
+                    "এই ইমেইলটি আগে থেকেই নিবন্ধিত আছে। সঠিক পাসওয়ার্ড দিয়ে পুরনো অ্যাকাউন্টে লগইন করুন।"
+                  );
+                  return;
+                }
+
+                // Step 2: New email -> auto-create account with unique backend UID
+                if (
+                  code === "auth/user-not-found" ||
+                  code === "auth/invalid-credential" ||
+                  code === "auth/invalid-login-credentials"
+                ) {
+                  try {
+                    const createCred = await auth.createUserWithEmailAndPassword(cleanEmail, pass);
+                    const profile = await syncUserTrackingRecord({
+                      uid: createCred.user.uid,
+                      email: cleanEmail,
+                      incrementLogin: true
+                    });
+                    setAuthSuccess(
+                      `নতুন অ্যাকাউন্ট অটো তৈরি হয়েছে! (UID: ${profile.uid.slice(0, 10)}...)`
+                    );
+                    setAuthPassword("");
+                    return;
+                  } catch (createErr) {
+                    if (createErr?.code === "auth/email-already-in-use") {
+                      setAuthError(
+                        "এই ইমেইলটি আগে থেকেই নিবন্ধিত আছে। সঠিক পাসওয়ার্ড দিয়ে পুরনো অ্যাকাউন্টে লগইন করুন।"
+                      );
+                      return;
+                    }
+                    throw createErr;
+                  }
+                }
+
+                throw signInErr;
+              }
+            }
+
+            // Local Simulation Mode (when hardcoded FIREBASE_CONFIG placeholders are still present)
+            const emailKey = normalizeEmailKey(cleanEmail);
+            let simMap = {};
+            try {
+              simMap = JSON.parse(localStorage.getItem(SIM_USERS_STORAGE_KEY) || "{}");
+            } catch (_) {
+              simMap = {};
+            }
+
+            const existingAccount = simMap[emailKey];
+            if (existingAccount) {
+              if (existingAccount.passwordHash !== btoa(unescape(encodeURIComponent(pass)))) {
+                setAuthError(
+                  "এই ইমেইলটি আগে থেকেই নিবন্ধিত আছে। সঠিক পাসওয়ার্ড দিয়ে পুরনো অ্যাকাউন্টে লগইন করুন।"
+                );
+                return;
+              }
+              const profile = await syncUserTrackingRecord({
+                uid: existingAccount.uid,
+                email: cleanEmail,
+                incrementLogin: true
+              });
+              setAuthSuccess(
+                `পুরনো অ্যাকাউন্টে লগইন সফল! (UID: ${profile.uid.slice(0, 12)}...)`
+              );
+              setAuthPassword("");
+              return;
+            }
+
+            const newUid = generateBackendUid();
+            simMap[emailKey] = {
+              uid: newUid,
+              email: cleanEmail,
+              passwordHash: btoa(unescape(encodeURIComponent(pass))),
+              createdAt: new Date().toISOString(),
+              lastLoginAt: new Date().toISOString(),
+              loginCount: 0,
+              projectCount: projects.length,
+              lastActiveProject: project?.name || "IMO Studio App",
+              preferredLanguage: project?.languageId || "kotlin-compose",
+              preferredMinSdk: project?.minSdk || 21
+            };
+            localStorage.setItem(SIM_USERS_STORAGE_KEY, JSON.stringify(simMap));
+
+            const profile = await syncUserTrackingRecord({
+              uid: newUid,
+              email: cleanEmail,
+              incrementLogin: true
+            });
+            setAuthSuccess(
+              `নতুন অ্যাকাউন্ট অটো তৈরি হয়েছে! (UID: ${profile.uid.slice(0, 12)}...)`
+            );
+            setAuthPassword("");
+          } catch (err) {
+            setAuthError(`প্রবেশ ব্যর্থ হয়েছে: ${err?.message || String(err)}`);
+          } finally {
+            setAuthBusy(false);
+          }
+        };
+
+        const handleLogoutUser = async () => {
+          try {
+            if (firebaseServices.mode === "firebase" && firebaseServices.auth) {
+              await firebaseServices.auth.signOut();
+            }
+          } catch (_) {}
+          try {
+            localStorage.removeItem(SIM_SESSION_STORAGE_KEY);
+          } catch (_) {}
+          setCurrentUser(null);
+          setCloudSyncStatus("idle");
+          setIsProfileModalOpen(false);
+          setAuthError("");
+          setAuthSuccess("");
+        };
+
         // Setup Modal Form State
         const [setupName, setSetupName] = useState("IMO Studio App");
         const [setupPkg, setSetupPkg] = useState("com.example.imostudio");
         const [setupDesc, setSetupDesc] = useState("Android Messaging & Calling App");
-        const [setupLanguage, setSetupLanguage] = useState("kotlin-compose");
-        const [setupTargetSdk, setSetupTargetSdk] = useState(36);
+        const [setupLang, setSetupLang] = useState("kotlin-compose");
         const [setupMinSdk, setSetupMinSdk] = useState(21);
+        const [setupTargetSdk, setSetupTargetSdk] = useState(36);
+        const [setupRegenerateFiles, setSetupRegenerateFiles] = useState(false);
         const [setupLogoUrl, setSetupLogoUrl] = useState("");
         const [setupLogoName, setSetupLogoName] = useState("");
-        const [setupRegenerateStarter, setSetupRegenerateStarter] = useState(false);
 
         // GitHub Push Modal State
         const [ghOwner, setGhOwner] = useState("ssb-dev-hasan");
@@ -1285,7 +1590,7 @@ Return ONLY valid JSON:
             id: "m-1",
             role: "assistant",
             content:
-              "স্বাগতম! উপরের 'প্রজেক্ট হিস্ট্রি' বাটন থেকে যেকোনো প্রজেক্ট ওপেন বা এডিট করুন, নতুন প্রজেক্টে ভাষা ও সর্বোচ্চ ফোন সাপোর্ট SDK নির্বাচন করুন, লোগো যুক্ত করুন এবং AI কমান্ড দিয়ে কোড তৈরি করুন।"
+              "স্বাগতম! উপরের প্রজেক্ট হিস্ট্রি বাটন থেকে আপনার প্রজেক্টগুলো দেখুন, নতুন প্রজেক্টে ভাষা ও SDK বাছাই করুন, লোগো যুক্ত করুন এবং ফোল্ডিং Run App বাটন দিয়ে লাইভ প্রিভিউ দেখুন।"
           }
         ]);
 
@@ -1295,55 +1600,42 @@ Return ONLY valid JSON:
         );
 
         const filteredFiles = useMemo(() => {
-          const q = fileSearchQuery.trim().toLowerCase();
+          const q = fileSearch.trim().toLowerCase();
           if (!q) return project?.files || [];
           return (project?.files || []).filter((f) => f.path.toLowerCase().includes(q));
-        }, [project, fileSearchQuery]);
+        }, [project, fileSearch]);
+
+        const filteredHistoryProjects = useMemo(() => {
+          const q = historySearch.trim().toLowerCase();
+          if (!q) return projects;
+          return projects.filter(
+            (p) =>
+              p.name.toLowerCase().includes(q) ||
+              p.packageName.toLowerCase().includes(q) ||
+              getLanguageMeta(p.languageId).shortLabel.toLowerCase().includes(q)
+          );
+        }, [projects, historySearch]);
 
         const issues = useMemo(
-          () =>
-            validateProjectFiles(
-              project?.files || [],
-              project?.targetSdk,
-              project?.minSdk,
-              Boolean(project?.logoDataUrl)
-            ),
+          () => validateProjectFiles(project?.files || []),
           [project]
         );
 
-        const filteredHistoryProjects = useMemo(() => {
-          const q = historyQuery.trim().toLowerCase();
-          if (!q) return projects;
-          return projects.filter((p) => {
-            const langLabel = getLanguageMeta(p.languageId).label.toLowerCase();
-            return (
-              p.name.toLowerCase().includes(q) ||
-              p.packageName.toLowerCase().includes(q) ||
-              langLabel.includes(q)
-            );
-          });
-        }, [projects, historyQuery]);
-
-        const currentLangMeta = getLanguageMeta(project?.languageId);
-        const currentTargetMeta = getTargetSdkMeta(project?.targetSdk);
-        const currentMinMeta = getMinSdkMeta(project?.minSdk);
-
-        const applyMaxDeviceSupportPreset = () => {
-          setSetupTargetSdk(36);
-          setSetupMinSdk(21);
-        };
+        const activeLangMeta = getLanguageMeta(project?.languageId);
+        const activeMinSdkMeta = getMinSdkMeta(project?.minSdk);
+        const setupMinSdkMeta = getMinSdkMeta(setupMinSdk);
 
         const openNewProjectModal = () => {
           setEditingProjectId(null);
           setSetupName("");
           setSetupPkg("com.example.newapp");
           setSetupDesc("New Android App");
-          setSetupLanguage("kotlin-compose");
-          setSetupTargetSdk(36);
+          setSetupLang("kotlin-compose");
           setSetupMinSdk(21);
+          setSetupTargetSdk(36);
+          setSetupRegenerateFiles(true);
           setSetupLogoUrl("");
           setSetupLogoName("");
-          setSetupRegenerateStarter(false);
           setIsSetupOpen(true);
         };
 
@@ -1353,13 +1645,18 @@ Return ONLY valid JSON:
           setSetupName(targetProj.name);
           setSetupPkg(targetProj.packageName);
           setSetupDesc(targetProj.description);
-          setSetupLanguage(targetProj.languageId || "kotlin-compose");
-          setSetupTargetSdk(Number(targetProj.targetSdk) || 36);
-          setSetupMinSdk(Number(targetProj.minSdk) || 21);
+          setSetupLang(targetProj.languageId || "kotlin-compose");
+          setSetupMinSdk(targetProj.minSdk || 21);
+          setSetupTargetSdk(targetProj.targetSdk || 36);
+          setSetupRegenerateFiles(false);
           setSetupLogoUrl(targetProj.logoDataUrl || "");
           setSetupLogoName(targetProj.logoFileName || "");
-          setSetupRegenerateStarter(false);
           setIsSetupOpen(true);
+        };
+
+        const handleApplyMaxDeviceSupportPreset = () => {
+          setSetupMinSdk(21);
+          setSetupTargetSdk(36);
         };
 
         const handleLogoUpload = (e) => {
@@ -1377,23 +1674,24 @@ Return ONLY valid JSON:
 
         const handleSaveProjectForm = (e) => {
           e.preventDefault();
-          const chosenLang = getLanguageMeta(setupLanguage);
-          const chosenMin = getMinSdkMeta(setupMinSdk);
+          const finalTargetSdk = Math.max(Number(setupTargetSdk) || 36, Number(setupMinSdk) || 21);
+          const finalMinSdk = Math.min(Number(setupMinSdk) || 21, finalTargetSdk);
 
           if (editingProjectId) {
             const oldProj = projects.find((p) => p.id === editingProjectId);
+            const languageChanged = (oldProj?.languageId || "kotlin-compose") !== setupLang;
             const updated = createAndroidProject({
               id: editingProjectId,
               name: setupName,
               packageName: setupPkg,
               description: setupDesc,
-              languageId: setupLanguage,
-              targetSdk: setupTargetSdk,
-              minSdk: setupMinSdk,
+              languageId: setupLang,
+              minSdk: finalMinSdk,
+              targetSdk: finalTargetSdk,
               logoDataUrl: setupLogoUrl || undefined,
               logoFileName: setupLogoName || undefined,
               existingFiles: oldProj?.files,
-              regenerateStarterFiles: setupRegenerateStarter
+              regenerateStarter: setupRegenerateFiles || languageChanged
             });
             setProjects((prev) => prev.map((p) => (p.id === editingProjectId ? updated : p)));
             setActiveProjectId(editingProjectId);
@@ -1405,7 +1703,7 @@ Return ONLY valid JSON:
               {
                 id: `m-${Date.now()}`,
                 role: "assistant",
-                content: `"${updated.name}" আপডেট হয়েছে — ভাষা: ${chosenLang.label}, Target API ${updated.targetSdk}, Min API ${updated.minSdk} (${chosenMin.coverage} সাপোর্ট)।`
+                content: `"${updated.name}" প্রজেক্ট আপডেট হয়েছে (${getLanguageMeta(updated.languageId).shortLabel}, API ${updated.minSdk}–${updated.targetSdk}, ${getMinSdkMeta(updated.minSdk).coverage} ফোন সাপোর্ট)।`
               }
             ]);
           } else {
@@ -1413,9 +1711,9 @@ Return ONLY valid JSON:
               name: setupName,
               packageName: setupPkg,
               description: setupDesc,
-              languageId: setupLanguage,
-              targetSdk: setupTargetSdk,
-              minSdk: setupMinSdk,
+              languageId: setupLang,
+              minSdk: finalMinSdk,
+              targetSdk: finalTargetSdk,
               logoDataUrl: setupLogoUrl || undefined,
               logoFileName: setupLogoName || undefined
             });
@@ -1429,9 +1727,7 @@ Return ONLY valid JSON:
               {
                 id: `m-${Date.now()}`,
                 role: "assistant",
-                content: `নতুন প্রজেক্ট "${created.name}" (${created.packageName}) তৈরি হয়েছে — ভাষা: ${chosenLang.label}, Target API ${created.targetSdk}, Min API ${created.minSdk} (${chosenMin.coverage} সাপোর্ট)।${
-                  created.logoFileName ? ` লোগো: ${created.logoFileName}` : ""
-                }`
+                content: `নতুন প্রজেক্ট "${created.name}" (${getLanguageMeta(created.languageId).shortLabel}, minSdk API ${created.minSdk} — ${getMinSdkMeta(created.minSdk).coverage} সাপোর্ট) তৈরি হয়েছে।`
               }
             ]);
           }
@@ -1440,9 +1736,8 @@ Return ONLY valid JSON:
         const handleSelectHistoryProject = (proj) => {
           setActiveProjectId(proj.id);
           setSelectedPath(proj.files[0]?.path || "");
-          setFileSearchQuery("");
           setGhPrefix(`generated-projects/${proj.name.toLowerCase().replace(/\s+/g, "-")}`);
-          setIsHistoryOpen(false);
+          setIsHistoryModalOpen(false);
         };
 
         const handleDeleteHistoryProject = (e, targetId) => {
@@ -1454,6 +1749,78 @@ Return ONLY valid JSON:
             setActiveProjectId(remaining[0].id);
             setSelectedPath(remaining[0].files[0]?.path || "");
           }
+          if (firebaseServices.mode === "firebase" && firebaseServices.db && currentUser?.uid) {
+            firebaseServices.db
+              .collection("users")
+              .doc(currentUser.uid)
+              .collection("projects")
+              .doc(targetId)
+              .delete()
+              .catch(() => {});
+          }
+        };
+
+        const handleCreateNewFile = (e) => {
+          e.preventDefault();
+          const cleanPath = newFilePath.trim().replace(/^\/+/, "");
+          if (!cleanPath) return;
+          const exists = project.files.some((f) => f.path === cleanPath);
+          if (exists) {
+            setSelectedPath(cleanPath);
+            setIsNewFileModalOpen(false);
+            return;
+          }
+          const ext = cleanPath.split(".").pop()?.toLowerCase() || "txt";
+          const lang =
+            ext === "kt"
+              ? "kotlin"
+              : ext === "java"
+              ? "java"
+              : ext === "xml"
+              ? "xml"
+              : ext === "cpp" || ext === "h"
+              ? "cpp"
+              : "text";
+          const starterContent =
+            lang === "kotlin"
+              ? `package ${project.packageName}\n\n// New Kotlin file\n`
+              : lang === "java"
+              ? `package ${project.packageName};\n\n// New Java file\n`
+              : lang === "xml"
+              ? `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n`
+              : `// ${cleanPath}\n`;
+
+          updateCurrentProject((prev) => ({
+            ...prev,
+            files: [...prev.files, { path: cleanPath, language: lang, content: starterContent }]
+          }));
+          setSelectedPath(cleanPath);
+          setIsNewFileModalOpen(false);
+        };
+
+        const handleSyncGradleSdk = () => {
+          if (!project) return;
+          updateCurrentProject((prev) => ({
+            ...prev,
+            files: prev.files.map((f) => {
+              if (!f.path.endsWith("build.gradle.kts")) return f;
+              return {
+                ...f,
+                content: f.content
+                  .replace(/compileSdk\s*=\s*\d+/, `compileSdk = ${prev.targetSdk || 36}`)
+                  .replace(/minSdk\s*=\s*\d+/, `minSdk = ${prev.minSdk || 21}`)
+                  .replace(/targetSdk\s*=\s*\d+/, `targetSdk = ${prev.targetSdk || 36}`)
+              };
+            })
+          }));
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `m-${Date.now()}`,
+              role: "assistant",
+              content: `Gradle SDK সিঙ্ক সম্পন্ন: minSdk = ${project.minSdk || 21} (${activeMinSdkMeta.coverage} সাপোর্ট), targetSdk = ${project.targetSdk || 36}।`
+            }
+          ]);
         };
 
         const handleCodeEdit = (val) => {
@@ -1533,28 +1900,28 @@ Return ONLY valid JSON:
 
         return (
           <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
-            {/* Top Header with On-Demand Project History Button */}
+            {/* Top Header Bar */}
             <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-4 py-3">
               <div className="flex items-center gap-3">
                 {project.logoDataUrl ? (
                   <img
                     src={project.logoDataUrl}
                     alt="App Logo"
-                    className="h-9 w-9 rounded-lg border border-slate-700 object-cover"
+                    className="h-10 w-10 rounded-xl border border-emerald-500/40 bg-white object-cover shadow"
                   />
                 ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 font-bold text-white">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 font-bold text-white shadow">
                     AI
                   </div>
                 )}
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h1 className="text-sm font-bold sm:text-base">{project.name}</h1>
-                    <span className="rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300">
-                      {currentLangMeta.shortLabel}
+                    <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                      {activeLangMeta.shortLabel}
                     </span>
-                    <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                      Target API {currentTargetMeta.api} • Min API {currentMinMeta.api} ({currentMinMeta.coverage})
+                    <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                      API {project.minSdk || 21}–{project.targetSdk || 36} ({activeMinSdkMeta.coverage})
                     </span>
                   </div>
                   <p className="text-xs text-slate-400">{project.packageName}</p>
@@ -1562,13 +1929,14 @@ Return ONLY valid JSON:
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {/* Project History Modal Trigger Button */}
                 <button
                   type="button"
                   onClick={() => {
-                    setHistoryQuery("");
-                    setIsHistoryOpen(true);
+                    setHistorySearch("");
+                    setIsHistoryModalOpen(true);
                   }}
-                  className="rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25"
+                  className="rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/25"
                 >
                   প্রজেক্ট হিস্ট্রি ({projects.length})
                 </button>
@@ -1618,64 +1986,120 @@ Return ONLY valid JSON:
                 >
                   GitHub Push
                 </button>
+
+                {/* User Account Badge when Logged In */}
+                {currentUser && (
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-950/50 px-2.5 py-1 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setIsProfileModalOpen(true)}
+                      className="min-w-0 text-left hover:opacity-90"
+                      title="ইউজার ট্র্যাকিং ও প্রোফাইল দেখুন"
+                    >
+                      <div className="max-w-[140px] truncate font-semibold text-emerald-300">
+                        {currentUser.email}
+                      </div>
+                      <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-400">
+                        <span>{currentUser.uid.slice(0, 10)}</span>
+                        <span>• {currentUser.loginCount || 1}x</span>
+                        {firebaseServices.mode === "firebase" && (
+                          <span
+                            className={
+                              cloudSyncStatus === "synced"
+                                ? "text-emerald-400"
+                                : cloudSyncStatus === "syncing"
+                                ? "text-amber-300"
+                                : "text-slate-400"
+                            }
+                          >
+                            {cloudSyncStatus === "synced"
+                              ? "• Cloud ✓"
+                              : cloudSyncStatus === "syncing"
+                              ? "• Sync..."
+                              : ""}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLogoutUser}
+                      className="rounded bg-rose-950/80 px-2 py-1 text-[10px] font-semibold text-rose-300 hover:bg-rose-900"
+                      title="লগআউট"
+                    >
+                      লগআউট
+                    </button>
+                  </div>
+                )}
               </div>
             </header>
 
             {/* Main 3-Column Workspace with Full-Height File Explorer Sidebar */}
             <div className="grid flex-1 grid-cols-1 lg:grid-cols-12">
               <aside className="flex flex-col border-b border-slate-800 bg-slate-900/60 p-3 lg:col-span-3 lg:border-b-0 lg:border-r">
-                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase text-slate-400">
-                  <span>প্রজেক্ট ফাইলসমূহ ({project.files.length})</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHistoryQuery("");
-                      setIsHistoryOpen(true);
-                    }}
-                    className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-medium normal-case text-amber-300 hover:bg-slate-700"
-                  >
-                    হিস্ট্রি ({projects.length})
-                  </button>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase text-slate-400">
+                    প্রজেক্ট ফাইলসমূহ ({project.files.length})
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pkgPath = (project.packageName || "com.example.imostudio").replace(
+                          /\./g,
+                          "/"
+                        );
+                        setNewFilePath(`app/src/main/java/${pkgPath}/NewScreen.kt`);
+                        setIsNewFileModalOpen(true);
+                      }}
+                      className="rounded bg-emerald-600/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-600/35"
+                    >
+                      + ফাইল
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHistorySearch("");
+                        setIsHistoryModalOpen(true);
+                      }}
+                      className="text-[11px] font-semibold text-amber-300 hover:underline"
+                    >
+                      হিস্ট্রি ↗
+                    </button>
+                  </div>
                 </div>
 
-                {project.files.length > 4 && (
-                  <div className="mb-2">
-                    <input
-                      type="text"
-                      value={fileSearchQuery}
-                      onChange={(e) => setFileSearchQuery(e.target.value)}
-                      placeholder="ফাইল খুঁজুন..."
-                      className="w-full rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                )}
+                <input
+                  value={fileSearch}
+                  onChange={(e) => setFileSearch(e.target.value)}
+                  placeholder="ফাইল খুঁজুন..."
+                  className="mb-2.5 w-full rounded-lg border border-slate-800 bg-slate-950/80 px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                />
 
                 <div className="flex-1 space-y-1 overflow-y-auto">
-                  {filteredFiles.length === 0 ? (
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-center text-xs text-slate-400">
-                      কোনো ফাইল পাওয়া যায়নি।
+                  {filteredFiles.map((file) => (
+                    <button
+                      key={file.path}
+                      type="button"
+                      onClick={() => setSelectedPath(file.path)}
+                      className={`block w-full truncate rounded-lg px-3 py-2 text-left font-mono text-xs transition ${
+                        activeFile?.path === file.path
+                          ? "border border-emerald-500/40 bg-emerald-600/20 text-emerald-300"
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      {file.path}
+                    </button>
+                  ))}
+                  {filteredFiles.length === 0 && (
+                    <div className="rounded-lg border border-slate-800 bg-slate-900 p-3 text-center text-xs text-slate-400">
+                      কোনো ফাইল পাওয়া যায়নি
                     </div>
-                  ) : (
-                    filteredFiles.map((file) => (
-                      <button
-                        key={file.path}
-                        type="button"
-                        onClick={() => setSelectedPath(file.path)}
-                        className={`block w-full truncate rounded-lg px-3 py-2 text-left font-mono text-xs ${
-                          activeFile?.path === file.path
-                            ? "border border-emerald-500/40 bg-emerald-600/20 text-emerald-300"
-                            : "text-slate-300 hover:bg-slate-800"
-                        }`}
-                        title={file.path}
-                      >
-                        {file.path}
-                      </button>
-                    ))
                   )}
                 </div>
               </aside>
 
-              {/* Center Code Editor + Foldable RunAppDrawer */}
+              {/* Center Code Editor & Foldable Live App Runner */}
               <main className={`flex flex-col p-3 ${isChatOpen ? "lg:col-span-5" : "lg:col-span-9"}`}>
                 {!isRunnerFolded && (
                   <RunAppDrawer
@@ -1686,22 +2110,35 @@ Return ONLY valid JSON:
                 )}
 
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-                  <span className="truncate font-mono text-xs text-emerald-400">
-                    {activeFile?.path || "কোনো ফাইল নেই"}
-                  </span>
-                  <span className="text-[11px] text-slate-400">
-                    {currentLangMeta.shortLabel} • Min API {currentMinMeta.api} ({currentMinMeta.coverage})
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-mono text-xs text-emerald-400">
+                      {activeFile?.path || "কোনো ফাইল নেই"}
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-slate-400">
+                      {activeLangMeta.label} • minSdk API {project.minSdk || 21} ({activeMinSdkMeta.coverage} ডিভাইস সাপোর্ট)
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSyncGradleSdk}
+                      className="rounded bg-slate-800 px-2.5 py-1 text-[10px] font-semibold text-amber-300 hover:bg-slate-700"
+                      title="build.gradle.kts ফাইলে SDK সিঙ্ক করুন"
+                    >
+                      Gradle SDK Sync
+                    </button>
+                    <span className="text-[11px] text-slate-400">কোড এডিটর</span>
+                  </div>
                 </div>
                 <textarea
                   value={activeFile?.content || ""}
                   onChange={(e) => handleCodeEdit(e.target.value)}
                   spellCheck={false}
-                  className="min-h-[55vh] w-full flex-1 rounded-xl border border-slate-800 bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100 focus:border-emerald-500 focus:outline-none"
+                  className="min-h-[58vh] w-full flex-1 rounded-xl border border-slate-800 bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100 focus:border-emerald-500 focus:outline-none"
                 />
               </main>
 
-              {/* Right AI Code Generator Panel */}
+              {/* Right AI Code Generator Sidebar */}
               {isChatOpen && (
                 <section className="flex flex-col border-t border-slate-800 bg-slate-900/80 p-3 lg:col-span-4 lg:border-l lg:border-t-0">
                   <div className="mb-2 flex items-center justify-between">
@@ -1723,11 +2160,11 @@ Return ONLY valid JSON:
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       placeholder="Gemini API Key (ঐচ্ছিক)"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
+                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
                     />
                   </div>
 
-                  <div className="mb-2 max-h-[45vh] flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                  <div className="mb-2 max-h-[48vh] flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/70 p-3">
                     {messages.map((m) => (
                       <div
                         key={m.id}
@@ -1755,7 +2192,7 @@ Return ONLY valid JSON:
                       value={promptInput}
                       onChange={(e) => setPromptInput(e.target.value)}
                       placeholder="যেমন: চ্যাট স্ক্রিন ও অডিও কল বাটন যুক্ত করো..."
-                      className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
+                      className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
                     />
                     <button
                       type="submit"
@@ -1769,30 +2206,80 @@ Return ONLY valid JSON:
               )}
             </div>
 
-            {/* Project History Modal (Opened on demand from top header button) */}
-            {isHistoryOpen && (
+            {/* New File Modal */}
+            {isNewFileModalOpen && (
               <div
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
-                onClick={() => setIsHistoryOpen(false)}
+                onClick={() => setIsNewFileModalOpen(false)}
               >
                 <div
-                  className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl"
+                  className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-emerald-300">নতুন ফাইল তৈরি করুন</h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsNewFileModalOpen(false)}
+                      className="text-xs text-slate-400 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <form onSubmit={handleCreateNewFile} className="space-y-3">
+                    <div>
+                      <label className="mb-1 block text-xs text-slate-300">ফাইলের পাথ (File Path)</label>
+                      <input
+                        value={newFilePath}
+                        onChange={(e) => setNewFilePath(e.target.value)}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs"
+                        required
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsNewFileModalOpen(false)}
+                        className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs hover:bg-slate-700"
+                      >
+                        বাতিল
+                      </button>
+                      <button
+                        type="submit"
+                        className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+                      >
+                        যুক্ত করুন
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Project History Modal (Triggered from Top Header Button) */}
+            {isHistoryModalOpen && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+                onClick={() => setIsHistoryModalOpen(false)}
+              >
+                <div
+                  className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="mb-3 flex items-center justify-between border-b border-slate-800 pb-3">
                     <div>
                       <h3 className="text-base font-bold text-amber-300">
-                        প্রজেক্ট হিস্ট্রি ({projects.length})
+                        সংরক্ষিত প্রজেক্ট হিস্ট্রি ({projects.length})
                       </h3>
                       <p className="text-xs text-slate-400">
-                        যেকোনো সংরক্ষিত প্রজেক্টে ক্লিক করে ওপেন, এডিট বা ডিলিট করুন
+                        যেকোনো প্রজেক্টে ক্লিক করে চালু করুন, এডিট করুন বা নতুন প্রজেক্ট তৈরি করুন।
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          setIsHistoryOpen(false);
+                          setIsHistoryModalOpen(false);
                           openNewProjectModal();
                         }}
                         className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
@@ -1801,7 +2288,7 @@ Return ONLY valid JSON:
                       </button>
                       <button
                         type="button"
-                        onClick={() => setIsHistoryOpen(false)}
+                        onClick={() => setIsHistoryModalOpen(false)}
                         className="rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
                       >
                         ✕
@@ -1809,456 +2296,130 @@ Return ONLY valid JSON:
                     </div>
                   </div>
 
-                  <div className="mb-3">
-                    <input
-                      type="text"
-                      value={historyQuery}
-                      onChange={(e) => setHistoryQuery(e.target.value)}
-                      placeholder="প্রজেক্টের নাম, প্যাকেজ বা ভাষা দিয়ে খুঁজুন..."
-                      className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-400 focus:border-amber-400 focus:outline-none"
-                    />
-                  </div>
+                  <input
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    placeholder="প্রজেক্টের নাম, প্যাকেজ বা ভাষা দিয়ে খুঁজুন..."
+                    className="mb-3 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                  />
 
                   <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-                    {filteredHistoryProjects.length === 0 ? (
-                      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-6 text-center text-xs text-slate-400">
-                        কোনো প্রজেক্ট খুঁজে পাওয়া যায়নি।
-                      </div>
-                    ) : (
-                      filteredHistoryProjects.map((p) => {
-                        const isCurrent = p.id === project.id;
-                        const pLang = getLanguageMeta(p.languageId);
-                        const pMin = getMinSdkMeta(p.minSdk);
-                        const pTarget = getTargetSdkMeta(p.targetSdk);
-                        return (
-                          <div
-                            key={p.id}
-                            onClick={() => handleSelectHistoryProject(p)}
-                            className={`flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-xs transition ${
-                              isCurrent
-                                ? "border-emerald-500/60 bg-emerald-600/20 text-white"
-                                : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-slate-700 hover:bg-slate-800/80"
-                            }`}
-                          >
-                            <div className="flex min-w-0 flex-1 items-center gap-3">
-                              {p.logoDataUrl ? (
-                                <img
-                                  src={p.logoDataUrl}
-                                  alt={p.name}
-                                  className="h-11 w-11 shrink-0 rounded-xl border border-slate-700 object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-xs font-bold text-emerald-300">
-                                  {p.name.slice(0, 2).toUpperCase()}
-                                </div>
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="truncate text-sm font-bold">{p.name}</span>
-                                  {isCurrent && (
-                                    <span className="rounded-full bg-emerald-500/25 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                                      সক্রিয়
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="truncate font-mono text-[11px] text-slate-400">
-                                  {p.packageName}
-                                </div>
-                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                  <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-purple-300">
-                                    {pLang.shortLabel}
+                    {filteredHistoryProjects.map((p) => {
+                      const isCurrent = p.id === project.id;
+                      const pLang = getLanguageMeta(p.languageId);
+                      const pMin = getMinSdkMeta(p.minSdk);
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => handleSelectHistoryProject(p)}
+                          className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 transition ${
+                            isCurrent
+                              ? "border-emerald-500/60 bg-emerald-600/15"
+                              : "border-slate-800 bg-slate-950/70 hover:bg-slate-800/80"
+                          }`}
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            {p.logoDataUrl ? (
+                              <img
+                                src={p.logoDataUrl}
+                                alt={p.name}
+                                className="h-10 w-10 shrink-0 rounded-xl border border-slate-700 bg-white object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-xs font-bold text-emerald-300">
+                                {p.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="truncate text-sm font-bold text-white">{p.name}</span>
+                                {isCurrent && (
+                                  <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                    সক্রিয়
                                   </span>
-                                  <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-emerald-300">
-                                    Target API {pTarget.api} • Min API {pMin.api} ({pMin.coverage})
-                                  </span>
-                                  <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
-                                    {p.files?.length || 0} ফাইল
-                                  </span>
-                                  {p.updatedAt && (
-                                    <span className="text-[10px] text-slate-500">
-                                      আপডেট: {p.updatedAt}
-                                    </span>
-                                  )}
-                                </div>
+                                )}
+                              </div>
+                              <div className="truncate font-mono text-[11px] text-slate-400">
+                                {p.packageName}
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]">
+                                <span className="rounded bg-slate-800 px-2 py-0.5 text-emerald-300">
+                                  {pLang.shortLabel}
+                                </span>
+                                <span className="rounded bg-slate-800 px-2 py-0.5 text-amber-300">
+                                  API {p.minSdk || 21}–{p.targetSdk || 36} ({pMin.coverage})
+                                </span>
+                                {p.updatedAt && (
+                                  <span className="text-slate-500">আপডেট: {p.updatedAt}</span>
+                                )}
                               </div>
                             </div>
+                          </div>
 
-                            <div className="flex shrink-0 items-center gap-1.5">
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsHistoryModalOpen(false);
+                                openEditProjectModal(p);
+                              }}
+                              className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-slate-700"
+                            >
+                              এডিট
+                            </button>
+                            {projects.length > 1 && (
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setIsHistoryOpen(false);
-                                  openEditProjectModal(p);
-                                }}
-                                className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-slate-700"
+                                onClick={(e) => handleDeleteHistoryProject(e, p.id)}
+                                className="rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-rose-400 hover:bg-rose-950"
+                                title="মুছুন"
                               >
-                                এডিট
+                                ✕
                               </button>
-                              {projects.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleDeleteHistoryProject(e, p.id)}
-                                  className="rounded-lg bg-rose-950/70 px-2.5 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-900"
-                                  title="প্রজেক্ট মুছুন"
-                                >
-                                  ✕
-                                </button>
-                              )}
-                            </div>
+                            )}
                           </div>
-                        );
-                      })
+                        </div>
+                      );
+                    })}
+                    {filteredHistoryProjects.length === 0 && (
+                      <div className="rounded-xl border border-slate-800 bg-slate-950 p-6 text-center text-xs text-slate-400">
+                        খোঁজার সাথে মিলে এমন কোনো প্রজেক্ট পাওয়া যায়নি।
+                      </div>
                     )}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Project Create / Edit Modal */}
+            {/* Create / Edit Project Modal (Language, SDK Coverage, Direct App Logo) */}
             {isSetupOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-                <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 p-5">
-                  <div className="mb-3 flex items-center justify-between">
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+                onClick={() => setIsSetupOpen(false)}
+              >
+                <div
+                  className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="mb-3 flex items-center justify-between border-b border-slate-800 pb-3">
                     <h3 className="text-base font-bold">
-                      {editingProjectId ? "পুরনো প্রজেক্ট এডিট করুন" : "নতুন প্রজেক্ট ও লোগো"}
+                      {editingProjectId ? "প্রজেক্ট এডিট করুন" : "নতুন Android প্রজেক্ট তৈরি করুন"}
                     </h3>
                     <button
                       type="button"
                       onClick={() => setIsSetupOpen(false)}
-                      className="text-slate-400 hover:text-white"
+                      className="rounded-lg bg-slate-800 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-700"
                     >
                       ✕
                     </button>
                   </div>
+
                   <form onSubmit={handleSaveProjectForm} className="space-y-3">
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-300">অ্যাপের নাম</label>
-                      <input
-                        value={setupName}
-                        onChange={(e) => setSetupName(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-300">Package Name</label>
-                      <input
-                        value={setupPkg}
-                        onChange={(e) => setSetupPkg(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-purple-300">
-                        প্রজেক্ট ল্যাঙ্গুয়েজ (Android Studio)
-                      </label>
-                      <select
-                        value={setupLanguage}
-                        onChange={(e) => setSetupLanguage(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
-                      >
-                        {LANGUAGE_OPTIONS.map((lang) => (
-                          <option key={lang.id} value={lang.id}>
-                            {lang.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* SDK Selection with One-Click Max Device Support */}
-                    <div className="space-y-2.5 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-emerald-300">
-                          Android SDK ও ডিভাইস সাপোর্ট
-                        </span>
-                        <button
-                          type="button"
-                          onClick={applyMaxDeviceSupportPreset}
-                          className="rounded-lg border border-emerald-500/40 bg-emerald-600/25 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-600/40"
-                        >
-                          সর্বোচ্চ সাপোর্ট (সব ফোনে চলার উপযোগী)
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-[11px] text-slate-300">
-                            Target / Compile SDK
-                          </label>
-                          <select
-                            value={setupTargetSdk}
-                            onChange={(e) => {
-                              const nextTarget = Number(e.target.value);
-                              setSetupTargetSdk(nextTarget);
-                              if (Number(setupMinSdk) > nextTarget) {
-                                const validMins = MIN_SDK_OPTIONS.filter((m) => m.api <= nextTarget);
-                                setSetupMinSdk(validMins[0]?.api || 21);
-                              }
-                            }}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-slate-100"
-                          >
-                            {TARGET_SDK_OPTIONS.map((sdk) => (
-                              <option key={sdk.api} value={sdk.api}>
-                                {sdk.badge}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-[11px] text-slate-300">
-                            Minimum SDK (ফোন সাপোর্ট)
-                          </label>
-                          <select
-                            value={setupMinSdk}
-                            onChange={(e) => setSetupMinSdk(Number(e.target.value))}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-slate-100"
-                          >
-                            {MIN_SDK_OPTIONS.filter((m) => m.api <= Number(setupTargetSdk)).map((m) => (
-                              <option key={m.api} value={m.api}>
-                                {m.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] text-emerald-300">
-                        নির্বাচিত Min SDK (API {setupMinSdk}) আনুমানিক{" "}
-                        <span className="font-bold">{getMinSdkMeta(setupMinSdk).coverage}</span>{" "}
-                        Android ফোনে সাপোর্ট করে।
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-300">বিবরণ</label>
-                      <input
-                        value={setupDesc}
-                        onChange={(e) => setSetupDesc(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
-                      />
-                    </div>
-
-                    {editingProjectId && (
-                      <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2.5 text-xs text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={setupRegenerateStarter}
-                          onChange={(e) => setSetupRegenerateStarter(e.target.checked)}
-                          className="rounded border-slate-600"
-                        />
-                        <span>স্টার্টার ফাইলগুলো নতুন ভাষা ও SDK অনুযায়ী রিসেট করুন</span>
-                      </label>
-                    )}
-
-                    {/* Direct App Logo Binding */}
-                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                      <label className="mb-1 block text-xs font-semibold text-amber-300">
-                        অ্যাপ লোগো (সরাসরি অ্যাপে যুক্ত হবে)
-                      </label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
-                      />
-                      {setupLogoUrl && (
-                        <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900 p-2">
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <img
-                              src={setupLogoUrl}
-                              alt="Preview"
-                              className="h-11 w-11 shrink-0 rounded-xl border border-emerald-500/40 object-cover"
-                            />
-                            <div className="min-w-0">
-                              <div className="truncate text-xs font-semibold text-emerald-300">
-                                {setupLogoName || "app_logo"}
-                              </div>
-                              <div className="text-[10px] text-slate-400">
-                                Manifest, Drawable ও Live Runner-এ যুক্ত হবে
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSetupLogoUrl("");
-                              setSetupLogoName("");
-                            }}
-                            className="shrink-0 rounded-lg bg-rose-950/70 px-2.5 py-1 text-[11px] font-semibold text-rose-300 hover:bg-rose-900"
-                          >
-                            সরান
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsSetupOpen(false)}
-                        className="rounded-lg bg-slate-800 px-3 py-2 text-xs hover:bg-slate-700"
-                      >
-                        বাতিল
-                      </button>
-                      <button
-                        type="submit"
-                        className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
-                      >
-                        {editingProjectId ? "আপডেট করুন" : "তৈরি করুন"}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {/* Code Review Modal */}
-            {isReviewOpen && (
-              <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950 p-4">
-                <div className="mx-auto max-w-4xl">
-                  <div className="mb-4 flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h3 className="text-lg font-bold">কোড রিভিউ ও চেক</h3>
-                    <button
-                      type="button"
-                      onClick={() => setIsReviewOpen(false)}
-                      className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs hover:bg-slate-700"
-                    >
-                      ফিরে যান
-                    </button>
-                  </div>
-                  <div className="mb-4 space-y-2">
-                    {issues.length === 0 ? (
-                      <div className="rounded-lg border border-emerald-800 bg-emerald-950/40 p-3 text-xs text-emerald-300">
-                        কোনো সমস্যা পাওয়া যায়নি।
-                      </div>
-                    ) : (
-                      issues.map((it, i) => (
-                        <div key={i} className="rounded-lg border border-slate-800 bg-slate-900 p-3 text-xs">
-                          <span className="font-mono text-amber-300">{it.filePath}</span>: {it.message}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    {project.files.map((f) => (
-                      <div key={f.path} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-                        <div className="mb-1 font-mono text-xs text-emerald-400">{f.path}</div>
-                        <pre className="max-h-56 overflow-auto rounded-lg bg-slate-950 p-3 text-xs">
-                          <code>{f.content}</code>
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* GitHub Push Modal */}
-            {isPushOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-                <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-5">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-base font-bold">GitHub-এ পুশ করুন</h3>
-                    <button
-                      type="button"
-                      onClick={() => setIsPushOpen(false)}
-                      className="text-slate-400 hover:text-white"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <form onSubmit={handleGitHubPush} className="space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1 block text-xs text-slate-300">Owner</label>
+                        <label className="mb-1 block text-xs text-slate-300">অ্যাপের নাম</label>
                         <input
-                          value={ghOwner}
-                          onChange={(e) => setGhOwner(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs text-slate-300">Repo</label>
-                        <input
-                          value={ghRepo}
-                          onChange={(e) => setGhRepo(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="mb-1 block text-xs text-slate-300">Branch</label>
-                        <input
-                          value={ghBranch}
-                          onChange={(e) => setGhBranch(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs text-slate-300">Folder Prefix</label>
-                        <input
-                          value={ghPrefix}
-                          onChange={(e) => setGhPrefix(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-300">GitHub Token</label>
-                      <input
-                        type="password"
-                        value={ghToken}
-                        onChange={(e) => setGhToken(e.target.value)}
-                        placeholder="ghp_..."
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-300">Commit Message</label>
-                      <input
-                        value={ghMsg}
-                        onChange={(e) => setGhMsg(e.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
-                      />
-                    </div>
-                    {ghStatus && (
-                      <div className="rounded-lg bg-slate-800 p-2.5 text-xs text-emerald-300">
-                        {ghStatus}
-                      </div>
-                    )}
-                    <div className="flex justify-end gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsPushOpen(false)}
-                        className="rounded-lg bg-slate-800 px-3 py-2 text-xs hover:bg-slate-700"
-                      >
-                        বন্ধ
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={isPushing}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
-                      >
-                        {isPushing ? "পুশ হচ্ছে..." : "Push Now"}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-    </script>
-  </body>
-</html>
+                          value={setupName}
+                          onChange={(e) => setSetupName(e.target.value)}
+                       
