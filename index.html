@@ -46,9 +46,7 @@
       const { useState, useMemo, useEffect, Component } = React;
 
       // =========================================================================
-      // 🔥 MANUAL FIREBASE CONFIGURATION (এখানে ম্যানুয়ালি আপনার Firebase Config বসান)
-      // ফাঁকা রাখলে অ্যাপ স্বয়ংক্রিয়ভাবে লোকাল স্টোরেজ মোডে নিরাপদে চলবে।
-      // UI-তে কোনো Firebase সেটআপ বাটন বা কনফিগ মডাল রাখা হয়নি।
+      // MANUAL FIREBASE CONFIGURATION
       // =========================================================================
       const FIREBASE_CONFIG = {
         apiKey: "AIzaSyDFFHWazvKFE0VOKtlQoyzKNahQTks2_MU",
@@ -64,11 +62,12 @@
       const STORAGE_PROJECTS_KEY = "droid_ai_studio_projects_v4";
       const STORAGE_AUTH_USERS_KEY = "droid_ai_studio_local_users_v2";
       const STORAGE_SESSION_KEY = "droid_ai_studio_session_v2";
+      const STORAGE_GEMINI_KEY = "droid_ai_studio_gemini_key";
 
       // 7 Android Studio Project Templates / Languages
       const ANDROID_LANGUAGES = [
-        { id: "kotlin-compose", label: "Kotlin + Jetpack Compose", short: "Kotlin Compose", ext: "kt" },
         { id: "kotlin-xml", label: "Kotlin + XML Views", short: "Kotlin XML", ext: "kt" },
+        { id: "kotlin-compose", label: "Kotlin + Jetpack Compose", short: "Kotlin Compose", ext: "kt" },
         { id: "java-xml", label: "Java + XML Views", short: "Java XML", ext: "java" },
         { id: "java-compose", label: "Java + UI Activity", short: "Java UI", ext: "java" },
         { id: "cpp-kotlin-jni", label: "C++ (JNI) + Kotlin", short: "C++ JNI (Kotlin)", ext: "cpp" },
@@ -168,6 +167,10 @@
         }
       }
 
+      function sanitizeApiKey(rawKey) {
+        return String(rawKey || "").replace(/[\s\r\n]+/g, "").trim();
+      }
+
       function normalizeEmail(email) {
         return String(email || "").trim().toLowerCase();
       }
@@ -210,19 +213,11 @@
         return ext || "text";
       }
 
-      function localFallbackEdit(prompt, project, activeFile) {
-        const target = activeFile || (project && project.files && project.files[0]);
-        if (!target) return [];
-        const note = "\n// [AI Note]: " + String(prompt || "").trim() + "\n";
-        return [
-          {
-            ...target,
-            content: String(target.content || "") + note
-          }
-        ];
+      function sleepMs(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
       }
 
-      // Generate starter Android Studio files for selected language & SDKs
+      // Generate starter Android Studio files for Bangla News or selected language & SDKs
       function buildDefaultFiles(safeName, pkg, languageId, minSdk, targetSdk, hasLogo) {
         const pkgPath = pkg.split(".").join("/");
         const lang = getLanguageInfo(languageId);
@@ -251,7 +246,7 @@
               "        TextView tv = new TextView(this);\n" +
               '        tv.setText("' +
               safeName +
-              " (" +
+              " — সর্বশেষ বাংলা সংবাদ (" +
               lang.short +
               ')");\n' +
               "        setContentView(tv);\n" +
@@ -275,12 +270,36 @@
               "        val tv = TextView(this).apply {\n" +
               '            text = "' +
               safeName +
-              ' (Kotlin + XML)"\n' +
+              ' — ব্রেকিং বাংলা নিউজ (Kotlin + XML)"\n' +
               "            textSize = 20f\n" +
               "        }\n" +
               "        setContentView(tv)\n" +
               "    }\n" +
               "}\n"
+          });
+          files.push({
+            path: "app/src/main/res/layout/activity_main.xml",
+            language: "xml",
+            content:
+              '<?xml version="1.0" encoding="utf-8"?>\n' +
+              '<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"\n' +
+              '    android:layout_width="match_parent"\n' +
+              '    android:layout_height="match_parent"\n' +
+              '    android:orientation="vertical"\n' +
+              '    android:padding="16dp">\n\n' +
+              "    <TextView\n" +
+              '        android:id="@+id/tvHeadline"\n' +
+              '        android:layout_width="match_parent"\n' +
+              '        android:layout_height="wrap_content"\n' +
+              '        android:text="@string/app_name"\n' +
+              '        android:textSize="22sp"\n' +
+              '        android:textStyle="bold" />\n\n' +
+              "    <androidx.recyclerview.widget.RecyclerView\n" +
+              '        android:id="@+id/rvNewsFeed"\n' +
+              '        android:layout_width="match_parent"\n' +
+              '        android:layout_height="match_parent"\n' +
+              '        android:layout_marginTop="12dp" />\n\n' +
+              "</LinearLayout>\n"
           });
         } else {
           files.push({
@@ -317,7 +336,7 @@
               "    Column(modifier = Modifier.padding(24.dp)) {\n" +
               "        Text(text = appName, style = MaterialTheme.typography.headlineMedium)\n" +
               "        Spacer(modifier = Modifier.height(8.dp))\n" +
-              '        Text(text = "Built with Droid AI Studio (' +
+              '        Text(text = "সর্বশেষ বাংলা সংবাদ ও ফিচার (' +
               lang.short +
               ')")\n' +
               "    }\n" +
@@ -379,6 +398,7 @@
             '    <string name="app_name">' +
             safeName +
             "</string>\n" +
+            '    <string name="breaking_news">ব্রেকিং সংবাদ</string>\n' +
             "</resources>\n"
         });
 
@@ -459,10 +479,10 @@
         logoFileName,
         existingFiles
       }) {
-        const safeName = String(name || "IMO Studio App").trim() || "IMO Studio App";
+        const safeName = String(name || "Bangla News").trim() || "Bangla News";
         const pkg =
-          String(packageName || "com.example.imostudio").trim() || "com.example.imostudio";
-        const resolvedLang = languageId || "kotlin-compose";
+          String(packageName || "com.example.banglanews").trim() || "com.example.banglanews";
+        const resolvedLang = languageId || "kotlin-xml";
         const resolvedMinSdk = Number(minSdk) || 21;
         const resolvedTargetSdk = Math.max(Number(targetSdk) || 36, resolvedMinSdk);
         const resolvedLogo = logoDataUrl || "";
@@ -480,6 +500,7 @@
                       '    <string name="app_name">' +
                       safeName +
                       "</string>\n" +
+                      '    <string name="breaking_news">ব্রেকিং সংবাদ</string>\n' +
                       "</resources>\n"
                   };
                 }
@@ -540,7 +561,7 @@
           id: id || "proj-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
           name: safeName,
           packageName: pkg,
-          description: description || safeName + " Android Project",
+          description: description || safeName + " Android App",
           languageId: resolvedLang,
           minSdk: resolvedMinSdk,
           targetSdk: resolvedTargetSdk,
@@ -571,7 +592,7 @@
         return issues;
       }
 
-      // Parse structured <<<REPLY>>> (or legacy <<<SUMMARY>>>) and <<<FILE:path>>> blocks safely
+      // Parse structured <<<REPLY>>> / <<<SUMMARY>>> and <<<FILE:path>>> blocks safely
       function parseGeminiDelimitedResponse(rawText) {
         const text = String(rawText || "").trim();
         let reply = "";
@@ -623,7 +644,6 @@
           }
         }
 
-        // If Gemini replied in natural Bengali prose without delimiters, show the clean text cleanly
         if (!reply && updatedFiles.length === 0 && text) {
           reply = text
             .replace(/<<<\/?(REPLY|END_REPLY|SUMMARY|END_SUMMARY)>>>/gi, "")
@@ -637,6 +657,7 @@
         return { reply, updatedFiles };
       }
 
+      // 100% Authentic Gemini REST API call with automatic retry on transient 503/429 errors
       async function callGeminiConversation({
         apiKey,
         model,
@@ -644,11 +665,12 @@
         contents,
         maxOutputTokens = 8192
       }) {
+        const cleanKey = sanitizeApiKey(apiKey);
         const endpoint =
           "https://generativelanguage.googleapis.com/v1beta/models/" +
           encodeURIComponent(model) +
           ":generateContent?key=" +
-          encodeURIComponent(apiKey.trim());
+          encodeURIComponent(cleanKey);
 
         const bodyPayload = {
           contents,
@@ -664,92 +686,76 @@
           };
         }
 
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(bodyPayload)
-        });
+        const maxRetries = 2;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bodyPayload)
+          });
 
-        let data = null;
-        try {
-          data = await response.json();
-        } catch (_) {
-          throw new Error("HTTP " + response.status + ": সার্ভার থেকে বৈধ উত্তর পাওয়া যায়নি।");
-        }
-
-        if (!response.ok) {
-          const apiErrMsg =
-            data && data.error && data.error.message
-              ? data.error.message
-              : "HTTP " + response.status;
-          if (response.status === 400 && apiErrMsg.toLowerCase().includes("api key")) {
-            throw new Error("ভুল Gemini API Key দেওয়া হয়েছে (400)। সঠিক API Key দিন।");
-          }
-          if (response.status === 403) {
-            throw new Error("API Key অনুমতি নেই বা ব্লক করা (403): " + apiErrMsg);
-          }
-          if (response.status === 429) {
-            throw new Error("API কোটা বা রেট লিমিট শেষ হয়েছে (429)। কিছুক্ষণ পর চেষ্টা করুন।");
-          }
-          throw new Error("Gemini API ত্রুটি (" + response.status + "): " + apiErrMsg);
-        }
-
-        const parts =
-          data &&
-          data.candidates &&
-          data.candidates[0] &&
-          data.candidates[0].content &&
-          Array.isArray(data.candidates[0].content.parts)
-            ? data.candidates[0].content.parts
-            : [];
-        const rawText = parts.map((p) => (p && p.text ? p.text : "")).join("\n").trim();
-
-        if (!rawText) {
-          const finishReason =
-            data && data.candidates && data.candidates[0]
-              ? data.candidates[0].finishReason
-              : "UNKNOWN";
-          throw new Error("Gemini খালি উত্তর দিয়েছে (Reason: " + finishReason + ")।");
-        }
-
-        return rawText;
-      }
-
-      async function verifyGeminiApiKey(apiKey) {
-        const cleanKey = String(apiKey || "").trim();
-        if (!cleanKey) {
-          return { ok: false, message: "আগে Gemini API Key লিখুন।" };
-        }
-        const models = await getActiveGeminiModels(cleanKey);
-        let lastErr = "";
-        for (const model of models) {
+          let data = null;
           try {
-            const text = await callGeminiConversation({
-              apiKey: cleanKey,
-              model,
-              contents: [{ role: "user", parts: [{ text: "Reply with exactly: OK" }] }],
-              maxOutputTokens: 16
-            });
-            if (text) {
-              return {
-                ok: true,
-                model,
-                message: "কানেকশন ১০০% সফল! সক্রিয় মডেল: " + model
-              };
-            }
-          } catch (err) {
-            lastErr = err && err.message ? err.message : String(err);
+            data = await response.json();
+          } catch (_) {
+            throw new Error("HTTP " + response.status + ": সার্ভার থেকে বৈধ উত্তর পাওয়া যায়নি।");
           }
+
+          if (!response.ok) {
+            const apiErrMsg =
+              data && data.error && data.error.message
+                ? data.error.message
+                : "HTTP " + response.status;
+            const isTransient = response.status === 503 || response.status === 429;
+            if (isTransient && attempt < maxRetries) {
+              await sleepMs(900 * (attempt + 1));
+              continue;
+            }
+            if (response.status === 401 || apiErrMsg.toLowerCase().includes("api key not valid")) {
+              throw new Error(
+                "Gemini API Key বৈধ নয় (401): API key not valid. Please pass a valid API key."
+              );
+            }
+            if (response.status === 400 && apiErrMsg.toLowerCase().includes("api key")) {
+              throw new Error("ভুল Gemini API Key দেওয়া হয়েছে (400)। সঠিক API Key দিন।");
+            }
+            if (response.status === 403) {
+              throw new Error("API Key অনুমতি নেই বা ব্লক করা (403): " + apiErrMsg);
+            }
+            if (response.status === 429) {
+              throw new Error("API কোটা বা রেট লিমিট শেষ হয়েছে (429)। কিছুক্ষণ পর চেষ্টা করুন।");
+            }
+            throw new Error("Gemini API ত্রুটি (" + response.status + "): " + apiErrMsg);
+          }
+
+          const parts =
+            data &&
+            data.candidates &&
+            data.candidates[0] &&
+            data.candidates[0].content &&
+            Array.isArray(data.candidates[0].content.parts)
+              ? data.candidates[0].content.parts
+              : [];
+          const rawText = parts.map((p) => (p && p.text ? p.text : "")).join("\n").trim();
+
+          if (!rawText) {
+            const finishReason =
+              data && data.candidates && data.candidates[0]
+                ? data.candidates[0].finishReason
+                : "UNKNOWN";
+            throw new Error("Gemini খালি উত্তর দিয়েছে (Reason: " + finishReason + ")।");
+          }
+
+          return rawText;
         }
-        return { ok: false, message: lastErr || "API যাচাই ব্যর্থ হয়েছে।" };
       }
 
       const detectedModelsCache = new Map();
 
       async function getActiveGeminiModels(apiKey) {
-        const cleanKey = String(apiKey || "").trim();
-        const strictPrimaryModels = ["gemini-3.8-flash", "gemini-2.5-flash"];
-        if (!cleanKey) return strictPrimaryModels;
+        const cleanKey = sanitizeApiKey(apiKey);
+        const primaryOrder = ["gemini-3.8-flash", "gemini-2.5-flash"];
+        if (!cleanKey) return primaryOrder;
         if (detectedModelsCache.has(cleanKey)) {
           return detectedModelsCache.get(cleanKey);
         }
@@ -814,122 +820,156 @@
         return fallbackPriority;
       }
 
-      async function runAICommand({ prompt, project, activeFile, apiKey, chatHistory = [] }) {
-        const cleanKey = String(apiKey || "").trim();
-        if (cleanKey.length > 10) {
-          const fileListSummary = project.files
-            .map((f) => "- " + f.path + " (" + (f.content ? f.content.length : 0) + " chars)")
-            .join("\n");
-
-          const filesContext = project.files
-            .map((f) => {
-              const isSelected = activeFile && f.path === activeFile.path;
-              const limit = isSelected ? 6000 : 2500;
-              const snippet =
-                f.content && f.content.length > limit
-                  ? f.content.slice(0, limit) + "\n// ... truncated ..."
-                  : f.content;
-              return "=== " + f.path + (isSelected ? " [ACTIVE FILE]" : "") + " ===\n" + snippet;
-            })
-            .join("\n\n");
-
-          const sysInstruction =
-            'You are Gemini, a friendly, expert Bengali Android Studio AI pair-programmer inside Droid AI Studio for the project "' +
-            project.name +
-            '" (package: ' +
-            project.packageName +
-            ", language: " +
-            getLanguageInfo(project.languageId).label +
-            ", minSdk: " +
-            project.minSdk +
-            ", targetSdk: " +
-            project.targetSdk +
-            ").\n\n" +
-            "BEHAVIOR & LANGUAGE RULES:\n" +
-            "- Always converse warmly and clearly in Bengali (বাংলা) with the user.\n" +
-            "- You can answer questions, explain code, write new Android files, or fix/debug bugs in existing files.\n" +
-            "- If the user is only chatting or asking a question that does not require modifying code, reply naturally in Bengali inside <<<REPLY>>> ... <<<END_REPLY>>> without emitting any <<<FILE:...>>> blocks.\n" +
-            "- Whenever the user asks to write code, add a feature, or fix/debug a file, output a helpful Bengali explanation inside:\n" +
-            "<<<REPLY>>>\n" +
-            "কী করা হয়েছে বা কীভাবে ফিক্স করা হয়েছে তার পরিষ্কার বাংলা ব্যাখ্যা\n" +
-            "<<<END_REPLY>>>\n" +
-            "Followed by one or more complete, runnable file blocks in this exact format (NO JSON, NO markdown backticks around the block tags):\n" +
-            "<<<FILE:exact/relative/path/FileName.ext>>>\n" +
-            "complete updated or new file code\n" +
-            "<<<END_FILE>>>\n" +
-            "- When fixing an existing file, preserve its exact relative path from the project file list so it overwrites and repairs the file cleanly.";
-
-          // Build multi-turn Gemini conversation history (last 10 turns)
-          const recentHistory = Array.isArray(chatHistory) ? chatHistory.slice(-10) : [];
-          const contents = [];
-          for (const msg of recentHistory) {
-            if (!msg || !msg.content || msg.id === "m-1") continue;
-            contents.push({
-              role: msg.role === "user" ? "user" : "model",
-              parts: [{ text: String(msg.content) }]
+      async function verifyGeminiApiKey(apiKey) {
+        const cleanKey = sanitizeApiKey(apiKey);
+        if (!cleanKey) {
+          return { ok: false, message: "আগে Gemini API Key লিখুন।" };
+        }
+        const models = await getActiveGeminiModels(cleanKey);
+        let lastErr = "";
+        for (const model of models) {
+          try {
+            const text = await callGeminiConversation({
+              apiKey: cleanKey,
+              model,
+              contents: [{ role: "user", parts: [{ text: "Reply with exactly: OK" }] }],
+              maxOutputTokens: 16
             });
-          }
-
-          const currentTurnText =
-            "বর্তমান প্রজেক্ট ফাইল তালিকা:\n" +
-            fileListSummary +
-            "\n\nবর্তমানে খোলা (Active) ফাইল: " +
-            (activeFile && activeFile.path ? activeFile.path : "none") +
-            "\n\nপ্রজেক্ট কোড কনটেক্সট:\n" +
-            filesContext +
-            "\n\nইউজারের বার্তা / নির্দেশ:\n" +
-            prompt;
-
-          contents.push({
-            role: "user",
-            parts: [{ text: currentTurnText }]
-          });
-
-          const models = await getActiveGeminiModels(cleanKey);
-          let lastErrorMsg = "";
-
-          for (const model of models) {
-            try {
-              const rawText = await callGeminiConversation({
-                apiKey: cleanKey,
-                model,
-                systemInstructionText: sysInstruction,
-                contents,
-                maxOutputTokens: 8192
-              });
-
-              const parsed = parseGeminiDelimitedResponse(rawText);
-              const badge =
-                parsed.updatedFiles && parsed.updatedFiles.length > 0
-                  ? "\n\n✅ " +
-                    parsed.updatedFiles.length +
-                    "টি ফাইল আপডেট/ফিক্স করা হয়েছে (" +
-                    model +
-                    ")"
-                  : "";
-
+            if (text) {
               return {
-                reply: (parsed.reply || "উত্তর প্রস্তুত।") + badge,
-                updatedFiles: parsed.updatedFiles || []
+                ok: true,
+                model,
+                message: "কানেকশন ১০০% সফল! সক্রিয় মডেল: " + model
               };
-            } catch (err) {
-              lastErrorMsg = err && err.message ? err.message : String(err);
             }
+          } catch (err) {
+            lastErr = err && err.message ? err.message : String(err);
           }
+        }
+        return { ok: false, message: lastErr || "API যাচাই ব্যর্থ হয়েছে।" };
+      }
 
+      async function runAICommand({ prompt, project, activeFile, apiKey, chatHistory = [] }) {
+        const cleanKey = sanitizeApiKey(apiKey);
+        if (!cleanKey) {
           return {
             reply:
-              "❌ " +
-              (lastErrorMsg || "Gemini API সংযোগ ব্যর্থ হয়েছে।") +
-              "\n(ফাইল পরিবর্তন করা হয়নি — API Key বা কোটা যাচাই করে আবার চেষ্টা করুন।)",
+              "⚠️ Gemini API Key দেওয়া নেই। ১00% অথেন্টিক Gemini-এর সাথে বাংলায় চ্যাট, বাংলা নিউজ অ্যাপের কোড তৈরি ও ফাইল ফিক্স করতে উপরে আপনার Gemini API Key বসিয়ে 'API টেস্ট' চাপুন।",
             updatedFiles: []
           };
         }
 
+        const fileListSummary = project.files
+          .map((f) => "- " + f.path + " (" + (f.content ? f.content.length : 0) + " chars)")
+          .join("\n");
+
+        const filesContext = project.files
+          .map((f) => {
+            const isSelected = activeFile && f.path === activeFile.path;
+            const limit = isSelected ? 6000 : 2500;
+            const snippet =
+              f.content && f.content.length > limit
+                ? f.content.slice(0, limit) + "\n// ... truncated ..."
+                : f.content;
+            return "=== " + f.path + (isSelected ? " [ACTIVE FILE]" : "") + " ===\n" + snippet;
+          })
+          .join("\n\n");
+
+        const sysInstruction =
+          'You are Gemini, a friendly, expert Bengali Android Studio AI pair-programmer inside Droid AI Studio for the project "' +
+          project.name +
+          '" (package: ' +
+          project.packageName +
+          ", language: " +
+          getLanguageInfo(project.languageId).label +
+          ", minSdk: " +
+          project.minSdk +
+          ", targetSdk: " +
+          project.targetSdk +
+          ").\n\n" +
+          "BEHAVIOR & LANGUAGE RULES:\n" +
+          "- Always converse warmly and clearly in Bengali (বাংলা) with the user.\n" +
+          "- You can answer questions, explain code, write new Android files, or fix/debug bugs in existing files.\n" +
+          "- If the user is only chatting or asking a question that does not require modifying code, reply naturally in Bengali inside <<<REPLY>>> ... <<<END_REPLY>>> without emitting any <<<FILE:...>>> blocks.\n" +
+          "- Whenever the user asks to write code, add a feature, or fix/debug a file, output a helpful Bengali explanation inside:\n" +
+          "<<<REPLY>>>\n" +
+          "কী করা হয়েছে বা কীভাবে ফিক্স করা হয়েছে তার পরিষ্কার বাংলা ব্যাখ্যা\n" +
+          "<<<END_REPLY>>>\n" +
+          "Followed by one or more complete, runnable file blocks in this exact format (NO JSON, NO markdown backticks around the block tags):\n" +
+          "<<<FILE:exact/relative/path/FileName.ext>>>\n" +
+          "complete updated or new file code\n" +
+          "<<<END_FILE>>>\n" +
+          "- When fixing an existing file, preserve its exact relative path from the project file list so it overwrites and repairs the file cleanly.";
+
+        const recentHistory = Array.isArray(chatHistory) ? chatHistory.slice(-10) : [];
+        const contents = [];
+        for (const msg of recentHistory) {
+          if (!msg || !msg.content || msg.id === "m-1") continue;
+          contents.push({
+            role: msg.role === "user" ? "user" : "model",
+            parts: [{ text: String(msg.content) }]
+          });
+        }
+
+        const currentTurnText =
+          "বর্তমান প্রজেক্ট ফাইল তালিকা:\n" +
+          fileListSummary +
+          "\n\nবর্তমানে খোলা (Active) ফাইল: " +
+          (activeFile && activeFile.path ? activeFile.path : "none") +
+          "\n\nপ্রজেক্ট কোড কনটেক্সট:\n" +
+          filesContext +
+          "\n\nইউজারের বার্তা / নির্দেশ:\n" +
+          prompt;
+
+        contents.push({
+          role: "user",
+          parts: [{ text: currentTurnText }]
+        });
+
+        const models = await getActiveGeminiModels(cleanKey);
+        let lastErrorMsg = "";
+
+        for (let i = 0; i < models.length; i++) {
+          const model = models[i];
+          try {
+            const rawText = await callGeminiConversation({
+              apiKey: cleanKey,
+              model,
+              systemInstructionText: sysInstruction,
+              contents,
+              maxOutputTokens: 8192
+            });
+
+            const parsed = parseGeminiDelimitedResponse(rawText);
+            const fallbackNote =
+              i > 0 ? " (ব্যাকআপ মডেল " + model + " থেকে সাড়া এসেছে)" : "";
+            const badge =
+              parsed.updatedFiles && parsed.updatedFiles.length > 0
+                ? "\n\n✅ " +
+                  parsed.updatedFiles.length +
+                  "টি ফাইল আপডেট/ফিক্স করা হয়েছে (" +
+                  model +
+                  ")"
+                : "";
+
+            return {
+              reply: (parsed.reply || "উত্তর প্রস্তুত।") + fallbackNote + badge,
+              updatedFiles: parsed.updatedFiles || []
+            };
+          } catch (err) {
+            lastErrorMsg = err && err.message ? err.message : String(err);
+            if (i < models.length - 1) {
+              await sleepMs(500);
+            }
+          }
+        }
+
         return {
           reply:
-            "⚠️ Gemini API Key দেওয়া নেই, তাই বর্তমান ফাইলে লোকাল নোট যুক্ত করা হয়েছে। সরাসরি Gemini-এর সাথে বাংলায় চ্যাটিং, কোড লেখা ও ফাইল ফিক্স করতে উপরে আপনার Gemini API Key দিয়ে 'API টেস্ট' চাপুন।",
-          updatedFiles: localFallbackEdit(prompt, project, activeFile)
+            "❌ " +
+            (lastErrorMsg || "Gemini API সংযোগ ব্যর্থ হয়েছে।") +
+            "\n(ফাইল পরিবর্তন করা হয়নি — API Key বা কোটা যাচাই করে আবার চেষ্টা করুন।)",
+          updatedFiles: []
         };
       }
 
@@ -1050,7 +1090,7 @@
                   name: p.name,
                   packageName: p.packageName,
                   description: p.description || "",
-                  languageId: p.languageId || "kotlin-compose",
+                  languageId: p.languageId || "kotlin-xml",
                   minSdk: p.minSdk || 21,
                   targetSdk: p.targetSdk || 36,
                   logoDataUrl: p.logoDataUrl || "",
@@ -1088,7 +1128,9 @@
           if (snap && snap.exists()) {
             const val = snap.val();
             if (val && typeof val === "object") {
-              const list = Object.values(val).filter((item) => item && item.id && Array.isArray(item.files));
+              const list = Object.values(val).filter(
+                (item) => item && item.id && Array.isArray(item.files)
+              );
               return list.length > 0 ? list : null;
             }
           }
@@ -1148,9 +1190,6 @@
             return await finalizeExistingUser(cred.user);
           } catch (signInErr) {
             const code = signInErr && signInErr.code ? signInErr.code : "";
-            // Firebase v10+ returns auth/invalid-credential or auth/invalid-login-credentials
-            // for BOTH non-existent emails and wrong passwords when Email Enumeration Protection is enabled.
-            // So we attempt createUserWithEmailAndPassword first, and ONLY show "already registered" if that throws auth/email-already-in-use!
             const shouldTryAutoCreate =
               code === "auth/user-not-found" ||
               code === "auth/invalid-credential" ||
@@ -1225,7 +1264,6 @@
           }
         }
 
-        // Local fallback mode when FIREBASE_CONFIG is empty
         const localUsers = readLocalUsers();
         const existingLocal = localUsers[cleanEmail];
         if (existingLocal) {
@@ -1358,7 +1396,7 @@
         );
       }
 
-      // Foldable Phone Preview Drawer
+      // Foldable Phone Preview Drawer with sample Bangla News preview
       function RunAppDrawer({ project, onFold }) {
         const [tab, setTab] = useState("home");
         const minInfo = getMinSdkInfo(project.minSdk);
@@ -1401,8 +1439,11 @@
               <div className="min-h-[200px] p-3 text-xs">
                 {tab === "home" && (
                   <div className="space-y-2">
-                    <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 text-slate-300">
-                      {project.description}
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/25 p-2.5 text-[11px] text-emerald-200">
+                      <div className="font-bold">ব্রেকিং বাংলা সংবাদ</div>
+                      <div className="mt-0.5 text-slate-300">
+                        {project.description} · {project.files.length}টি ফাইল প্রস্তুত
+                      </div>
                     </div>
                     <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-[11px] text-slate-300">
                       <div>
@@ -1468,11 +1509,11 @@
           } catch (_) {}
           return [
             createAndroidProject({
-              id: "proj-default",
-              name: "IMO Studio App",
-              packageName: "com.example.imostudio",
-              description: "Android Messaging & Calling App",
-              languageId: "kotlin-compose",
+              id: "proj-bangla-news",
+              name: "Bangla News",
+              packageName: "com.example.banglanews",
+              description: "বাংলা সংবাদ, ব্রেকিং নিউজ ও ক্যাটাগরি ফিড Android অ্যাপ",
+              languageId: "kotlin-xml",
               minSdk: 21,
               targetSdk: 36
             })
@@ -1581,7 +1622,7 @@
         // AI Panel state
         const [apiKey, setApiKey] = useState(() => {
           try {
-            return localStorage.getItem("droid_ai_studio_gemini_key") || "";
+            return sanitizeApiKey(localStorage.getItem(STORAGE_GEMINI_KEY) || "");
           } catch (_) {
             return "";
           }
@@ -1594,18 +1635,18 @@
         useEffect(() => {
           try {
             if (apiKey) {
-              localStorage.setItem("droid_ai_studio_gemini_key", apiKey);
+              localStorage.setItem(STORAGE_GEMINI_KEY, apiKey);
             } else {
-              localStorage.removeItem("droid_ai_studio_gemini_key");
+              localStorage.removeItem(STORAGE_GEMINI_KEY);
             }
           } catch (_) {}
         }, [apiKey]);
 
         // Project Setup / Edit Form state
-        const [setupName, setSetupName] = useState("IMO Studio App");
-        const [setupPkg, setSetupPkg] = useState("com.example.imostudio");
-        const [setupDesc, setSetupDesc] = useState("Android Messaging & Calling App");
-        const [setupLanguage, setSetupLanguage] = useState("kotlin-compose");
+        const [setupName, setSetupName] = useState("Bangla News");
+        const [setupPkg, setSetupPkg] = useState("com.example.banglanews");
+        const [setupDesc, setSetupDesc] = useState("বাংলা সংবাদ Android অ্যাপ");
+        const [setupLanguage, setSetupLanguage] = useState("kotlin-xml");
         const [setupMinSdk, setSetupMinSdk] = useState(21);
         const [setupTargetSdk, setSetupTargetSdk] = useState(36);
         const [setupLogoUrl, setSetupLogoUrl] = useState("");
@@ -1613,11 +1654,11 @@
 
         // GitHub Push state
         const [ghOwner, setGhOwner] = useState("ssb-dev-hasan");
-        const [ghRepo, setGhRepo] = useState("Droid-AI-Studio");
+        const [ghRepo, setGhRepo] = useState("ssb-dev-hasan.github.io");
         const [ghBranch, setGhBranch] = useState("main");
-        const [ghPrefix, setGhPrefix] = useState("generated-projects/imo-studio-app");
+        const [ghPrefix, setGhPrefix] = useState("generated-projects/bangla-news");
         const [ghToken, setGhToken] = useState("");
-        const [ghMsg, setGhMsg] = useState("Push Android project via Droid AI Studio");
+        const [ghMsg, setGhMsg] = useState("Push Bangla News Android project via Droid AI Studio");
         const [ghStatus, setGhStatus] = useState("");
         const [isPushing, setIsPushing] = useState(false);
 
@@ -1626,7 +1667,7 @@
             id: "m-1",
             role: "assistant",
             content:
-              "স্বাগতম! উপরে আপনার Gemini API Key দিন — এরপর সরাসরি আমার সাথে বাংলায় চ্যাট করতে পারবেন, নতুন কোড লেখাতে পারবেন এবং যেকোনো ফাইলের এরর বা বাগ ফিক্স করাতে পারবেন।"
+              "স্বাগতম! আপনার Gemini API Key বসিয়ে 'API টেস্ট' করুন — এরপর সরাসরি আমার সাথে বাংলায় চ্যাট করতে পারবেন, Bangla News Android অ্যাপের কোড তৈরি করতে পারবেন এবং যেকোনো ফাইল ফিক্স করাতে পারবেন।"
           }
         ]);
 
@@ -1728,9 +1769,9 @@
         const openNewProjectModal = () => {
           setEditingProjectId(null);
           setSetupName("");
-          setSetupPkg("com.example.newapp");
-          setSetupDesc("New Android App");
-          setSetupLanguage("kotlin-compose");
+          setSetupPkg("com.example.banglanews");
+          setSetupDesc("Bangla News Android App");
+          setSetupLanguage("kotlin-xml");
           setSetupMinSdk(21);
           setSetupTargetSdk(36);
           setSetupLogoUrl("");
@@ -1744,7 +1785,7 @@
           setSetupName(targetProj.name);
           setSetupPkg(targetProj.packageName);
           setSetupDesc(targetProj.description);
-          setSetupLanguage(targetProj.languageId || "kotlin-compose");
+          setSetupLanguage(targetProj.languageId || "kotlin-xml");
           setSetupMinSdk(targetProj.minSdk || 21);
           setSetupTargetSdk(targetProj.targetSdk || 36);
           setSetupLogoUrl(targetProj.logoDataUrl || "");
@@ -1850,11 +1891,19 @@
           );
         };
 
+        const handleApiKeyInputChange = (rawVal) => {
+          const cleaned = sanitizeApiKey(rawVal);
+          setApiKey(cleaned);
+          if (apiTestStatus) setApiTestStatus(null);
+        };
+
         const handleTestApiKey = async () => {
+          const cleaned = sanitizeApiKey(apiKey);
+          setApiKey(cleaned);
           setIsTestingApi(true);
           setApiTestStatus({ ok: true, message: "Gemini API যাচাই করা হচ্ছে..." });
           try {
-            const res = await verifyGeminiApiKey(apiKey);
+            const res = await verifyGeminiApiKey(cleaned);
             setApiTestStatus(res);
           } finally {
             setIsTestingApi(false);
@@ -1867,7 +1916,7 @@
               id: "m-1",
               role: "assistant",
               content:
-                "চ্যাট হিস্ট্রি রিসেট করা হয়েছে। এখন নতুন করে বাংলায় প্রশ্ন করুন, কোড লেখান অথবা বর্তমান ফাইল ফিক্স করতে বলুন!"
+                "চ্যাট হিস্ট্রি রিসেট করা হয়েছে। এখন নতুন করে বাংলায় প্রশ্ন করুন, Bangla News কোড তৈরি করুন অথবা বর্তমান ফাইল ফিক্স করতে বলুন!"
             }
           ]);
         };
@@ -2100,7 +2149,7 @@
                     <input
                       value={newFilePath}
                       onChange={(e) => setNewFilePath(e.target.value)}
-                      placeholder="app/src/main/java/Helper.kt"
+                      placeholder="app/src/main/java/NewsAdapter.kt"
                       className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 font-mono text-[11px] text-white"
                       required
                     />
@@ -2196,10 +2245,7 @@
                     <input
                       type="password"
                       value={apiKey}
-                      onChange={(e) => {
-                        setApiKey(e.target.value);
-                        if (apiTestStatus) setApiTestStatus(null);
-                      }}
+                      onChange={(e) => handleApiKeyInputChange(e.target.value)}
                       placeholder="Gemini API Key (AIza...)"
                       className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
                     />
@@ -2246,7 +2292,7 @@
                       disabled={isAILoading}
                       onClick={() =>
                         sendPromptText(
-                          "এই অ্যাপে একটি সুন্দর ডার্ক মোড টগল এবং দরকারি নতুন ফিচার কোডসহ যোগ করে দাও।"
+                          "Bangla News Android অ্যাপের জন্য ক্যাটাগরি ফিল্টার (জাতীয়, খেলা, প্রযুক্তি), RecyclerView সংবাদ ফিড ও ডার্ক মোড ফিচার কোডসহ যোগ করে দাও।"
                         )
                       }
                       className="rounded-lg border border-purple-500/30 bg-purple-950/40 px-2 py-1 text-[11px] text-purple-300 hover:bg-purple-900/50 disabled:opacity-50"
