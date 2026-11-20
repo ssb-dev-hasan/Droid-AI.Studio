@@ -200,6 +200,28 @@
         return ANDROID_LANGUAGES.find((l) => l.id === langId) || ANDROID_LANGUAGES[0];
       }
 
+      function inferLanguageFromPath(filePath) {
+        const ext = String(filePath || "").split(".").pop().toLowerCase();
+        if (ext === "kt" || ext === "kts") return "kotlin";
+        if (ext === "java") return "java";
+        if (ext === "xml") return "xml";
+        if (ext === "cpp" || ext === "c" || ext === "h") return "cpp";
+        if (ext === "gradle") return "groovy";
+        return ext || "text";
+      }
+
+      function localFallbackEdit(prompt, project, activeFile) {
+        const target = activeFile || (project && project.files && project.files[0]);
+        if (!target) return [];
+        const note = "\n// [AI Note]: " + String(prompt || "").trim() + "\n";
+        return [
+          {
+            ...target,
+            content: String(target.content || "") + note
+          }
+        ];
+      }
+
       // Generate starter Android Studio files for selected language & SDKs
       function buildDefaultFiles(safeName, pkg, languageId, minSdk, targetSdk, hasLogo) {
         const pkgPath = pkg.split(".").join("/");
@@ -549,91 +571,294 @@
         return issues;
       }
 
-      function localFallbackEdit(prompt, project, activeFile) {
-        const target = activeFile || project.files[0];
-        if (!target) return [];
-        const comment = target.path.endsWith(".xml")
-          ? "<!-- AI Command: " + prompt + " -->\n"
-          : "// AI Command: " + prompt + "\n";
-        return [{ ...target, content: comment + target.content }];
-      }
+      // Parse structured <<<REPLY>>> (or legacy <<<SUMMARY>>>) and <<<FILE:path>>> blocks safely
+      function parseGeminiDelimitedResponse(rawText) {
+        const text = String(rawText || "").trim();
+        let reply = "";
+        const updatedFiles = [];
 
-      async function runAICommand({ prompt, project, activeFile, apiKey }) {
-        if (apiKey && apiKey.trim().length > 10) {
-          try {
-            const filesContext = project.files
-              .map((f) => "=== " + f.path + " ===\n" + f.content)
-              .join("\n\n");
+        const replyMatch =
+          text.match(/<<<REPLY>>>([\s\S]*?)<<<END_REPLY>>>/i) ||
+          text.match(/<<<SUMMARY>>>([\s\S]*?)<<<END_SUMMARY>>>/i);
+        if (replyMatch && replyMatch[1]) {
+          reply = replyMatch[1].trim();
+        }
 
-            const sysPrompt =
-              'You are Droid AI Studio\'s Android code generator for "' +
-              project.name +
-              '" (' +
-              project.packageName +
-              '). Return ONLY valid JSON: {"reply":"Short explanation in Bengali","updatedFiles":[{"path":"exact/path","language":"kotlin","content":"full file content"}]}';
-
-            const endpoint =
-              "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" +
-              encodeURIComponent(apiKey.trim());
-
-            const response = await fetch(endpoint, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [
-                  {
-                    role: "user",
-                    parts: [
-                      {
-                        text:
-                          sysPrompt +
-                          "\n\nActive file: " +
-                          (activeFile && activeFile.path ? activeFile.path : "none") +
-                          "\nCommand: " +
-                          prompt +
-                          "\n\nFiles:\n" +
-                          filesContext
-                      }
-                    ]
-                  }
-                ]
-              })
+        // Match complete <<<FILE:path>>> ... <<<END_FILE>>> blocks
+        const fileBlockRegex = /<<<FILE:([^\r\n>]+)>>>\r?\n?([\s\S]*?)<<<END_FILE>>>/gi;
+        let match;
+        let lastMatchedIndex = 0;
+        while ((match = fileBlockRegex.exec(text)) !== null) {
+          const path = String(match[1] || "").trim().replace(/^\/+/, "");
+          const content = String(match[2] || "").replace(/^\r?\n/, "").replace(/\r?\n$/, "");
+          if (path && content) {
+            updatedFiles.push({
+              path,
+              language: inferLanguageFromPath(path),
+              content
             });
+          }
+          lastMatchedIndex = fileBlockRegex.lastIndex;
+        }
 
-            const data = await response.json();
-            const rawText =
-              data &&
-              data.candidates &&
-              data.candidates[0] &&
-              data.candidates[0].content &&
-              data.candidates[0].content.parts &&
-              data.candidates[0].content.parts[0]
-                ? data.candidates[0].content.parts[0].text || ""
-                : "";
-
-            const cleaned = rawText
-              .replace(/^```json\s*/i, "")
-              .replace(/^```\s*/i, "")
-              .replace(/```$/i, "")
-              .trim();
-
-            const parsed = JSON.parse(cleaned);
-            if (Array.isArray(parsed.updatedFiles) && parsed.updatedFiles.length > 0) {
-              return {
-                reply: parsed.reply || "ফাইলগুলো আপডেট করা হয়েছে।",
-                updatedFiles: parsed.updatedFiles
-              };
-            }
-          } catch (err) {
-            return {
-              reply: "Gemini API ত্রুটি (" + String(err) + ")। লোকাল আপডেট প্রয়োগ করা হয়েছে।",
-              updatedFiles: localFallbackEdit(prompt, project, activeFile)
-            };
+        // Recover a trailing incomplete <<<FILE:path>>> block if maxOutputTokens cut off the closing tag
+        const remainder = text.slice(lastMatchedIndex);
+        const openFileMatch = remainder.match(/<<<FILE:([^\r\n>]+)>>>\r?\n?([\s\S]+)$/i);
+        if (openFileMatch && openFileMatch[1] && openFileMatch[2]) {
+          const partialPath = String(openFileMatch[1]).trim().replace(/^\/+/, "");
+          const partialContent = String(openFileMatch[2])
+            .replace(/<<<END_FILE[\s\S]*$/i, "")
+            .replace(/^\r?\n/, "");
+          if (partialPath && partialContent.trim().length > 10) {
+            updatedFiles.push({
+              path: partialPath,
+              language: inferLanguageFromPath(partialPath),
+              content: partialContent
+            });
+            reply =
+              (reply ? reply + "\n\n" : "") +
+              "⚠️ আউটপুট অনেক বড় হওয়ায় শেষ ফাইলটি (" +
+              partialPath +
+              ") আংশিক রিকভার করা হয়েছে।";
           }
         }
 
+        // If Gemini replied in natural Bengali prose without delimiters, show the clean text cleanly
+        if (!reply && updatedFiles.length === 0 && text) {
+          reply = text
+            .replace(/<<<\/?(REPLY|END_REPLY|SUMMARY|END_SUMMARY)>>>/gi, "")
+            .trim();
+        }
+
+        if (!reply && updatedFiles.length > 0) {
+          reply = "সফলভাবে " + updatedFiles.length + "টি ফাইল তৈরি/আপডেট করা হয়েছে।";
+        }
+
+        return { reply, updatedFiles };
+      }
+
+      async function callGeminiConversation({
+        apiKey,
+        model,
+        systemInstructionText,
+        contents,
+        maxOutputTokens = 8192
+      }) {
+        const endpoint =
+          "https://generativelanguage.googleapis.com/v1beta/models/" +
+          encodeURIComponent(model) +
+          ":generateContent?key=" +
+          encodeURIComponent(apiKey.trim());
+
+        const bodyPayload = {
+          contents,
+          generationConfig: {
+            temperature: 0.4,
+            maxOutputTokens
+          }
+        };
+
+        if (systemInstructionText) {
+          bodyPayload.systemInstruction = {
+            parts: [{ text: systemInstructionText }]
+          };
+        }
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bodyPayload)
+        });
+
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (_) {
+          throw new Error("HTTP " + response.status + ": সার্ভার থেকে বৈধ উত্তর পাওয়া যায়নি।");
+        }
+
+        if (!response.ok) {
+          const apiErrMsg =
+            data && data.error && data.error.message
+              ? data.error.message
+              : "HTTP " + response.status;
+          if (response.status === 400 && apiErrMsg.toLowerCase().includes("api key")) {
+            throw new Error("ভুল Gemini API Key দেওয়া হয়েছে (400)। সঠিক API Key দিন।");
+          }
+          if (response.status === 403) {
+            throw new Error("API Key অনুমতি নেই বা ব্লক করা (403): " + apiErrMsg);
+          }
+          if (response.status === 429) {
+            throw new Error("API কোটা বা রেট লিমিট শেষ হয়েছে (429)। কিছুক্ষণ পর চেষ্টা করুন।");
+          }
+          throw new Error("Gemini API ত্রুটি (" + response.status + "): " + apiErrMsg);
+        }
+
+        const parts =
+          data &&
+          data.candidates &&
+          data.candidates[0] &&
+          data.candidates[0].content &&
+          Array.isArray(data.candidates[0].content.parts)
+            ? data.candidates[0].content.parts
+            : [];
+        const rawText = parts.map((p) => (p && p.text ? p.text : "")).join("\n").trim();
+
+        if (!rawText) {
+          const finishReason =
+            data && data.candidates && data.candidates[0]
+              ? data.candidates[0].finishReason
+              : "UNKNOWN";
+          throw new Error("Gemini খালি উত্তর দিয়েছে (Reason: " + finishReason + ")।");
+        }
+
+        return rawText;
+      }
+
+      async function verifyGeminiApiKey(apiKey) {
+        const cleanKey = String(apiKey || "").trim();
+        if (!cleanKey) {
+          return { ok: false, message: "আগে Gemini API Key লিখুন।" };
+        }
+        const models = ["gemini-2.5-flash", "gemini-2.0-flash"];
+        let lastErr = "";
+        for (const model of models) {
+          try {
+            const text = await callGeminiConversation({
+              apiKey: cleanKey,
+              model,
+              contents: [{ role: "user", parts: [{ text: "Reply with exactly: OK" }] }],
+              maxOutputTokens: 16
+            });
+            if (text) {
+              return {
+                ok: true,
+                model,
+                message: "কানেকশন ১০০% সফল! সক্রিয় মডেল: " + model
+              };
+            }
+          } catch (err) {
+            lastErr = err && err.message ? err.message : String(err);
+          }
+        }
+        return { ok: false, message: lastErr || "API যাচাই ব্যর্থ হয়েছে।" };
+      }
+
+      async function runAICommand({ prompt, project, activeFile, apiKey, chatHistory = [] }) {
+        const cleanKey = String(apiKey || "").trim();
+        if (cleanKey.length > 10) {
+          const fileListSummary = project.files
+            .map((f) => "- " + f.path + " (" + (f.content ? f.content.length : 0) + " chars)")
+            .join("\n");
+
+          const filesContext = project.files
+            .map((f) => {
+              const isSelected = activeFile && f.path === activeFile.path;
+              const limit = isSelected ? 6000 : 2500;
+              const snippet =
+                f.content && f.content.length > limit
+                  ? f.content.slice(0, limit) + "\n// ... truncated ..."
+                  : f.content;
+              return "=== " + f.path + (isSelected ? " [ACTIVE FILE]" : "") + " ===\n" + snippet;
+            })
+            .join("\n\n");
+
+          const sysInstruction =
+            'You are Gemini, a friendly, expert Bengali Android Studio AI pair-programmer inside Droid AI Studio for the project "' +
+            project.name +
+            '" (package: ' +
+            project.packageName +
+            ", language: " +
+            getLanguageInfo(project.languageId).label +
+            ", minSdk: " +
+            project.minSdk +
+            ", targetSdk: " +
+            project.targetSdk +
+            ").\n\n" +
+            "BEHAVIOR & LANGUAGE RULES:\n" +
+            "- Always converse warmly and clearly in Bengali (বাংলা) with the user.\n" +
+            "- You can answer questions, explain code, write new Android files, or fix/debug bugs in existing files.\n" +
+            "- If the user is only chatting or asking a question that does not require modifying code, reply naturally in Bengali inside <<<REPLY>>> ... <<<END_REPLY>>> without emitting any <<<FILE:...>>> blocks.\n" +
+            "- Whenever the user asks to write code, add a feature, or fix/debug a file, output a helpful Bengali explanation inside:\n" +
+            "<<<REPLY>>>\n" +
+            "কী করা হয়েছে বা কীভাবে ফিক্স করা হয়েছে তার পরিষ্কার বাংলা ব্যাখ্যা\n" +
+            "<<<END_REPLY>>>\n" +
+            "Followed by one or more complete, runnable file blocks in this exact format (NO JSON, NO markdown backticks around the block tags):\n" +
+            "<<<FILE:exact/relative/path/FileName.ext>>>\n" +
+            "complete updated or new file code\n" +
+            "<<<END_FILE>>>\n" +
+            "- When fixing an existing file, preserve its exact relative path from the project file list so it overwrites and repairs the file cleanly.";
+
+          // Build multi-turn Gemini conversation history (last 10 turns)
+          const recentHistory = Array.isArray(chatHistory) ? chatHistory.slice(-10) : [];
+          const contents = [];
+          for (const msg of recentHistory) {
+            if (!msg || !msg.content || msg.id === "m-1") continue;
+            contents.push({
+              role: msg.role === "user" ? "user" : "model",
+              parts: [{ text: String(msg.content) }]
+            });
+          }
+
+          const currentTurnText =
+            "বর্তমান প্রজেক্ট ফাইল তালিকা:\n" +
+            fileListSummary +
+            "\n\nবর্তমানে খোলা (Active) ফাইল: " +
+            (activeFile && activeFile.path ? activeFile.path : "none") +
+            "\n\nপ্রজেক্ট কোড কনটেক্সট:\n" +
+            filesContext +
+            "\n\nইউজারের বার্তা / নির্দেশ:\n" +
+            prompt;
+
+          contents.push({
+            role: "user",
+            parts: [{ text: currentTurnText }]
+          });
+
+          const models = ["gemini-2.5-flash", "gemini-2.0-flash"];
+          let lastErrorMsg = "";
+
+          for (const model of models) {
+            try {
+              const rawText = await callGeminiConversation({
+                apiKey: cleanKey,
+                model,
+                systemInstructionText: sysInstruction,
+                contents,
+                maxOutputTokens: 8192
+              });
+
+              const parsed = parseGeminiDelimitedResponse(rawText);
+              const badge =
+                parsed.updatedFiles && parsed.updatedFiles.length > 0
+                  ? "\n\n✅ " +
+                    parsed.updatedFiles.length +
+                    "টি ফাইল আপডেট/ফিক্স করা হয়েছে (" +
+                    model +
+                    ")"
+                  : "";
+
+              return {
+                reply: (parsed.reply || "উত্তর প্রস্তুত।") + badge,
+                updatedFiles: parsed.updatedFiles || []
+              };
+            } catch (err) {
+              lastErrorMsg = err && err.message ? err.message : String(err);
+            }
+          }
+
+          return {
+            reply:
+              "❌ " +
+              (lastErrorMsg || "Gemini API সংযোগ ব্যর্থ হয়েছে।") +
+              "\n(ফাইল পরিবর্তন করা হয়নি — API Key বা কোটা যাচাই করে আবার চেষ্টা করুন।)",
+            updatedFiles: []
+          };
+        }
+
         return {
-          reply: "Gemini API Key দেওয়া নেই, তাই বর্তমান ফাইলে কমান্ড অনুযায়ী কোড যুক্ত করা হয়েছে।",
+          reply:
+            "⚠️ Gemini API Key দেওয়া নেই, তাই বর্তমান ফাইলে লোকাল নোট যুক্ত করা হয়েছে। সরাসরি Gemini-এর সাথে বাংলায় চ্যাটিং, কোড লেখা ও ফাইল ফিক্স করতে উপরে আপনার Gemini API Key দিয়ে 'API টেস্ট' চাপুন।",
           updatedFiles: localFallbackEdit(prompt, project, activeFile)
         };
       }
@@ -1284,9 +1509,27 @@
         const [isPushOpen, setIsPushOpen] = useState(false);
 
         // AI Panel state
-        const [apiKey, setApiKey] = useState("");
+        const [apiKey, setApiKey] = useState(() => {
+          try {
+            return localStorage.getItem("droid_ai_studio_gemini_key") || "";
+          } catch (_) {
+            return "";
+          }
+        });
+        const [apiTestStatus, setApiTestStatus] = useState(null);
+        const [isTestingApi, setIsTestingApi] = useState(false);
         const [promptInput, setPromptInput] = useState("");
         const [isAILoading, setIsAILoading] = useState(false);
+
+        useEffect(() => {
+          try {
+            if (apiKey) {
+              localStorage.setItem("droid_ai_studio_gemini_key", apiKey);
+            } else {
+              localStorage.removeItem("droid_ai_studio_gemini_key");
+            }
+          } catch (_) {}
+        }, [apiKey]);
 
         // Project Setup / Edit Form state
         const [setupName, setSetupName] = useState("IMO Studio App");
@@ -1313,7 +1556,7 @@
             id: "m-1",
             role: "assistant",
             content:
-              "স্বাগতম! ইমেইল লগইন, টপ হেডারে প্রজেক্ট হিস্ট্রি বাটন, Android SDK ও ল্যাঙ্গুয়েজ নির্বাচন, সরাসরি লোগো বাইন্ডিং, ফোল্ডেবল Run App এবং GitHub Push সবই প্রস্তুত।"
+              "স্বাগতম! উপরে আপনার Gemini API Key দিন — এরপর সরাসরি আমার সাথে বাংলায় চ্যাট করতে পারবেন, নতুন কোড লেখাতে পারবেন এবং যেকোনো ফাইলের এরর বা বাগ ফিক্স করাতে পারবেন।"
           }
         ]);
 
@@ -1522,7 +1765,7 @@
         };
 
         const handleCodeEdit = (val) => {
-          if (!activeFile || !project) return;
+          if (!project || !activeFile) return;
           setProjects((prev) =>
             prev.map((item) => {
               if (item.id !== project.id) return item;
@@ -1537,10 +1780,32 @@
           );
         };
 
-        const handleSendAI = async (e) => {
-          e.preventDefault();
-          if (!promptInput.trim() || isAILoading || !project) return;
-          const text = promptInput.trim();
+        const handleTestApiKey = async () => {
+          setIsTestingApi(true);
+          setApiTestStatus({ ok: true, message: "Gemini API যাচাই করা হচ্ছে..." });
+          try {
+            const res = await verifyGeminiApiKey(apiKey);
+            setApiTestStatus(res);
+          } finally {
+            setIsTestingApi(false);
+          }
+        };
+
+        const handleClearChat = () => {
+          setMessages([
+            {
+              id: "m-1",
+              role: "assistant",
+              content:
+                "চ্যাট হিস্ট্রি রিসেট করা হয়েছে। এখন নতুন করে বাংলায় প্রশ্ন করুন, কোড লেখান অথবা বর্তমান ফাইল ফিক্স করতে বলুন!"
+            }
+          ]);
+        };
+
+        const sendPromptText = async (rawPromptText) => {
+          const text = String(rawPromptText || "").trim();
+          if (!text || isAILoading || !project) return;
+          const historySnapshot = messages;
           setPromptInput("");
           setMessages((prev) => [...prev, { id: "u-" + Date.now(), role: "user", content: text }]);
           setIsAILoading(true);
@@ -1550,25 +1815,30 @@
               prompt: text,
               project,
               activeFile,
-              apiKey
+              apiKey,
+              chatHistory: historySnapshot
             });
 
-            setProjects((prev) =>
-              prev.map((item) => {
-                if (item.id !== project.id) return item;
-                const map = new Map();
-                for (const f of item.files) map.set(f.path, f);
-                for (const u of res.updatedFiles) map.set(u.path, u);
-                return {
-                  ...item,
-                  updatedAt: new Date().toLocaleString("bn-BD"),
-                  files: Array.from(map.values())
-                };
-              })
-            );
+            if (Array.isArray(res.updatedFiles) && res.updatedFiles.length > 0) {
+              setProjects((prev) =>
+                prev.map((item) => {
+                  if (item.id !== project.id) return item;
+                  const map = new Map();
+                  for (const f of item.files) map.set(f.path, f);
+                  for (const u of res.updatedFiles) {
+                    if (u && u.path) map.set(u.path, u);
+                  }
+                  return {
+                    ...item,
+                    updatedAt: new Date().toLocaleString("bn-BD"),
+                    files: Array.from(map.values())
+                  };
+                })
+              );
 
-            if (res.updatedFiles[0] && res.updatedFiles[0].path) {
-              setSelectedPath(res.updatedFiles[0].path);
+              if (res.updatedFiles[0] && res.updatedFiles[0].path) {
+                setSelectedPath(res.updatedFiles[0].path);
+              }
             }
 
             setMessages((prev) => [
@@ -1578,6 +1848,11 @@
           } finally {
             setIsAILoading(false);
           }
+        };
+
+        const handleSendAI = async (e) => {
+          e.preventDefault();
+          await sendPromptText(promptInput);
         };
 
         const handleGitHubPush = async (e) => {
@@ -1818,35 +2093,113 @@
                   value={activeFile ? activeFile.content : ""}
                   onChange={(e) => handleCodeEdit(e.target.value)}
                   spellCheck={false}
-                  className="min-h-[55vh] w-full flex-1 rounded-xl border border-slate-800 bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100 focus:border-emerald-500 focus:outline-none"
+                  className="min-h-[55vh] w-full flex-1 rounded-2xl border border-slate-800 bg-slate-900 p-4 font-mono text-xs leading-relaxed text-slate-100 focus:border-emerald-500 focus:outline-none"
                 />
               </main>
 
-              {/* Right AI Code Generator Panel */}
+              {/* Gemini AI Conversational Chat, Coding & File Fix Panel */}
               {isChatOpen && (
-                <section className="flex flex-col border-t border-slate-800 bg-slate-900/80 p-3 lg:col-span-4 lg:border-l lg:border-t-0">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h2 className="text-xs font-bold uppercase text-purple-300">
-                      AI কোড জেনারেটর
-                    </h2>
+                <section className="flex flex-col border-t border-slate-800 bg-slate-900/60 p-3 lg:col-span-4 lg:border-l lg:border-t-0">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-purple-300">
+                      Gemini AI চ্যাট ও কোড অ্যাসিস্ট্যান্ট
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleClearChat}
+                        className="rounded-lg bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300 hover:bg-slate-700"
+                      >
+                        চ্যাট মুছুন
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsChatOpen(false)}
+                        className="text-xs text-slate-400 hover:text-white"
+                      >
+                        লুকান
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mb-2 flex gap-1.5">
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => {
+                        setApiKey(e.target.value);
+                        if (apiTestStatus) setApiTestStatus(null);
+                      }}
+                      placeholder="Gemini API Key (AIza...)"
+                      className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+                    />
                     <button
                       type="button"
-                      onClick={() => setIsChatOpen(false)}
-                      className="text-xs text-slate-400 hover:text-white"
+                      onClick={handleTestApiKey}
+                      disabled={isTestingApi}
+                      className="shrink-0 rounded-xl border border-purple-500/40 bg-purple-600/20 px-2.5 py-1.5 text-[11px] font-semibold text-purple-200 hover:bg-purple-600/30 disabled:opacity-50"
                     >
-                      লুকান
+                      {isTestingApi ? "টেস্ট হচ্ছে..." : "API টেস্ট"}
                     </button>
                   </div>
 
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Gemini API Key (ঐচ্ছিক)"
-                    className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs"
-                  />
+                  {apiTestStatus && (
+                    <div
+                      className={
+                        apiTestStatus.ok
+                          ? "mb-2 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-3 py-1.5 text-[11px] text-emerald-300"
+                          : "mb-2 rounded-xl border border-rose-500/40 bg-rose-950/50 px-3 py-1.5 text-[11px] text-rose-300"
+                      }
+                    >
+                      {apiTestStatus.message}
+                    </div>
+                  )}
 
-                  <div className="mb-2 max-h-[45vh] flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                  {/* Quick Bengali Action Chips */}
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      disabled={isAILoading}
+                      onClick={() =>
+                        sendPromptText(
+                          "বর্তমানে খোলা ফাইলটি (" +
+                            (activeFile ? activeFile.path : "MainActivity") +
+                            ") ভালোভাবে পরীক্ষা করে কোনো এরর, বাগ বা উন্নতির জায়গা থাকলে ফিক্স করে আপডেট করে দাও।"
+                        )
+                      }
+                      className="rounded-lg border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/50 disabled:opacity-50"
+                    >
+                      বর্তমান ফাইল ফিক্স করো
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAILoading}
+                      onClick={() =>
+                        sendPromptText(
+                          "এই অ্যাপে একটি সুন্দর ডার্ক মোড টগল এবং দরকারি নতুন ফিচার কোডসহ যোগ করে দাও।"
+                        )
+                      }
+                      className="rounded-lg border border-purple-500/30 bg-purple-950/40 px-2 py-1 text-[11px] text-purple-300 hover:bg-purple-900/50 disabled:opacity-50"
+                    >
+                      নতুন ফিচার যোগ করো
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAILoading}
+                      onClick={() =>
+                        sendPromptText(
+                          "বর্তমানে খোলা ফাইলটির (" +
+                            (activeFile ? activeFile.path : "MainActivity") +
+                            ") কোড কীভাবে কাজ করছে তা সহজ বাংলায় বুঝিয়ে দাও।"
+                        )
+                      }
+                      className="rounded-lg border border-blue-500/30 bg-blue-950/40 px-2 py-1 text-[11px] text-blue-300 hover:bg-blue-900/50 disabled:opacity-50"
+                    >
+                      কোড বুঝিয়ে দাও
+                    </button>
+                  </div>
+
+                  <div className="mb-2 max-h-[42vh] flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/70 p-3">
                     {messages.map((m) => (
                       <div
                         key={m.id}
@@ -1857,14 +2210,14 @@
                         }
                       >
                         <div className="mb-1 text-[10px] text-slate-400">
-                          {m.role === "user" ? "আপনি" : "AI"}
+                          {m.role === "user" ? "আপনি" : "Gemini AI"}
                         </div>
-                        <div className="whitespace-pre-wrap">{m.content}</div>
+                        <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
                       </div>
                     ))}
                     {isAILoading && (
                       <div className="rounded-xl bg-slate-900 p-2.5 text-xs text-emerald-400">
-                        ফাইলগুলোতে কোড লেখা হচ্ছে...
+                        Gemini চিন্তা করছে ও ফাইল পরীক্ষা করছে...
                       </div>
                     )}
                   </div>
@@ -1873,8 +2226,8 @@
                     <input
                       value={promptInput}
                       onChange={(e) => setPromptInput(e.target.value)}
-                      placeholder="কমান্ড লিখুন..."
-                      className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs"
+                      placeholder="বাংলায় চ্যাট করুন বা কোড/ফিক্স লিখুন..."
+                      className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-emerald-500 focus:outline-none"
                     />
                     <button
                       type="submit"
