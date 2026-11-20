@@ -63,6 +63,16 @@
       const STORAGE_AUTH_USERS_KEY = "droid_ai_studio_local_users_v2";
       const STORAGE_SESSION_KEY = "droid_ai_studio_session_v2";
       const STORAGE_GEMINI_KEY = "droid_ai_studio_gemini_key";
+      const STORAGE_AI_SETTINGS_KEY = "droid_ai_studio_ai_settings_v1";
+
+      // Default AI Studio Settings
+      const DEFAULT_AI_SETTINGS = {
+        selectedModel: "auto",
+        autoFallback: true,
+        temperature: 0.4,
+        maxOutputTokens: 8192,
+        customSystemInstruction: ""
+      };
 
       // 7 Android Studio Project Templates / Languages
       const ANDROID_LANGUAGES = [
@@ -663,6 +673,7 @@
         model,
         systemInstructionText,
         contents,
+        temperature = 0.4,
         maxOutputTokens = 8192
       }) {
         const cleanKey = sanitizeApiKey(apiKey);
@@ -675,8 +686,8 @@
         const bodyPayload = {
           contents,
           generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens
+            temperature: Number(temperature) >= 0 ? Number(temperature) : 0.4,
+            maxOutputTokens: Number(maxOutputTokens) || 8192
           }
         };
 
@@ -686,7 +697,7 @@
           };
         }
 
-        const maxRetries = 2;
+        const maxRetries = 1;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
           const response = await fetch(endpoint, {
             method: "POST",
@@ -708,7 +719,7 @@
                 : "HTTP " + response.status;
             const isTransient = response.status === 503 || response.status === 429;
             if (isTransient && attempt < maxRetries) {
-              await sleepMs(900 * (attempt + 1));
+              await sleepMs(650 * (attempt + 1));
               continue;
             }
             if (response.status === 401 || apiErrMsg.toLowerCase().includes("api key not valid")) {
@@ -723,7 +734,7 @@
               throw new Error("API Key অনুমতি নেই বা ব্লক করা (403): " + apiErrMsg);
             }
             if (response.status === 429) {
-              throw new Error("API কোটা বা রেট লিমিট শেষ হয়েছে (429)। কিছুক্ষণ পর চেষ্টা করুন।");
+              throw new Error("API কোটা বা রেট লিমিট শেষ হয়েছে (429): " + apiErrMsg);
             }
             throw new Error("Gemini API ত্রুটি (" + response.status + "): " + apiErrMsg);
           }
@@ -752,109 +763,147 @@
 
       const detectedModelsCache = new Map();
 
-      async function getActiveGeminiModels(apiKey) {
+      // Auto-discover ALL active generateContent models from Google AI Studio / Gemini API
+      async function fetchAllActiveGeminiModels(apiKey, forceRefresh = false) {
         const cleanKey = sanitizeApiKey(apiKey);
-        const primaryOrder = ["gemini-3.8-flash", "gemini-2.5-flash"];
-        if (!cleanKey) return primaryOrder;
-        if (detectedModelsCache.has(cleanKey)) {
+        const baselineCatalog = [
+          { id: "gemini-3.8-flash", displayName: "Gemini 3.8 Flash", inputTokenLimit: 1048576 },
+          { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", inputTokenLimit: 1048576 },
+          { id: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro", inputTokenLimit: 1048576 },
+          { id: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash-Lite", inputTokenLimit: 1048576 }
+        ];
+        if (!cleanKey) return baselineCatalog;
+        if (!forceRefresh && detectedModelsCache.has(cleanKey)) {
           return detectedModelsCache.get(cleanKey);
         }
 
-        const fallbackPriority = [
+        const priorityOrder = [
           "gemini-3.8-flash",
           "gemini-2.5-flash",
+          "gemini-2.5-flash-lite",
           "gemini-2.5-pro",
-          "gemini-flash-latest"
+          "gemini-flash-latest",
+          "gemini-pro-latest"
         ];
 
         try {
           const res = await fetch(
-            "https://generativelanguage.googleapis.com/v1beta/models?key=" +
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=" +
               encodeURIComponent(cleanKey)
           );
           if (res.ok) {
             const json = await res.json();
             const list = Array.isArray(json && json.models) ? json.models : [];
-            const supported = list
-              .filter((m) => {
-                if (!m || typeof m.name !== "string") return false;
-                const lowerName = m.name.toLowerCase();
-                const methods = Array.isArray(m.supportedGenerationMethods)
-                  ? m.supportedGenerationMethods
-                  : [];
-                return (
-                  methods.includes("generateContent") &&
-                  !lowerName.includes("gemini-2.0") &&
-                  !lowerName.includes("gemini-1.5") &&
-                  !lowerName.includes("gemini-1.0") &&
-                  !lowerName.includes("gemini-pro-vision") &&
-                  !lowerName.includes("embedding") &&
-                  !lowerName.includes("imagen") &&
-                  !lowerName.includes("veo") &&
-                  !lowerName.includes("aqa")
-                );
-              })
-              .map((m) => m.name.replace(/^models\//, ""));
+            const discoveredMap = new Map();
 
-            const ordered = ["gemini-3.8-flash", "gemini-2.5-flash"];
-            for (const pref of fallbackPriority) {
-              if (supported.includes(pref) && !ordered.includes(pref)) {
-                ordered.push(pref);
-              }
-            }
-            for (const mName of supported) {
+            for (const m of list) {
+              if (!m || typeof m.name !== "string") continue;
+              const lowerName = m.name.toLowerCase();
+              const methods = Array.isArray(m.supportedGenerationMethods)
+                ? m.supportedGenerationMethods
+                : [];
               if (
-                mName.includes("flash") &&
-                !mName.includes("2.0") &&
-                !ordered.includes(mName)
+                methods.includes("generateContent") &&
+                !lowerName.includes("gemini-2.0") &&
+                !lowerName.includes("gemini-1.5") &&
+                !lowerName.includes("gemini-1.0") &&
+                !lowerName.includes("gemini-pro-vision") &&
+                !lowerName.includes("embedding") &&
+                !lowerName.includes("imagen") &&
+                !lowerName.includes("veo") &&
+                !lowerName.includes("aqa")
               ) {
-                ordered.push(mName);
+                const cleanId = m.name.replace(/^models\//, "");
+                discoveredMap.set(cleanId, {
+                  id: cleanId,
+                  displayName: m.displayName || cleanId,
+                  inputTokenLimit: m.inputTokenLimit || 1048576
+                });
               }
             }
-            const topModels = ordered.slice(0, 4);
-            detectedModelsCache.set(cleanKey, topModels);
-            return topModels;
+
+            const orderedCatalog = [];
+            for (const prefId of priorityOrder) {
+              if (discoveredMap.has(prefId)) {
+                orderedCatalog.push(discoveredMap.get(prefId));
+                discoveredMap.delete(prefId);
+              }
+            }
+            for (const item of discoveredMap.values()) {
+              orderedCatalog.push(item);
+            }
+
+            if (orderedCatalog.length > 0) {
+              detectedModelsCache.set(cleanKey, orderedCatalog);
+              return orderedCatalog;
+            }
           }
         } catch (_) {}
 
-        return fallbackPriority;
+        return baselineCatalog;
+      }
+
+      async function getActiveGeminiModels(apiKey, forceRefresh = false) {
+        const catalog = await fetchAllActiveGeminiModels(apiKey, forceRefresh);
+        return catalog.map((item) => item.id);
       }
 
       async function verifyGeminiApiKey(apiKey) {
         const cleanKey = sanitizeApiKey(apiKey);
         if (!cleanKey) {
-          return { ok: false, message: "আগে Gemini API Key লিখুন।" };
+          return { ok: false, message: "আগে Gemini API Key লিখুন。", models: [] };
         }
-        const models = await getActiveGeminiModels(cleanKey);
+        const catalog = await fetchAllActiveGeminiModels(cleanKey, true);
         let lastErr = "";
-        for (const model of models) {
+        for (const item of catalog) {
           try {
             const text = await callGeminiConversation({
               apiKey: cleanKey,
-              model,
+              model: item.id,
               contents: [{ role: "user", parts: [{ text: "Reply with exactly: OK" }] }],
+              temperature: 0,
               maxOutputTokens: 16
             });
             if (text) {
               return {
                 ok: true,
-                model,
-                message: "কানেকশন ১০০% সফল! সক্রিয় মডেল: " + model
+                model: item.id,
+                models: catalog,
+                message:
+                  "কানেকশন ১০০% সফল! মোট " +
+                  catalog.length +
+                  "টি সক্রিয় মডেল যুক্ত হয়েছে (সক্রিয়: " +
+                  item.id +
+                  ")"
               };
             }
           } catch (err) {
             lastErr = err && err.message ? err.message : String(err);
+            if (lastErr.includes("(401)") || lastErr.includes("(400)") || lastErr.includes("(403)")) {
+              break;
+            }
           }
         }
-        return { ok: false, message: lastErr || "API যাচাই ব্যর্থ হয়েছে।" };
+        return {
+          ok: false,
+          models: catalog,
+          message: lastErr || "API যাচাই ব্যর্থ হয়েছে।"
+        };
       }
 
-      async function runAICommand({ prompt, project, activeFile, apiKey, chatHistory = [] }) {
+      async function runAICommand({
+        prompt,
+        project,
+        activeFile,
+        apiKey,
+        chatHistory = [],
+        aiSettings = DEFAULT_AI_SETTINGS
+      }) {
         const cleanKey = sanitizeApiKey(apiKey);
         if (!cleanKey) {
           return {
             reply:
-              "⚠️ Gemini API Key দেওয়া নেই। ১00% অথেন্টিক Gemini-এর সাথে বাংলায় চ্যাট, বাংলা নিউজ অ্যাপের কোড তৈরি ও ফাইল ফিক্স করতে উপরে আপনার Gemini API Key বসিয়ে 'API টেস্ট' চাপুন।",
+              "⚠️ Gemini API Key দেওয়া নেই। ১০০% অথেন্টিক Gemini-এর সাথে বাংলায় চ্যাট, বাংলা নিউজ অ্যাপের কোড তৈরি ও ফাইল ফিক্স করতে উপরে আপনার Gemini API Key বসিয়ে 'API টেস্ট' চাপুন।",
             updatedFiles: []
           };
         }
@@ -874,6 +923,12 @@
             return "=== " + f.path + (isSelected ? " [ACTIVE FILE]" : "") + " ===\n" + snippet;
           })
           .join("\n\n");
+
+        const extraSystemRules =
+          aiSettings && aiSettings.customSystemInstruction && aiSettings.customSystemInstruction.trim()
+            ? "\n\nADDITIONAL USER AI STUDIO SYSTEM INSTRUCTION:\n" +
+              aiSettings.customSystemInstruction.trim()
+            : "";
 
         const sysInstruction =
           'You are Gemini, a friendly, expert Bengali Android Studio AI pair-programmer inside Droid AI Studio for the project "' +
@@ -899,7 +954,8 @@
           "<<<FILE:exact/relative/path/FileName.ext>>>\n" +
           "complete updated or new file code\n" +
           "<<<END_FILE>>>\n" +
-          "- When fixing an existing file, preserve its exact relative path from the project file list so it overwrites and repairs the file cleanly.";
+          "- When fixing an existing file, preserve its exact relative path from the project file list so it overwrites and repairs the file cleanly." +
+          extraSystemRules;
 
         const recentHistory = Array.isArray(chatHistory) ? chatHistory.slice(-10) : [];
         const contents = [];
@@ -926,26 +982,53 @@
           parts: [{ text: currentTurnText }]
         });
 
-        const models = await getActiveGeminiModels(cleanKey);
-        let lastErrorMsg = "";
+        const discoveredModels = await getActiveGeminiModels(cleanKey);
+        const preferred =
+          aiSettings && aiSettings.selectedModel && aiSettings.selectedModel !== "auto"
+            ? aiSettings.selectedModel
+            : null;
+        const allowFallback = !aiSettings || aiSettings.autoFallback !== false;
 
-        for (let i = 0; i < models.length; i++) {
-          const model = models[i];
+        let candidateModels = [];
+        if (preferred) {
+          candidateModels.push(preferred);
+          if (allowFallback) {
+            for (const m of discoveredModels) {
+              if (m !== preferred) candidateModels.push(m);
+            }
+          }
+        } else {
+          candidateModels = discoveredModels;
+        }
+
+        let lastErrorMsg = "";
+        const failedModels = [];
+
+        for (let i = 0; i < candidateModels.length; i++) {
+          const model = candidateModels[i];
           try {
             const rawText = await callGeminiConversation({
               apiKey: cleanKey,
               model,
               systemInstructionText: sysInstruction,
               contents,
-              maxOutputTokens: 8192
+              temperature: aiSettings && aiSettings.temperature !== undefined ? aiSettings.temperature : 0.4,
+              maxOutputTokens:
+                aiSettings && aiSettings.maxOutputTokens ? aiSettings.maxOutputTokens : 8192
             });
 
             const parsed = parseGeminiDelimitedResponse(rawText);
-            const fallbackNote =
-              i > 0 ? " (ব্যাকআপ মডেল " + model + " থেকে সাড়া এসেছে)" : "";
+            const modelInfoNote =
+              failedModels.length > 0
+                ? "\n⚡ (" +
+                  failedModels.join(", ") +
+                  " ব্যস্ত থাকায় স্বয়ংক্রিয়ভাবে " +
+                  model +
+                  " মডেল থেকে উত্তর আনা হয়েছে)"
+                : "\n🤖 মডেল: " + model;
             const badge =
               parsed.updatedFiles && parsed.updatedFiles.length > 0
-                ? "\n\n✅ " +
+                ? "\n✅ " +
                   parsed.updatedFiles.length +
                   "টি ফাইল আপডেট/ফিক্স করা হয়েছে (" +
                   model +
@@ -953,13 +1036,22 @@
                 : "";
 
             return {
-              reply: (parsed.reply || "উত্তর প্রস্তুত।") + fallbackNote + badge,
-              updatedFiles: parsed.updatedFiles || []
+              reply: (parsed.reply || "উত্তর প্রস্তুত।") + modelInfoNote + badge,
+              updatedFiles: parsed.updatedFiles || [],
+              usedModel: model
             };
           } catch (err) {
             lastErrorMsg = err && err.message ? err.message : String(err);
-            if (i < models.length - 1) {
-              await sleepMs(500);
+            failedModels.push(model);
+            if (
+              lastErrorMsg.includes("(401)") ||
+              lastErrorMsg.includes("(400)") ||
+              lastErrorMsg.includes("(403)")
+            ) {
+              break;
+            }
+            if (i < candidateModels.length - 1) {
+              await sleepMs(350);
             }
           }
         }
@@ -968,6 +1060,9 @@
           reply:
             "❌ " +
             (lastErrorMsg || "Gemini API সংযোগ ব্যর্থ হয়েছে।") +
+            (failedModels.length > 1
+              ? "\n(চেষ্টা করা মডেলসমূহ: " + failedModels.join(" → ") + ")"
+              : "") +
             "\n(ফাইল পরিবর্তন করা হয়নি — API Key বা কোটা যাচাই করে আবার চেষ্টা করুন।)",
           updatedFiles: []
         };
@@ -1627,6 +1722,21 @@
             return "";
           }
         });
+        const [aiSettings, setAiSettings] = useState(() => {
+          try {
+            const raw = localStorage.getItem(STORAGE_AI_SETTINGS_KEY);
+            return raw ? { ...DEFAULT_AI_SETTINGS, ...JSON.parse(raw) } : DEFAULT_AI_SETTINGS;
+          } catch (_) {
+            return DEFAULT_AI_SETTINGS;
+          }
+        });
+        const [availableModels, setAvailableModels] = useState([
+          { id: "gemini-3.8-flash", displayName: "Gemini 3.8 Flash" },
+          { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash" },
+          { id: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash-Lite" },
+          { id: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro" }
+        ]);
+        const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
         const [apiTestStatus, setApiTestStatus] = useState(null);
         const [isTestingApi, setIsTestingApi] = useState(false);
         const [promptInput, setPromptInput] = useState("");
@@ -1634,8 +1744,19 @@
 
         useEffect(() => {
           try {
+            localStorage.setItem(STORAGE_AI_SETTINGS_KEY, JSON.stringify(aiSettings));
+          } catch (_) {}
+        }, [aiSettings]);
+
+        useEffect(() => {
+          try {
             if (apiKey) {
               localStorage.setItem(STORAGE_GEMINI_KEY, apiKey);
+              fetchAllActiveGeminiModels(apiKey).then((models) => {
+                if (Array.isArray(models) && models.length > 0) {
+                  setAvailableModels(models);
+                }
+              });
             } else {
               localStorage.removeItem(STORAGE_GEMINI_KEY);
             }
@@ -1901,9 +2022,12 @@
           const cleaned = sanitizeApiKey(apiKey);
           setApiKey(cleaned);
           setIsTestingApi(true);
-          setApiTestStatus({ ok: true, message: "Gemini API যাচাই করা হচ্ছে..." });
+          setApiTestStatus({ ok: true, message: "সব সক্রিয় Gemini মডেল খোঁজা ও যাচাই করা হচ্ছে..." });
           try {
             const res = await verifyGeminiApiKey(cleaned);
+            if (Array.isArray(res.models) && res.models.length > 0) {
+              setAvailableModels(res.models);
+            }
             setApiTestStatus(res);
           } finally {
             setIsTestingApi(false);
@@ -1935,7 +2059,8 @@
               project,
               activeFile,
               apiKey,
-              chatHistory: historySnapshot
+              chatHistory: historySnapshot,
+              aiSettings
             });
 
             if (Array.isArray(res.updatedFiles) && res.updatedFiles.length > 0) {
@@ -2220,21 +2345,45 @@
               {isChatOpen && (
                 <section className="flex flex-col border-t border-slate-800 bg-slate-900/60 p-3 lg:col-span-4 lg:border-l lg:border-t-0">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-purple-300">
-                      Gemini AI চ্যাট ও কোড অ্যাসিস্ট্যান্ট
-                    </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-purple-300">
+                        Gemini AI Studio
+                      </span>
+                      <span className="rounded-md bg-purple-950 px-1.5 py-0.5 text-[10px] font-semibold text-purple-300">
+                        {availableModels.length} মডেল
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-lg border border-blue-500/30 bg-blue-950/50 px-2 py-0.5 text-[10px] font-semibold text-blue-300 hover:bg-blue-900/60"
+                      >
+                        AI Studio ↗
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setIsAiSettingsOpen((v) => !v)}
+                        className={
+                          isAiSettingsOpen
+                            ? "rounded-lg border border-purple-500/50 bg-purple-600/30 px-2 py-0.5 text-[10px] font-semibold text-purple-200"
+                            : "rounded-lg bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-slate-700"
+                        }
+                      >
+                        ⚙ সেটিংস
+                      </button>
                       <button
                         type="button"
                         onClick={handleClearChat}
-                        className="rounded-lg bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300 hover:bg-slate-700"
+                        className="rounded-lg bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-slate-700"
                       >
-                        চ্যাট মুছুন
+                        মুছুন
                       </button>
                       <button
                         type="button"
                         onClick={() => setIsChatOpen(false)}
-                        className="text-xs text-slate-400 hover:text-white"
+                        className="text-[11px] text-slate-400 hover:text-white"
                       >
                         লুকান
                       </button>
@@ -2258,6 +2407,113 @@
                       {isTestingApi ? "টেস্ট হচ্ছে..." : "API টেস্ট"}
                     </button>
                   </div>
+
+                  {/* Direct Auto Multi-Model Selector Bar */}
+                  <div className="mb-2 flex items-center gap-1.5">
+                    <select
+                      value={aiSettings.selectedModel}
+                      onChange={(e) =>
+                        setAiSettings((prev) => ({ ...prev, selectedModel: e.target.value }))
+                      }
+                      className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-[11px] font-medium text-emerald-300 focus:border-purple-500 focus:outline-none"
+                    >
+                      <option value="auto">
+                        ⚡ Auto (সব {availableModels.length}টি সক্রিয় মডেল — অটো ফলব্যাক)
+                      </option>
+                      {availableModels.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.displayName} ({m.id})
+                        </option>
+                      ))}
+                    </select>
+                    <label className="flex shrink-0 cursor-pointer items-center gap-1 rounded-xl border border-slate-700 bg-slate-900 px-2 py-1.5 text-[10px] text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={aiSettings.autoFallback !== false}
+                        onChange={(e) =>
+                          setAiSettings((prev) => ({ ...prev, autoFallback: e.target.checked }))
+                        }
+                        className="accent-emerald-500"
+                      />
+                      অটো সুইচ
+                    </label>
+                  </div>
+
+                  {/* Collapsible AI Studio Parameters Panel */}
+                  {isAiSettingsOpen && (
+                    <div className="mb-2 space-y-2 rounded-xl border border-purple-500/30 bg-slate-950/90 p-2.5 text-[11px]">
+                      <div className="flex items-center justify-between text-purple-300">
+                        <span className="font-semibold">AI Studio মডেল প্যারামিটার</span>
+                        <button
+                          type="button"
+                          onClick={() => setAiSettings(DEFAULT_AI_SETTINGS)}
+                          className="text-[10px] text-slate-400 hover:text-white"
+                        >
+                          রিসেট
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="mb-0.5 block text-[10px] text-slate-400">
+                            Temperature: {aiSettings.temperature}
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1.5"
+                            step="0.1"
+                            value={aiSettings.temperature}
+                            onChange={(e) =>
+                              setAiSettings((prev) => ({
+                                ...prev,
+                                temperature: Number(e.target.value)
+                              }))
+                            }
+                            className="w-full accent-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-0.5 block text-[10px] text-slate-400">
+                            Max Output Tokens
+                          </label>
+                          <select
+                            value={aiSettings.maxOutputTokens}
+                            onChange={(e) =>
+                              setAiSettings((prev) => ({
+                                ...prev,
+                                maxOutputTokens: Number(e.target.value)
+                              }))
+                            }
+                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-white"
+                          >
+                            <option value={2048}>2048</option>
+                            <option value={4096}>4096</option>
+                            <option value={8192}>8192 (Recommended)</option>
+                            <option value={16384}>16384</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-0.5 block text-[10px] text-slate-400">
+                          Custom System Instruction (ঐচ্ছিক)
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={aiSettings.customSystemInstruction}
+                          onChange={(e) =>
+                            setAiSettings((prev) => ({
+                              ...prev,
+                              customSystemInstruction: e.target.value
+                            }))
+                          }
+                          placeholder="যেমন: সব কোডে MVVM আর্কিটেকচার ও বাংলা কমেন্ট ব্যবহার করো..."
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-[11px] text-slate-100 focus:border-purple-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {apiTestStatus && (
                     <div
