@@ -26,78 +26,207 @@
     <script type="text/babel">
       const { useState, useMemo, useEffect } = React;
 
-      const STORAGE_KEY = "droid_ai_studio_projects_v2";
+      // Persistent localStorage key requested for multi-project history
+      const STORAGE_KEY = "droid_ai_studio_projects_v1";
 
+      // All supported Android Studio project languages
       const LANGUAGE_OPTIONS = [
         {
           id: "kotlin-compose",
-          label: "Kotlin (Jetpack Compose)",
+          label: "Kotlin + Jetpack Compose",
           shortLabel: "Kotlin Compose",
-          runtimeTag: "Jetpack Compose / Kotlin",
-          commentPrefix: "//"
+          defaultLang: "kotlin"
         },
         {
           id: "kotlin-xml",
-          label: "Kotlin (XML Views)",
+          label: "Kotlin + XML Views",
           shortLabel: "Kotlin XML",
-          runtimeTag: "Android XML Views / Kotlin",
-          commentPrefix: "//"
+          defaultLang: "kotlin"
         },
         {
-          id: "java-views",
-          label: "Java (Android Views)",
-          shortLabel: "Java Views",
-          runtimeTag: "Android Views / Java",
-          commentPrefix: "//"
+          id: "java-xml",
+          label: "Java + XML Views",
+          shortLabel: "Java XML",
+          defaultLang: "java"
         },
         {
-          id: "dart-flutter",
-          label: "Dart (Flutter)",
-          shortLabel: "Flutter Dart",
-          runtimeTag: "Flutter / Dart",
-          commentPrefix: "//"
+          id: "java-compose",
+          label: "Java + Compose / Material",
+          shortLabel: "Java Compose",
+          defaultLang: "java"
         },
         {
-          id: "rn-ts",
-          label: "TypeScript / JavaScript (React Native)",
-          shortLabel: "React Native TS",
-          runtimeTag: "React Native / TypeScript",
-          commentPrefix: "//"
+          id: "cpp-kotlin",
+          label: "C++ Native JNI + Kotlin",
+          shortLabel: "C++ Kotlin JNI",
+          defaultLang: "kotlin"
+        },
+        {
+          id: "cpp-java",
+          label: "C++ Native JNI + Java",
+          shortLabel: "C++ Java JNI",
+          defaultLang: "java"
+        },
+        {
+          id: "kmp-android",
+          label: "Kotlin Multiplatform (Android Target)",
+          shortLabel: "KMP Android",
+          defaultLang: "kotlin"
         }
       ];
 
-      const ANDROID_SDK_OPTIONS = [
-        { api: 36, name: "Android 16", badge: "API 36 (Android 16)" },
-        { api: 35, name: "Android 15", badge: "API 35 (Android 15)" },
-        { api: 34, name: "Android 14", badge: "API 34 (Android 14)" },
-        { api: 33, name: "Android 13", badge: "API 33 (Android 13)" },
-        { api: 31, name: "Android 12", badge: "API 31 (Android 12)" }
+      // Target / Compile SDK options (API 36 down to API 28)
+      const TARGET_SDK_OPTIONS = [
+        { api: 36, androidVersion: "Android 16", badge: "API 36 (Android 16)" },
+        { api: 35, androidVersion: "Android 15", badge: "API 35 (Android 15)" },
+        { api: 34, androidVersion: "Android 14", badge: "API 34 (Android 14)" },
+        { api: 33, androidVersion: "Android 13", badge: "API 33 (Android 13)" },
+        { api: 32, androidVersion: "Android 12L", badge: "API 32 (Android 12L)" },
+        { api: 31, androidVersion: "Android 12", badge: "API 31 (Android 12)" },
+        { api: 30, androidVersion: "Android 11", badge: "API 30 (Android 11)" },
+        { api: 29, androidVersion: "Android 10", badge: "API 29 (Android 10)" },
+        { api: 28, androidVersion: "Android 9 Pie", badge: "API 28 (Android 9)" }
       ];
 
-      const MIN_SDK_OPTIONS = [24, 26, 28];
+      // Minimum SDK options (API 31 down to API 21) with approximate cumulative device support
+      const MIN_SDK_OPTIONS = [
+        {
+          api: 31,
+          androidVersion: "Android 12",
+          coverage: "~84.5%",
+          label: "API 31 (Android 12) — ~84.5% ফোনে সাপোর্ট"
+        },
+        {
+          api: 29,
+          androidVersion: "Android 10",
+          coverage: "~94.2%",
+          label: "API 29 (Android 10) — ~94.2% ফোনে সাপোর্ট"
+        },
+        {
+          api: 28,
+          androidVersion: "Android 9 Pie",
+          coverage: "~97.8%",
+          label: "API 28 (Android 9) — ~97.8% ফোনে সাপোর্ট"
+        },
+        {
+          api: 26,
+          androidVersion: "Android 8.0 Oreo",
+          coverage: "~99.1%",
+          label: "API 26 (Android 8.0) — ~99.1% ফোনে সাপোর্ট"
+        },
+        {
+          api: 24,
+          androidVersion: "Android 7.0 Nougat",
+          coverage: "~99.5%",
+          label: "API 24 (Android 7.0) — ~99.5% ফোনে সাপোর্ট"
+        },
+        {
+          api: 23,
+          androidVersion: "Android 6.0 Marshmallow",
+          coverage: "~99.7%",
+          label: "API 23 (Android 6.0) — ~99.7% ফোনে সাপোর্ট"
+        },
+        {
+          api: 21,
+          androidVersion: "Android 5.0 Lollipop",
+          coverage: "~99.8%",
+          label: "API 21 (Android 5.0) — ~99.8% ফোনে সাপোর্ট (সবচেয়ে বেশি)"
+        }
+      ];
 
       function getLanguageMeta(languageId) {
-        return (
-          LANGUAGE_OPTIONS.find((item) => item.id === languageId) || LANGUAGE_OPTIONS[0]
-        );
+        return LANGUAGE_OPTIONS.find((item) => item.id === languageId) || LANGUAGE_OPTIONS[0];
       }
 
-      function getSdkMeta(targetSdk) {
-        const numericApi = Number(targetSdk) || 35;
+      function getTargetSdkMeta(targetSdk) {
+        const numeric = Number(targetSdk) || 36;
         return (
-          ANDROID_SDK_OPTIONS.find((item) => item.api === numericApi) || {
-            api: numericApi,
-            name: `Android API ${numericApi}`,
-            badge: `API ${numericApi}`
+          TARGET_SDK_OPTIONS.find((item) => item.api === numeric) || {
+            api: numeric,
+            androidVersion: `Android API ${numeric}`,
+            badge: `API ${numeric}`
           }
         );
       }
 
-      function buildManifestXml(safeName, targetSdk, minSdk, activityName = ".MainActivity") {
+      function getMinSdkMeta(minSdk) {
+        const numeric = Number(minSdk) || 21;
+        return (
+          MIN_SDK_OPTIONS.find((item) => item.api === numeric) || {
+            api: numeric,
+            androidVersion: `Android API ${numeric}`,
+            coverage: numeric <= 21 ? "~99.8%" : "~98.5%",
+            label: `API ${numeric} — ${numeric <= 21 ? "~99.8%" : "~98.5%"} ফোনে সাপোর্ট`
+          }
+        );
+      }
+
+      function escapeXmlValue(str) {
+        return String(str || "")
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      /**
+       * Generates app/build.gradle.kts with explicit minSdk, compileSdk, targetSdk, and native CMake block when needed.
+       */
+      function buildGradleContent(languageId, pkg, targetSdk, minSdk) {
+        const isNativeCpp = languageId === "cpp-kotlin" || languageId === "cpp-java";
+        const usesKotlin =
+          languageId === "kotlin-compose" ||
+          languageId === "kotlin-xml" ||
+          languageId === "cpp-kotlin" ||
+          languageId === "kmp-android";
+
+        const pluginsText = usesKotlin
+          ? `plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}`
+          : `plugins {
+    id("com.android.application")
+}`;
+
+        const nativeBlock = isNativeCpp
+          ? `
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            cppFlags += "-std=c++17"
+        }
+    }
+`
+          : "";
+
+        return `${pluginsText}
+
+android {
+    namespace = "${pkg}"
+    compileSdk = ${targetSdk}
+
+    defaultConfig {
+        applicationId = "${pkg}"
+        minSdk = ${minSdk}
+        targetSdk = ${targetSdk}
+        versionCode = 1
+        versionName = "1.0"
+    }
+${nativeBlock}}
+`;
+      }
+
+      /**
+       * Generates app/src/main/AndroidManifest.xml bound directly to the uploaded app logo when present.
+       */
+      function buildManifestContent(safeName, targetSdk, minSdk, hasLogo) {
+        const boundLogoAttrs = hasLogo
+          ? `\n        android:logo="@drawable/app_logo_base64"`
+          : "";
         return `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Target SDK: API ${targetSdk} | Min SDK: API ${minSdk} -->
-    <uses-sdk android:minSdkVersion="${minSdk}" android:targetSdkVersion="${targetSdk}" />
+    <!-- Target SDK: API ${targetSdk} | Min SDK: API ${minSdk} | Bound Logo: ${hasLogo ? "Attached" : "Default"} -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -106,11 +235,11 @@
         android:allowBackup="true"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@mipmap/ic_launcher_round"${boundLogoAttrs}
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
-            android:name="${activityName}"
+            android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -122,145 +251,67 @@
 `;
       }
 
-      function buildGradleBuildFile(languageId, pkg, targetSdk, minSdk) {
-        if (languageId === "java-views") {
-          return `plugins {
-    id("com.android.application")
+      /**
+       * Generates CMakeLists.txt and native-lib.cpp for C++ Native JNI projects.
+       */
+      function buildCppNativeFiles(pkg) {
+        const jniSymbol = `Java_${pkg.replace(/\./g, "_")}_MainActivity_stringFromJNI`;
+        return [
+          {
+            path: "app/src/main/cpp/CMakeLists.txt",
+            language: "cmake",
+            content: `cmake_minimum_required(VERSION 3.22.1)
+project("droidnative")
+
+add_library(
+    droidnative
+    SHARED
+    native-lib.cpp
+)
+
+find_library(
+    log-lib
+    log
+)
+
+target_link_libraries(
+    droidnative
+    \${log-lib}
+)
+`
+          },
+          {
+            path: "app/src/main/cpp/native-lib.cpp",
+            language: "cpp",
+            content: `#include <jni.h>
+#include <string>
+
+extern "C" JNIEXPORT jstring JNICALL
+${jniSymbol}(JNIEnv* env, jobject /* thiz */) {
+    std::string message = "Native C++ JNI active in Droid AI Studio!";
+    return env->NewStringUTF(message.c_str());
 }
-
-android {
-    namespace = "${pkg}"
-    compileSdk = ${targetSdk}
-
-    defaultConfig {
-        applicationId = "${pkg}"
-        minSdk = ${minSdk}
-        targetSdk = ${targetSdk}
-        versionCode = 1
-        versionName = "1.0"
-    }
-}
-
-dependencies {
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.12.0")
-}
-`;
-        }
-
-        if (languageId === "kotlin-xml") {
-          return `plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-}
-
-android {
-    namespace = "${pkg}"
-    compileSdk = ${targetSdk}
-
-    defaultConfig {
-        applicationId = "${pkg}"
-        minSdk = ${minSdk}
-        targetSdk = ${targetSdk}
-        versionCode = 1
-        versionName = "1.0"
-    }
-}
-
-dependencies {
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.12.0")
-}
-`;
-        }
-
-        if (languageId === "dart-flutter") {
-          return `plugins {
-    id("com.android.application")
-    id("kotlin-android")
-    id("dev.flutter.flutter-gradle-plugin")
-}
-
-android {
-    namespace = "${pkg}"
-    compileSdk = ${targetSdk}
-
-    defaultConfig {
-        applicationId = "${pkg}"
-        minSdk = ${minSdk}
-        targetSdk = ${targetSdk}
-        versionCode = 1
-        versionName = "1.0.0"
-    }
-}
-`;
-        }
-
-        if (languageId === "rn-ts") {
-          return `plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("com.facebook.react")
-}
-
-android {
-    namespace = "${pkg}"
-    compileSdk = ${targetSdk}
-
-    defaultConfig {
-        applicationId = "${pkg}"
-        minSdk = ${minSdk}
-        targetSdk = ${targetSdk}
-        versionCode = 1
-        versionName = "1.0"
-    }
-}
-`;
-        }
-
-        return `plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-}
-
-android {
-    namespace = "${pkg}"
-    compileSdk = ${targetSdk}
-
-    defaultConfig {
-        applicationId = "${pkg}"
-        minSdk = ${minSdk}
-        targetSdk = ${targetSdk}
-        versionCode = 1
-        versionName = "1.0"
-    }
-}
-
-dependencies {
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.compose.material3:material3:1.3.1")
-}
-`;
+`
+          }
+        ];
       }
 
       /**
-       * Builds starter Android project files tailored to the selected language and Android SDK levels.
+       * Builds full starter project files based on selected Android Studio language, SDKs, and bound logo.
        */
-      function buildDefaultFiles(safeName, pkg, languageId, targetSdk, minSdk) {
+      function buildDefaultFiles(safeName, pkg, languageId, targetSdk, minSdk, hasLogo) {
         const pkgPath = pkg.replace(/\./g, "/");
-        const safeSlug =
-          safeName
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "_")
-            .replace(/^_|_$/g, "") || "droid_ai_app";
+        const minMeta = getMinSdkMeta(minSdk);
+        const logoComment = hasLogo
+          ? "Bound App Logo: app/src/main/res/drawable/app_logo_base64.txt"
+          : "Bound App Logo: None uploaded yet";
 
         const stringsXml = {
           path: "app/src/main/res/values/strings.xml",
           language: "xml",
           content: `<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">${safeName}</string>
+    <string name="app_name">${escapeXmlValue(safeName)}</string>
 </resources>
 `
         };
@@ -268,42 +319,14 @@ dependencies {
         const manifestXml = {
           path: "app/src/main/AndroidManifest.xml",
           language: "xml",
-          content: buildManifestXml(safeName, targetSdk, minSdk)
+          content: buildManifestContent(safeName, targetSdk, minSdk, hasLogo)
         };
 
-        const gradleFile = {
+        const gradleKts = {
           path: "app/build.gradle.kts",
           language: "kotlin",
-          content: buildGradleBuildFile(languageId, pkg, targetSdk, minSdk)
+          content: buildGradleContent(languageId, pkg, targetSdk, minSdk)
         };
-
-        if (languageId === "java-views") {
-          return [
-            {
-              path: `app/src/main/java/${pkgPath}/MainActivity.java`,
-              language: "java",
-              content: `package ${pkg};
-
-import android.os.Bundle;
-import android.widget.TextView;
-import androidx.appcompat.app.AppCompatActivity;
-
-public class MainActivity extends AppCompatActivity {
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        TextView tv = new TextView(this);
-        tv.setText("${safeName} • Target API ${targetSdk} (Min API ${minSdk})");
-        setContentView(tv);
-    }
-}
-`
-            },
-            stringsXml,
-            manifestXml,
-            gradleFile
-          ];
-        }
 
         if (languageId === "kotlin-xml") {
           return [
@@ -316,121 +339,222 @@ import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
+// ${logoComment}
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val label = TextView(this).apply {
-            text = "${safeName} • Target API ${targetSdk} (Min API ${minSdk})"
+        val view = TextView(this).apply {
+            text = "${safeName} • Kotlin XML • Target API ${targetSdk} • Min API ${minSdk} (${minMeta.coverage})"
         }
-        setContentView(label)
+        setContentView(view)
     }
 }
 `
             },
             stringsXml,
             manifestXml,
-            gradleFile
+            gradleKts
           ];
         }
 
-        if (languageId === "dart-flutter") {
+        if (languageId === "java-xml") {
           return [
             {
-              path: "lib/main.dart",
-              language: "dart",
-              content: `import 'package:flutter/material.dart';
+              path: `app/src/main/java/${pkgPath}/MainActivity.java`,
+              language: "java",
+              content: `package ${pkg};
 
-void main() {
-  runApp(const DroidStudioApp());
+import android.os.Bundle;
+import android.widget.TextView;
+import androidx.appcompat.app.AppCompatActivity;
+
+// ${logoComment}
+public class MainActivity extends AppCompatActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        TextView textView = new TextView(this);
+        textView.setText("${safeName} • Java XML • Target API ${targetSdk} • Min API ${minSdk} (${minMeta.coverage})");
+        setContentView(textView);
+    }
 }
-
-class DroidStudioApp extends StatelessWidget {
-  const DroidStudioApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '${safeName}',
-      theme: ThemeData(colorSchemeSeed: Colors.emerald, useMaterial3: true),
-      home: Scaffold(
-        appBar: AppBar(title: const Text('${safeName}')),
-        body: Center(
-          child: Text('Flutter on Android API ${targetSdk} (Min API ${minSdk})'),
-        ),
-      ),
-    );
-  }
-}
-`
-            },
-            {
-              path: "pubspec.yaml",
-              language: "yaml",
-              content: `name: ${safeSlug}
-description: "${safeName} built with Droid AI Studio (Target API ${targetSdk})"
-version: 1.0.0+1
-
-environment:
-  sdk: ">=3.4.0 <4.0.0"
-
-dependencies:
-  flutter:
-    sdk: flutter
 `
             },
             stringsXml,
             manifestXml,
-            gradleFile
+            gradleKts
           ];
         }
 
-        if (languageId === "rn-ts") {
+        if (languageId === "java-compose") {
           return [
             {
-              path: "App.tsx",
-              language: "typescript",
-              content: `import React from "react";
-import { SafeAreaView, Text, StyleSheet } from "react-native";
+              path: `app/src/main/java/${pkgPath}/MainActivity.java`,
+              language: "java",
+              content: `package ${pkg};
 
-export default function App() {
-  return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>${safeName}</Text>
-      <Text style={styles.meta}>React Native • Target API ${targetSdk} (Min API ${minSdk})</Text>
-    </SafeAreaView>
-  );
+import android.os.Bundle;
+import android.widget.TextView;
+import androidx.activity.ComponentActivity;
+
+// ${logoComment}
+public class MainActivity extends ComponentActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        TextView composeHostLabel = new TextView(this);
+        composeHostLabel.setText("${safeName} • Java Compose / Material • API ${targetSdk} (Min ${minSdk})");
+        setContentView(composeHostLabel);
+    }
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
-  title: { fontSize: 22, fontWeight: "700" },
-  meta: { marginTop: 8, fontSize: 13 }
-});
 `
-            },
-            {
-              path: "package.json",
-              language: "json",
-              content: JSON.stringify(
-                {
-                  name: safeSlug.replace(/_/g, "-"),
-                  version: "1.0.0",
-                  private: true,
-                  androidSdk: {
-                    targetSdk: Number(targetSdk),
-                    minSdk: Number(minSdk)
-                  }
-                },
-                null,
-                2
-              )
             },
             stringsXml,
             manifestXml,
-            gradleFile
+            gradleKts
           ];
         }
 
+        if (languageId === "cpp-kotlin") {
+          return [
+            {
+              path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
+              language: "kotlin",
+              content: `package ${pkg}
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+// ${logoComment}
+class MainActivity : ComponentActivity() {
+    external fun stringFromJNI(): String
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val nativeText = try {
+            stringFromJNI()
+        } catch (_: UnsatisfiedLinkError) {
+            "Native C++ Ready (Target API ${targetSdk}, Min API ${minSdk})"
+        }
+        setContent {
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text(text = "${safeName}", style = MaterialTheme.typography.headlineMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = nativeText)
+                    }
+                }
+            }
+        }
+    }
+
+    companion object {
+        init {
+            System.loadLibrary("droidnative")
+        }
+    }
+}
+`
+            },
+            ...buildCppNativeFiles(pkg),
+            stringsXml,
+            manifestXml,
+            gradleKts
+          ];
+        }
+
+        if (languageId === "cpp-java") {
+          return [
+            {
+              path: `app/src/main/java/${pkgPath}/MainActivity.java`,
+              language: "java",
+              content: `package ${pkg};
+
+import android.os.Bundle;
+import android.widget.TextView;
+import androidx.appcompat.app.AppCompatActivity;
+
+// ${logoComment}
+public class MainActivity extends AppCompatActivity {
+    static {
+        System.loadLibrary("droidnative");
+    }
+
+    public native String stringFromJNI();
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        TextView tv = new TextView(this);
+        tv.setText("${safeName} • C++ JNI + Java • API ${targetSdk} (Min ${minSdk})");
+        setContentView(tv);
+    }
+}
+`
+            },
+            ...buildCppNativeFiles(pkg),
+            stringsXml,
+            manifestXml,
+            gradleKts
+          ];
+        }
+
+        if (languageId === "kmp-android") {
+          return [
+            {
+              path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
+              language: "kotlin",
+              content: `package ${pkg}
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+// Kotlin Multiplatform (Android Target) • ${logoComment}
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text(text = "${safeName} (KMP)", style = MaterialTheme.typography.headlineMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "Target API ${targetSdk} • Min API ${minSdk} (${minMeta.coverage})")
+                    }
+                }
+            }
+        }
+    }
+}
+`
+            },
+            {
+              path: "shared/src/commonMain/kotlin/SharedApp.kt",
+              language: "kotlin",
+              content: `class SharedApp {
+    fun summary(appName: String, targetApi: Int, minApi: Int): String =
+        "\$appName KMP Shared Module (Target API \$targetApi, Min API \$minApi)"
+}
+`
+            },
+            stringsXml,
+            manifestXml,
+            gradleKts
+          ];
+        }
+
+        // Default: kotlin-compose
         return [
           {
             path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
@@ -446,6 +570,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
+// ${logoComment}
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -454,7 +579,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     MainScreen(
                         appName = "${safeName}",
-                        sdkInfo = "Target API ${targetSdk} • Min API ${minSdk}"
+                        sdkLabel = "Target API ${targetSdk} • Min API ${minSdk} (${minMeta.coverage})"
                     )
                 }
             }
@@ -463,11 +588,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(appName: String, sdkInfo: String) {
+fun MainScreen(appName: String, sdkLabel: String) {
     Column(modifier = Modifier.padding(24.dp)) {
         Text(text = appName, style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(6.dp))
-        Text(text = sdkInfo, style = MaterialTheme.typography.labelMedium)
+        Text(text = sdkLabel, style = MaterialTheme.typography.labelMedium)
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = "Created with Droid AI Studio")
     }
@@ -476,12 +601,12 @@ fun MainScreen(appName: String, sdkInfo: String) {
           },
           stringsXml,
           manifestXml,
-          gradleFile
+          gradleKts
         ];
       }
 
       /**
-       * Creates or updates an Android project object and synchronizes language & SDK metadata/files.
+       * Creates or updates a project while keeping minSdk <= targetSdk and binding logo resources directly.
        */
       function createAndroidProject({
         id,
@@ -498,10 +623,11 @@ fun MainScreen(appName: String, sdkInfo: String) {
       }) {
         const safeName = (name || "IMO Studio App").trim();
         const pkg = (packageName || "com.example.imostudio").trim();
-        const selectedLang = getLanguageMeta(languageId).id;
-        const parsedTargetSdk = Number(targetSdk) || 35;
-        const parsedMinSdk = Math.min(Number(minSdk) || 24, parsedTargetSdk);
+        const langMeta = getLanguageMeta(languageId);
+        const parsedTargetSdk = Number(targetSdk) || 36;
+        const parsedMinSdk = Math.min(Number(minSdk) || 21, parsedTargetSdk);
         const pkgPath = pkg.replace(/\./g, "/");
+        const hasLogo = Boolean(logoDataUrl);
 
         let files =
           !regenerateStarterFiles && Array.isArray(existingFiles) && existingFiles.length > 0
@@ -509,19 +635,19 @@ fun MainScreen(appName: String, sdkInfo: String) {
                 if (f.path.endsWith("strings.xml")) {
                   return {
                     ...f,
-                    content: `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">${safeName}</string>\n</resources>\n`
+                    content: `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">${escapeXmlValue(safeName)}</string>\n</resources>\n`
                   };
                 }
                 if (f.path.endsWith("AndroidManifest.xml")) {
                   return {
                     ...f,
-                    content: buildManifestXml(safeName, parsedTargetSdk, parsedMinSdk)
+                    content: buildManifestContent(safeName, parsedTargetSdk, parsedMinSdk, hasLogo)
                   };
                 }
                 if (f.path.endsWith("build.gradle.kts")) {
                   return {
                     ...f,
-                    content: buildGradleBuildFile(selectedLang, pkg, parsedTargetSdk, parsedMinSdk)
+                    content: buildGradleContent(langMeta.id, pkg, parsedTargetSdk, parsedMinSdk)
                   };
                 }
                 if (f.path.endsWith("MainActivity.kt")) {
@@ -542,16 +668,16 @@ fun MainScreen(appName: String, sdkInfo: String) {
                 }
                 return f;
               })
-            : buildDefaultFiles(safeName, pkg, selectedLang, parsedTargetSdk, parsedMinSdk);
+            : buildDefaultFiles(safeName, pkg, langMeta.id, parsedTargetSdk, parsedMinSdk, hasLogo);
 
         files = files.filter(
           (f) => f.path !== "app/src/main/res/drawable/app_logo_base64.txt"
         );
-        if (logoDataUrl) {
+        if (hasLogo) {
           files.push({
             path: "app/src/main/res/drawable/app_logo_base64.txt",
             language: "text",
-            content: `Logo File: ${logoFileName || "logo.png"}\nData URL:\n${logoDataUrl}`
+            content: `Bound App Logo File: ${logoFileName || "logo.png"}\nBound To App: ${safeName} (${pkg})\nManifest Icon/Logo: Bound\nData URL:\n${logoDataUrl}`
           });
         }
 
@@ -560,7 +686,7 @@ fun MainScreen(appName: String, sdkInfo: String) {
           name: safeName,
           packageName: pkg,
           description: description || `${safeName} Android Project`,
-          languageId: selectedLang,
+          languageId: langMeta.id,
           targetSdk: parsedTargetSdk,
           minSdk: parsedMinSdk,
           logoDataUrl: logoDataUrl || "",
@@ -571,9 +697,9 @@ fun MainScreen(appName: String, sdkInfo: String) {
       }
 
       /**
-       * Validates project files, XML headers, and Android SDK API compatibility.
+       * Validates SDK boundaries, empty files, XML headers, and logo attachment.
        */
-      function validateProjectFiles(files, targetSdk = 35, minSdk = 24) {
+      function validateProjectFiles(files, targetSdk = 36, minSdk = 21, hasLogo = false) {
         const issues = [];
         if (!files || files.length === 0) {
           return [{ filePath: "project", message: "প্রজেক্টে কোনো ফাইল নেই।", severity: "error" }];
@@ -585,6 +711,13 @@ fun MainScreen(appName: String, sdkInfo: String) {
             severity: "error"
           });
         }
+        if (!hasLogo) {
+          issues.push({
+            filePath: "app/src/main/AndroidManifest.xml",
+            message: "অ্যাপের সাথে কাস্টম লোগো যুক্ত করা হয়নি (ডিফল্ট আইকন ব্যবহৃত হচ্ছে)।",
+            severity: "warning"
+          });
+        }
         for (const f of files) {
           if (!f.content || !f.content.trim()) {
             issues.push({ filePath: f.path, message: "ফাইলটি খালি রয়েছে।", severity: "warning" });
@@ -592,13 +725,10 @@ fun MainScreen(appName: String, sdkInfo: String) {
           if (f.path.endsWith(".xml") && !f.content.includes("<?xml")) {
             issues.push({ filePath: f.path, message: "XML ফাইলে <?xml ...?> হেডার রাখা ভালো।", severity: "warning" });
           }
-          if (
-            f.path.endsWith("build.gradle.kts") &&
-            !f.content.includes(`compileSdk = ${targetSdk}`)
-          ) {
+          if (f.path.endsWith("build.gradle.kts") && !f.content.includes(`compileSdk = ${targetSdk}`)) {
             issues.push({
               filePath: f.path,
-              message: `Gradle ফাইলে compileSdk = ${targetSdk} সেট করা উচিত।`,
+              message: `Gradle ফাইলে compileSdk = ${targetSdk} থাকা উচিত। 'Gradle সিঙ্ক ও SDK যাচাই' চাপুন।`,
               severity: "warning"
             });
           }
@@ -609,15 +739,17 @@ fun MainScreen(appName: String, sdkInfo: String) {
       function localFallbackEdit(prompt, project, activeFile) {
         const target = activeFile || project.files[0];
         if (!target) return [];
+        const langMeta = getLanguageMeta(project.languageId);
         const comment = target.path.endsWith(".xml")
-          ? `<!-- AI Command (${getLanguageMeta(project.languageId).shortLabel}, API ${project.targetSdk}): ${prompt} -->\n`
-          : `// AI Command (${getLanguageMeta(project.languageId).shortLabel}, API ${project.targetSdk}): ${prompt}\n`;
+          ? `<!-- AI Command (${langMeta.shortLabel}, Target API ${project.targetSdk}, Min API ${project.minSdk}): ${prompt} -->\n`
+          : `// AI Command (${langMeta.shortLabel}, Target API ${project.targetSdk}, Min API ${project.minSdk}): ${prompt}\n`;
         return [{ ...target, content: `${comment}${target.content}` }];
       }
 
       async function runAICommand({ prompt, project, activeFile, apiKey }) {
         const langMeta = getLanguageMeta(project.languageId);
-        const sdkMeta = getSdkMeta(project.targetSdk);
+        const targetMeta = getTargetSdkMeta(project.targetSdk);
+        const minMeta = getMinSdkMeta(project.minSdk);
 
         if (apiKey && apiKey.trim().length > 10) {
           try {
@@ -627,8 +759,9 @@ fun MainScreen(appName: String, sdkInfo: String) {
 
             const sysPrompt = `You are Droid AI Studio's Android code generator for "${project.name}" (${project.packageName}).
 Project Language: ${langMeta.label}
-Target / Compile Android SDK: ${sdkMeta.badge} (Min SDK: API ${project.minSdk})
-Generate idiomatic code matching ${langMeta.label} and Android API ${project.targetSdk}.
+Target / Compile SDK: ${targetMeta.badge}
+Minimum SDK: ${minMeta.label}
+Logo Bound Directly to App: ${project.logoDataUrl ? "Yes" : "No"}
 Return ONLY valid JSON:
 {
   "reply": "Short explanation in Bengali",
@@ -769,9 +902,25 @@ Return ONLY valid JSON:
         return count;
       }
 
-      /**
-       * Foldable live app preview drawer showing selected language & Android SDK details.
-       */
+      function AppLogoBadge({ project, sizeClass = "h-9 w-9", textClass = "text-xs" }) {
+        if (project.logoDataUrl) {
+          return (
+            <img
+              src={project.logoDataUrl}
+              alt={`${project.name} Logo`}
+              className={`${sizeClass} shrink-0 rounded-full border border-white/40 bg-white object-cover`}
+            />
+          );
+        }
+        return (
+          <div
+            className={`${sizeClass} shrink-0 flex items-center justify-center rounded-full bg-white/20 font-bold text-white ${textClass}`}
+          >
+            {project.name.slice(0, 2).toUpperCase()}
+          </div>
+        );
+      }
+
       function RunAppDrawer({ project, onFold }) {
         const [tab, setTab] = useState("home");
         const [chatInput, setChatInput] = useState("");
@@ -782,10 +931,8 @@ Return ONLY valid JSON:
         const [callStatus, setCallStatus] = useState("");
 
         const langMeta = getLanguageMeta(project.languageId);
-        const sdkMeta = getSdkMeta(project.targetSdk);
-
-        const hasChatFeature = true;
-        const hasCallFeature = true;
+        const targetMeta = getTargetSdkMeta(project.targetSdk);
+        const minMeta = getMinSdkMeta(project.minSdk);
 
         const handleSendChat = (e) => {
           e.preventDefault();
@@ -809,7 +956,7 @@ Return ONLY valid JSON:
                   {langMeta.shortLabel}
                 </span>
                 <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  API {sdkMeta.api} (Min {project.minSdk})
+                  Target API {targetMeta.api} • Min API {minMeta.api} ({minMeta.coverage})
                 </span>
               </div>
               <button
@@ -823,85 +970,105 @@ Return ONLY valid JSON:
 
             <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-[2rem] border-4 border-slate-800 bg-slate-950 shadow-2xl">
               <div className="flex items-center justify-between bg-slate-900 px-4 py-1.5 text-[10px] text-slate-400">
-                <span>18:06</span>
-                <span>{sdkMeta.badge}</span>
+                <span>19:15</span>
+                <span>{targetMeta.badge}</span>
                 <span>100%</span>
               </div>
 
               <div className="flex items-center gap-3 bg-emerald-600 px-4 py-2.5 text-white">
-                {project.logoDataUrl ? (
-                  <img
-                    src={project.logoDataUrl}
-                    alt="Logo"
-                    className="h-9 w-9 rounded-full border border-white/40 bg-white object-cover"
-                  />
-                ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
-                    {project.name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
+                <AppLogoBadge project={project} sizeClass="h-9 w-9" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-bold">{project.name}</div>
                   <div className="truncate text-[10px] text-emerald-100">
-                    {langMeta.label} • API {sdkMeta.api}
+                    {langMeta.shortLabel} • Min API {minMeta.api} ({minMeta.coverage})
                   </div>
                 </div>
               </div>
 
-              <div className="min-h-[240px] p-3">
+              <div className="min-h-[245px] p-3">
                 {tab === "home" && (
                   <div className="space-y-2.5">
+                    <div className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900 p-2.5">
+                      <AppLogoBadge project={project} sizeClass="h-10 w-10" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-semibold text-slate-100">
+                          {project.name}
+                        </div>
+                        <div className="truncate text-[10px] text-slate-400">
+                          {project.logoDataUrl
+                            ? `লোগো যুক্ত: ${project.logoFileName || "app_logo"}`
+                            : "ডিফল্ট লোগো (প্রজেক্ট এডিটে লোগো যুক্ত করুন)"}
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
                       {project.description}
                     </div>
-                    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-[11px] text-slate-300 space-y-1">
+                    <div className="space-y-1 rounded-xl border border-slate-800 bg-slate-900/70 p-2.5 text-[11px] text-slate-300">
                       <div>
                         ভাষা: <span className="font-semibold text-purple-300">{langMeta.label}</span>
                       </div>
                       <div>
-                        Android SDK: <span className="font-semibold text-emerald-400">{sdkMeta.badge}</span> (Min API {project.minSdk})
+                        Target / Compile: <span className="font-semibold text-emerald-400">{targetMeta.badge}</span>
                       </div>
                       <div>
-                        মোট ফাইল: <span className="font-semibold text-amber-300">{project.files.length}</span>
+                        Minimum SDK: <span className="font-semibold text-amber-300">{minMeta.label}</span>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2 pt-1">
-                      {hasChatFeature && (
-                        <button
-                          type="button"
-                          onClick={() => setTab("chats")}
-                          className="rounded-xl bg-emerald-600 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
-                        >
-                          চ্যাট খুলুন
-                        </button>
-                      )}
-                      {hasCallFeature && (
-                        <button
-                          type="button"
-                          onClick={() => setTab("calls")}
-                          className="rounded-xl bg-blue-600 py-2 text-xs font-semibold text-white hover:bg-blue-500"
-                        >
-                          কল স্ক্রিন
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => setTab("chats")}
+                        className="rounded-xl bg-emerald-600 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
+                      >
+                        চ্যাট খুলুন
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTab("calls")}
+                        className="rounded-xl bg-blue-600 py-2 text-xs font-semibold text-white hover:bg-blue-500"
+                      >
+                        কল স্ক্রিন
+                      </button>
                     </div>
                   </div>
                 )}
 
                 {tab === "chats" && (
-                  <div className="flex h-[215px] flex-col">
+                  <div className="flex h-[220px] flex-col">
                     <div className="mb-2 flex-1 space-y-1.5 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 p-2">
                       {chatList.map((item) => (
                         <div
                           key={item.id}
-                          className={`rounded-lg px-2.5 py-1.5 text-xs ${
-                            item.sender === "Me"
-                              ? "ml-6 bg-emerald-600 text-white"
-                              : "mr-6 bg-slate-800 text-slate-200"
+                          className={`flex items-start gap-1.5 ${
+                            item.sender === "Me" ? "justify-end" : "justify-start"
                           }`}
                         >
-                          <div className="text-[9px] opacity-75">{item.sender}</div>
-                          <div>{item.text}</div>
+                          {item.sender !== "Me" && (
+                            <AppLogoBadge
+                              project={project}
+                              sizeClass="h-6 w-6"
+                              textClass="text-[9px]"
+                            />
+                          )}
+                          <div
+                            className={`rounded-lg px-2.5 py-1.5 text-xs ${
+                              item.sender === "Me"
+                                ? "bg-emerald-600 text-white"
+                                : "bg-slate-800 text-slate-200"
+                            }`}
+                          >
+                            <div className="text-[9px] opacity-75">{item.sender}</div>
+                            <div>{item.text}</div>
+                          </div>
+                          {item.sender === "Me" && (
+                            <AppLogoBadge
+                              project={project}
+                              sizeClass="h-6 w-6"
+                              textClass="text-[9px]"
+                            />
+                          )}
                         </div>
                       ))}
                     </div>
@@ -923,9 +1090,15 @@ Return ONLY valid JSON:
                 )}
 
                 {tab === "calls" && (
-                  <div className="flex h-[215px] flex-col items-center justify-center gap-3 text-center">
-                    <div className="text-2xl">📞</div>
-                    <div className="text-xs font-bold text-slate-200">Audio & Video Call</div>
+                  <div className="flex h-[220px] flex-col items-center justify-center gap-3 text-center">
+                    <AppLogoBadge
+                      project={project}
+                      sizeClass="h-14 w-14"
+                      textClass="text-sm"
+                    />
+                    <div className="text-xs font-bold text-slate-200">
+                      {project.name} • Audio & Video Call
+                    </div>
                     {callStatus && <div className="text-[11px] text-emerald-400">{callStatus}</div>}
                     <div className="flex gap-2">
                       <button
@@ -975,9 +1148,6 @@ Return ONLY valid JSON:
         );
       }
 
-      /**
-       * Main Droid AI Studio application component.
-       */
       function App() {
         const [projects, setProjects] = useState(() => {
           try {
@@ -994,8 +1164,8 @@ Return ONLY valid JSON:
               packageName: "com.example.imostudio",
               description: "Android Messaging & Calling App",
               languageId: "kotlin-compose",
-              targetSdk: 35,
-              minSdk: 24
+              targetSdk: 36,
+              minSdk: 21
             })
           ];
         });
@@ -1045,8 +1215,8 @@ Return ONLY valid JSON:
         const [setupPkg, setSetupPkg] = useState("com.example.imostudio");
         const [setupDesc, setSetupDesc] = useState("Android Messaging & Calling App");
         const [setupLanguage, setSetupLanguage] = useState("kotlin-compose");
-        const [setupTargetSdk, setSetupTargetSdk] = useState(35);
-        const [setupMinSdk, setSetupMinSdk] = useState(24);
+        const [setupTargetSdk, setSetupTargetSdk] = useState(36);
+        const [setupMinSdk, setSetupMinSdk] = useState(21);
         const [setupRegenerateStarter, setSetupRegenerateStarter] = useState(false);
         const [setupLogoUrl, setSetupLogoUrl] = useState("");
         const [setupLogoName, setSetupLogoName] = useState("");
@@ -1065,7 +1235,7 @@ Return ONLY valid JSON:
             id: "m-1",
             role: "assistant",
             content:
-              "স্বাগতম! নতুন প্রজেক্ট বা এডিটে ল্যাঙ্গুয়েজ ও Android SDK সিলেক্ট করুন, হিস্ট্রি থেকে প্রজেক্ট ম্যানেজ করুন, লোগো আপলোড করুন, AI কমান্ড দিন এবং ফোল্ডিং Run বাটন দিয়ে লাইভ প্রিভিউ দেখুন।"
+              "স্বাগতম! Android Studio-র সব ল্যাঙ্গুয়েজ ও SDK অপশন দিয়ে প্রজেক্ট তৈরি বা এডিট করুন, এক ক্লিকে সর্বোচ্চ ডিভাইস সাপোর্ট (API 21 ~99.8%) বেছে নিন, লোগো অ্যাপে যুক্ত করুন এবং AI বা GitHub ব্যবহার করুন।"
           }
         ]);
 
@@ -1075,12 +1245,19 @@ Return ONLY valid JSON:
         );
 
         const issues = useMemo(
-          () => validateProjectFiles(project?.files || [], project?.targetSdk, project?.minSdk),
+          () =>
+            validateProjectFiles(
+              project?.files || [],
+              project?.targetSdk,
+              project?.minSdk,
+              Boolean(project?.logoDataUrl)
+            ),
           [project]
         );
 
         const currentLangMeta = getLanguageMeta(project?.languageId);
-        const currentSdkMeta = getSdkMeta(project?.targetSdk);
+        const currentTargetMeta = getTargetSdkMeta(project?.targetSdk);
+        const currentMinMeta = getMinSdkMeta(project?.minSdk);
 
         const openNewProjectModal = () => {
           setEditingProjectId(null);
@@ -1088,8 +1265,8 @@ Return ONLY valid JSON:
           setSetupPkg("com.example.newapp");
           setSetupDesc("New Android App");
           setSetupLanguage("kotlin-compose");
-          setSetupTargetSdk(35);
-          setSetupMinSdk(24);
+          setSetupTargetSdk(36);
+          setSetupMinSdk(21);
           setSetupRegenerateStarter(false);
           setSetupLogoUrl("");
           setSetupLogoName("");
@@ -1103,12 +1280,17 @@ Return ONLY valid JSON:
           setSetupPkg(targetProj.packageName);
           setSetupDesc(targetProj.description);
           setSetupLanguage(targetProj.languageId || "kotlin-compose");
-          setSetupTargetSdk(targetProj.targetSdk || 35);
-          setSetupMinSdk(targetProj.minSdk || 24);
+          setSetupTargetSdk(targetProj.targetSdk || 36);
+          setSetupMinSdk(targetProj.minSdk || 21);
           setSetupRegenerateStarter(false);
           setSetupLogoUrl(targetProj.logoDataUrl || "");
           setSetupLogoName(targetProj.logoFileName || "");
           setIsSetupOpen(true);
+        };
+
+        const applyMaxDeviceSupportPreset = () => {
+          setSetupTargetSdk(36);
+          setSetupMinSdk(21);
         };
 
         const handleLogoUpload = (e) => {
@@ -1124,10 +1306,58 @@ Return ONLY valid JSON:
           reader.readAsDataURL(file);
         };
 
+        const handleGradleSdkSync = () => {
+          const clampedMin = Math.min(Number(project.minSdk) || 21, Number(project.targetSdk) || 36);
+          const gradleContent = buildGradleContent(
+            project.languageId,
+            project.packageName,
+            project.targetSdk,
+            clampedMin
+          );
+          const manifestContent = buildManifestContent(
+            project.name,
+            project.targetSdk,
+            clampedMin,
+            Boolean(project.logoDataUrl)
+          );
+
+          updateCurrentProject((prev) => {
+            const map = new Map();
+            for (const f of prev.files) {
+              map.set(f.path, f);
+            }
+            map.set("app/build.gradle.kts", {
+              path: "app/build.gradle.kts",
+              language: "kotlin",
+              content: gradleContent
+            });
+            map.set("app/src/main/AndroidManifest.xml", {
+              path: "app/src/main/AndroidManifest.xml",
+              language: "xml",
+              content: manifestContent
+            });
+            return {
+              ...prev,
+              minSdk: clampedMin,
+              files: Array.from(map.values())
+            };
+          });
+
+          setSelectedPath("app/build.gradle.kts");
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `m-${Date.now()}`,
+              role: "assistant",
+              content: `Gradle সিঙ্ক ও SDK যাচাই সম্পন্ন: Target/Compile API ${project.targetSdk}, Minimum API ${clampedMin} (${getMinSdkMeta(clampedMin).coverage}) অনুযায়ী build.gradle.kts ও AndroidManifest.xml আপডেট হয়েছে।`
+            }
+          ]);
+        };
+
         const handleSaveProjectForm = (e) => {
           e.preventDefault();
-          const normalizedTarget = Number(setupTargetSdk) || 35;
-          const normalizedMin = Math.min(Number(setupMinSdk) || 24, normalizedTarget);
+          const normalizedTarget = Number(setupTargetSdk) || 36;
+          const normalizedMin = Math.min(Number(setupMinSdk) || 21, normalizedTarget);
 
           if (editingProjectId) {
             const oldProj = projects.find((p) => p.id === editingProjectId);
@@ -1140,8 +1370,8 @@ Return ONLY valid JSON:
               languageId: setupLanguage,
               targetSdk: normalizedTarget,
               minSdk: normalizedMin,
-              logoDataUrl: setupLogoUrl || undefined,
-              logoFileName: setupLogoName || undefined,
+              logoDataUrl: setupLogoUrl || "",
+              logoFileName: setupLogoName || "",
               existingFiles: oldProj?.files,
               regenerateStarterFiles: setupRegenerateStarter || languageChanged
             });
@@ -1155,9 +1385,11 @@ Return ONLY valid JSON:
               {
                 id: `m-${Date.now()}`,
                 role: "assistant",
-                content: `"${updated.name}" প্রজেক্ট আপডেট হয়েছে — ভাষা: ${
+                content: `"${updated.name}" প্রজেক্ট আপডেট হয়েছে — ${
                   getLanguageMeta(updated.languageId).label
-                }, SDK: ${getSdkMeta(updated.targetSdk).badge} (Min API ${updated.minSdk})।`
+                } | Target API ${updated.targetSdk} | Min API ${updated.minSdk} (${
+                  getMinSdkMeta(updated.minSdk).coverage
+                })।`
               }
             ]);
           } else {
@@ -1168,8 +1400,8 @@ Return ONLY valid JSON:
               languageId: setupLanguage,
               targetSdk: normalizedTarget,
               minSdk: normalizedMin,
-              logoDataUrl: setupLogoUrl || undefined,
-              logoFileName: setupLogoName || undefined
+              logoDataUrl: setupLogoUrl || "",
+              logoFileName: setupLogoName || ""
             });
             setProjects((prev) => [created, ...prev]);
             setActiveProjectId(created.id);
@@ -1183,9 +1415,9 @@ Return ONLY valid JSON:
                 role: "assistant",
                 content: `নতুন প্রজেক্ট "${created.name}" (${created.packageName}) তৈরি হয়েছে। ভাষা: ${
                   getLanguageMeta(created.languageId).label
-                } | SDK: ${getSdkMeta(created.targetSdk).badge} (Min API ${created.minSdk})।${
-                  created.logoFileName ? ` লোগো: ${created.logoFileName}` : ""
-                }`
+                } | Target API ${created.targetSdk}, Min API ${created.minSdk} (${
+                  getMinSdkMeta(created.minSdk).coverage
+                })।`
               }
             ]);
           }
@@ -1285,17 +1517,17 @@ Return ONLY valid JSON:
 
         return (
           <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
-            {/* Top Header */}
+            {/* Top Navigation Bar */}
             <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-4 py-3">
               <div className="flex items-center gap-3">
                 {project.logoDataUrl ? (
                   <img
                     src={project.logoDataUrl}
                     alt="App Logo"
-                    className="h-9 w-9 rounded-lg border border-slate-700 object-cover"
+                    className="h-10 w-10 rounded-xl border border-emerald-500/40 object-cover shadow"
                   />
                 ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 font-bold text-white">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 font-bold text-white shadow">
                     AI
                   </div>
                 )}
@@ -1306,12 +1538,10 @@ Return ONLY valid JSON:
                       {currentLangMeta.shortLabel}
                     </span>
                     <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                      {currentSdkMeta.badge}
+                      API {currentTargetMeta.api} • Min {currentMinMeta.api} ({currentMinMeta.coverage})
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400">
-                    {project.packageName} • Min API {project.minSdk}
-                  </p>
+                  <p className="text-xs text-slate-400">{project.packageName}</p>
                 </div>
               </div>
 
@@ -1326,6 +1556,13 @@ Return ONLY valid JSON:
                   }`}
                 >
                   {isRunnerFolded ? "▶ Run App (ফোল্ড)" : "▼ Run App খোলা"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGradleSdkSync}
+                  className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-500"
+                >
+                  Gradle সিঙ্ক ও SDK যাচাই
                 </button>
                 <button
                   type="button"
@@ -1365,19 +1602,18 @@ Return ONLY valid JSON:
               </div>
             </header>
 
-            {/* Main Workspace Grid */}
+            {/* Main 3-Column Workspace */}
             <div className="grid flex-1 grid-cols-1 lg:grid-cols-12">
-              {/* Left Sidebar: Project History & Files */}
               <aside className="flex flex-col gap-4 border-b border-slate-800 bg-slate-900/60 p-3 lg:col-span-3 lg:border-b-0 lg:border-r">
                 <div>
                   <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase text-amber-300">
                     <span>প্রজেক্ট হিস্ট্রি ({projects.length})</span>
                   </div>
-                  <div className="max-h-52 space-y-1.5 overflow-y-auto pr-1">
+                  <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
                     {projects.map((p) => {
                       const isCurrent = p.id === project.id;
                       const pLang = getLanguageMeta(p.languageId);
-                      const pSdk = getSdkMeta(p.targetSdk);
+                      const pMin = getMinSdkMeta(p.minSdk);
                       return (
                         <div
                           key={p.id}
@@ -1388,18 +1624,31 @@ Return ONLY valid JSON:
                               : "border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800"
                           }`}
                         >
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate font-semibold">{p.name}</div>
-                            <div className="truncate font-mono text-[10px] text-slate-400">
-                              {p.packageName}
-                            </div>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-purple-300">
-                                {pLang.shortLabel}
-                              </span>
-                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-emerald-300">
-                                API {pSdk.api}
-                              </span>
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            {p.logoDataUrl ? (
+                              <img
+                                src={p.logoDataUrl}
+                                alt={p.name}
+                                className="h-8 w-8 shrink-0 rounded-lg border border-slate-700 object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-[10px] font-bold text-emerald-300">
+                                {p.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate font-semibold">{p.name}</div>
+                              <div className="truncate font-mono text-[10px] text-slate-400">
+                                {p.packageName}
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-purple-300">
+                                  {pLang.shortLabel}
+                                </span>
+                                <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-emerald-300">
+                                  Min {pMin.api} ({pMin.coverage})
+                                </span>
+                              </div>
                             </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
@@ -1454,7 +1703,7 @@ Return ONLY valid JSON:
                 </div>
               </aside>
 
-              {/* Center Area: Foldable Live App Runner + Code Editor */}
+              {/* Center Code Editor + Foldable RunAppDrawer */}
               <main className={`flex flex-col p-3 ${isChatOpen ? "lg:col-span-5" : "lg:col-span-9"}`}>
                 {!isRunnerFolded && (
                   <RunAppDrawer
@@ -1478,7 +1727,7 @@ Return ONLY valid JSON:
                 />
               </main>
 
-              {/* Right Panel: AI Code Generator */}
+              {/* Right AI Code Generator Panel */}
               {isChatOpen && (
                 <section className="flex flex-col border-t border-slate-800 bg-slate-900/80 p-3 lg:col-span-4 lg:border-l lg:border-t-0">
                   <div className="mb-2 flex items-center justify-between">
@@ -1546,10 +1795,10 @@ Return ONLY valid JSON:
               )}
             </div>
 
-            {/* Modal: New / Edit Project */}
+            {/* Project Create / Edit Modal */}
             {isSetupOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-                <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 p-5">
+                <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 p-5">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-base font-bold">
                       {editingProjectId ? "পুরনো প্রজেক্ট এডিট করুন" : "নতুন প্রজেক্ট ও লোগো"}
@@ -1582,8 +1831,8 @@ Return ONLY valid JSON:
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs text-purple-300 font-semibold">
-                        প্রজেক্ট ল্যাঙ্গুয়েজ (কোন ভাষায় অ্যাপ তৈরি হবে)
+                      <label className="mb-1 block text-xs font-semibold text-purple-300">
+                        প্রজেক্ট ল্যাঙ্গুয়েজ (Android Studio)
                       </label>
                       <select
                         value={setupLanguage}
@@ -1597,46 +1846,72 @@ Return ONLY valid JSON:
                         ))}
                       </select>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="mb-1 block text-xs text-emerald-300 font-semibold">
-                          Android SDK (Target / Compile)
-                        </label>
-                        <select
-                          value={setupTargetSdk}
-                          onChange={(e) => {
-                            const nextTarget = Number(e.target.value);
-                            setSetupTargetSdk(nextTarget);
-                            if (Number(setupMinSdk) > nextTarget) {
-                              setSetupMinSdk(24);
-                            }
-                          }}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
+
+                    {/* SDK Selection with One-Click Max Device Support */}
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-emerald-300">
+                          Android SDK ও ডিভাইস সাপোর্ট
+                        </span>
+                        <button
+                          type="button"
+                          onClick={applyMaxDeviceSupportPreset}
+                          className="rounded-lg bg-emerald-600/25 border border-emerald-500/40 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-600/40"
                         >
-                          {ANDROID_SDK_OPTIONS.map((sdk) => (
-                            <option key={sdk.api} value={sdk.api}>
-                              {sdk.badge}
-                            </option>
-                          ))}
-                        </select>
+                          সর্বোচ্চ সাপোর্ট (সব ফোনে চলার উপযোগী)
+                        </button>
                       </div>
-                      <div>
-                        <label className="mb-1 block text-xs text-slate-300">
-                          Minimum SDK
-                        </label>
-                        <select
-                          value={setupMinSdk}
-                          onChange={(e) => setSetupMinSdk(Number(e.target.value))}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
-                        >
-                          {MIN_SDK_OPTIONS.filter((m) => m <= Number(setupTargetSdk)).map((m) => (
-                            <option key={m} value={m}>
-                              API {m}
-                            </option>
-                          ))}
-                        </select>
+
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-[11px] text-slate-300">
+                            Target / Compile SDK
+                          </label>
+                          <select
+                            value={setupTargetSdk}
+                            onChange={(e) => {
+                              const nextTarget = Number(e.target.value);
+                              setSetupTargetSdk(nextTarget);
+                              if (Number(setupMinSdk) > nextTarget) {
+                                const validMins = MIN_SDK_OPTIONS.filter((m) => m.api <= nextTarget);
+                                setSetupMinSdk(validMins[0]?.api || 21);
+                              }
+                            }}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-slate-100"
+                          >
+                            {TARGET_SDK_OPTIONS.map((sdk) => (
+                              <option key={sdk.api} value={sdk.api}>
+                                {sdk.badge}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-[11px] text-slate-300">
+                            Minimum SDK (ফোন সাপোর্ট)
+                          </label>
+                          <select
+                            value={setupMinSdk}
+                            onChange={(e) => setSetupMinSdk(Number(e.target.value))}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-slate-100"
+                          >
+                            {MIN_SDK_OPTIONS.filter((m) => m.api <= Number(setupTargetSdk)).map((m) => (
+                              <option key={m.api} value={m.api}>
+                                {m.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] text-emerald-300">
+                        নির্বাচিত Min SDK (API {setupMinSdk}) আনুমানিক{" "}
+                        <span className="font-bold">{getMinSdkMeta(setupMinSdk).coverage}</span>{" "}
+                        Android ফোনে সাপোর্ট করে।
                       </div>
                     </div>
+
                     <div>
                       <label className="mb-1 block text-xs text-slate-300">বিবরণ</label>
                       <input
@@ -1645,6 +1920,7 @@ Return ONLY valid JSON:
                         className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
                       />
                     </div>
+
                     {editingProjectId && (
                       <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2.5 text-xs text-slate-300">
                         <input
@@ -1656,8 +1932,12 @@ Return ONLY valid JSON:
                         <span>স্টার্টার ফাইলগুলো নতুন ভাষা ও SDK অনুযায়ী রিসেট করুন</span>
                       </label>
                     )}
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-300">অ্যাপ লোগো</label>
+
+                    {/* Direct App Logo Binding */}
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <label className="mb-1 block text-xs font-semibold text-amber-300">
+                        অ্যাপ লোগো (সরাসরি অ্যাপে যুক্ত হবে)
+                      </label>
                       <input
                         type="file"
                         accept="image/*"
@@ -1665,16 +1945,36 @@ Return ONLY valid JSON:
                         className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100"
                       />
                       {setupLogoUrl && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <img
-                            src={setupLogoUrl}
-                            alt="Preview"
-                            className="h-10 w-10 rounded-lg border border-slate-700 object-cover"
-                          />
-                          <span className="text-xs text-emerald-400">{setupLogoName}</span>
+                        <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900 p-2">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <img
+                              src={setupLogoUrl}
+                              alt="Preview"
+                              className="h-11 w-11 shrink-0 rounded-xl border border-emerald-500/40 object-cover"
+                            />
+                            <div className="min-w-0">
+                              <div className="truncate text-xs font-semibold text-emerald-300">
+                                {setupLogoName || "app_logo"}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                Manifest, Drawable ও Live Runner-এ যুক্ত হবে
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSetupLogoUrl("");
+                              setSetupLogoName("");
+                            }}
+                            className="shrink-0 rounded-lg bg-rose-950/70 px-2.5 py-1 text-[11px] font-semibold text-rose-300 hover:bg-rose-900"
+                          >
+                            সরান
+                          </button>
                         </div>
                       )}
                     </div>
+
                     <div className="flex justify-end gap-2 pt-2">
                       <button
                         type="button"
@@ -1695,7 +1995,7 @@ Return ONLY valid JSON:
               </div>
             )}
 
-            {/* Modal: Code Review */}
+            {/* Code Review Modal */}
             {isReviewOpen && (
               <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950 p-4">
                 <div className="mx-auto max-w-4xl">
@@ -1736,7 +2036,7 @@ Return ONLY valid JSON:
               </div>
             )}
 
-            {/* Modal: GitHub Push */}
+            {/* GitHub Push Modal */}
             {isPushOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
                 <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-5">
