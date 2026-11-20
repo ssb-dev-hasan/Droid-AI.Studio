@@ -730,7 +730,9 @@
 
       // Sync user profile, email lookup, and projects to Firebase Realtime Database
       async function syncUserAndProjectsToRTDB(rtdb, userRecord, projectsList) {
-        if (!rtdb || !userRecord || !userRecord.uid) return;
+        if (!rtdb || !userRecord || !userRecord.uid) {
+          return { ok: false, error: "Realtime Database অনুপলব্ধ বা ইউজার লগইন নেই।" };
+        }
         const nowIso = new Date().toISOString();
         const emailKey = emailToDocKey(userRecord.email);
 
@@ -773,8 +775,13 @@
               updatedAt: nowIso
             });
           }
+          return { ok: true, syncedAt: new Date().toLocaleTimeString("bn-BD") };
         } catch (err) {
           console.warn("RTDB sync skipped or failed:", err);
+          return {
+            ok: false,
+            error: err && err.message ? err.message : "Realtime Database সিঙ্ক ব্যর্থ হয়েছে।"
+          };
         }
       }
 
@@ -796,7 +803,7 @@
         return null;
       }
 
-      // Unified email login / auto-signup with duplicate prevention
+      // Unified email login / auto-signup with accurate Firebase v10 error handling
       async function authenticateEmailAuto({ email, password, projectsList }) {
         const cleanEmail = normalizeEmail(email);
         const cleanPassword = String(password || "");
@@ -810,59 +817,115 @@
         const fb = getFirebaseServices();
         const nowIso = new Date().toISOString();
 
+        const finalizeExistingUser = async (u) => {
+          let prevData = {};
+          if (fb.rtdb) {
+            try {
+              const snap = await fb.rtdb.ref("users/" + u.uid).once("value");
+              if (snap && snap.exists()) {
+                prevData = snap.val() || {};
+              }
+            } catch (_) {}
+          }
+          const cloudProjects = await loadUserProjectsFromRTDB(fb.rtdb, u.uid);
+          const mergedProjects = cloudProjects || projectsList;
+          const nextRecord = {
+            uid: u.uid,
+            email: cleanEmail,
+            createdAt: prevData.createdAt || nowIso,
+            lastLoginAt: nowIso,
+            loginCount: (prevData.loginCount || 0) + 1,
+            projectCount: Array.isArray(mergedProjects) ? mergedProjects.length : 0,
+            mode: "firebase"
+          };
+          const syncRes = await syncUserAndProjectsToRTDB(fb.rtdb, nextRecord, mergedProjects);
+          return {
+            user: nextRecord,
+            isNewAccount: false,
+            syncedProjects: cloudProjects,
+            syncResult: syncRes
+          };
+        };
+
         if (fb && fb.auth) {
           try {
             const cred = await fb.auth.signInWithEmailAndPassword(cleanEmail, cleanPassword);
-            const u = cred.user;
-            let prevData = {};
-            if (fb.rtdb) {
-              try {
-                const snap = await fb.rtdb.ref("users/" + u.uid).once("value");
-                if (snap && snap.exists()) {
-                  prevData = snap.val() || {};
-                }
-              } catch (_) {}
-            }
-            const cloudProjects = await loadUserProjectsFromRTDB(fb.rtdb, u.uid);
-            const mergedProjects = cloudProjects || projectsList;
-            const nextRecord = {
-              uid: u.uid,
-              email: cleanEmail,
-              createdAt: prevData.createdAt || nowIso,
-              lastLoginAt: nowIso,
-              loginCount: (prevData.loginCount || 0) + 1,
-              projectCount: Array.isArray(mergedProjects) ? mergedProjects.length : 0,
-              mode: "firebase"
-            };
-            await syncUserAndProjectsToRTDB(fb.rtdb, nextRecord, mergedProjects);
-            return { user: nextRecord, isNewAccount: false, syncedProjects: cloudProjects };
+            return await finalizeExistingUser(cred.user);
           } catch (signInErr) {
             const code = signInErr && signInErr.code ? signInErr.code : "";
-            if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+            // Firebase v10+ returns auth/invalid-credential or auth/invalid-login-credentials
+            // for BOTH non-existent emails and wrong passwords when Email Enumeration Protection is enabled.
+            // So we attempt createUserWithEmailAndPassword first, and ONLY show "already registered" if that throws auth/email-already-in-use!
+            const shouldTryAutoCreate =
+              code === "auth/user-not-found" ||
+              code === "auth/invalid-credential" ||
+              code === "auth/invalid-login-credentials" ||
+              code === "auth/wrong-password";
+
+            if (shouldTryAutoCreate) {
+              try {
+                const createdCred = await fb.auth.createUserWithEmailAndPassword(
+                  cleanEmail,
+                  cleanPassword
+                );
+                const createdUser = createdCred.user;
+                const newRecord = {
+                  uid: createdUser.uid,
+                  email: cleanEmail,
+                  createdAt: nowIso,
+                  lastLoginAt: nowIso,
+                  loginCount: 1,
+                  projectCount: Array.isArray(projectsList) ? projectsList.length : 0,
+                  mode: "firebase"
+                };
+                const syncRes = await syncUserAndProjectsToRTDB(fb.rtdb, newRecord, projectsList);
+                return {
+                  user: newRecord,
+                  isNewAccount: true,
+                  syncedProjects: null,
+                  syncResult: syncRes
+                };
+              } catch (createErr) {
+                const createCode = createErr && createErr.code ? createErr.code : "";
+                if (createCode === "auth/email-already-in-use") {
+                  throw new Error(
+                    "এই ইমেইলটি আগে থেকেই নিবন্ধিত আছে। নতুন অ্যাকাউন্ট তৈরি করা হয়নি—পুরনো অ্যাকাউন্টে ঢুকতে সঠিক পাসওয়ার্ড দিন।"
+                  );
+                }
+                if (createCode === "auth/operation-not-allowed") {
+                  throw new Error(
+                    "Firebase Console-এ Email/Password Sign-in চালু নেই (auth/operation-not-allowed)। Build → Authentication → Sign-in method থেকে Email/Password Enable করুন।"
+                  );
+                }
+                if (createCode === "auth/unauthorized-domain") {
+                  throw new Error(
+                    "এই ডোমেইনটি Firebase-এ অনুমোদিত নয় (auth/unauthorized-domain)। Authentication → Settings → Authorized domains-এ আপনার ডোমেইন যোগ করুন।"
+                  );
+                }
+                throw new Error(
+                  "অ্যাকাউন্ট তৈরি ব্যর্থ (" +
+                    (createCode || "error") +
+                    "): " +
+                    (createErr && createErr.message ? createErr.message : "ত্রুটি হয়েছে।")
+                );
+              }
+            }
+
+            if (code === "auth/operation-not-allowed") {
               throw new Error(
-                "এই ইমেইলটি আগে থেকেই নিবন্ধিত আছে। নতুন অ্যাকাউন্ট তৈরি করা হয়নি—পুরনো অ্যাকাউন্টে ঢুকতে সঠিক পাসওয়ার্ড দিন।"
+                "Firebase Console-এ Email/Password Sign-in চালু নেই (auth/operation-not-allowed)। Build → Authentication → Sign-in method থেকে Email/Password Enable করুন।"
               );
             }
-            if (code === "auth/user-not-found") {
-              const createdCred = await fb.auth.createUserWithEmailAndPassword(
-                cleanEmail,
-                cleanPassword
+            if (code === "auth/unauthorized-domain") {
+              throw new Error(
+                "এই ডোমেইনটি Firebase-এ অনুমোদিত নয় (auth/unauthorized-domain)। Authentication → Settings → Authorized domains-এ আপনার ডোমেইন যোগ করুন।"
               );
-              const createdUser = createdCred.user;
-              const newRecord = {
-                uid: createdUser.uid,
-                email: cleanEmail,
-                createdAt: nowIso,
-                lastLoginAt: nowIso,
-                loginCount: 1,
-                projectCount: Array.isArray(projectsList) ? projectsList.length : 0,
-                mode: "firebase"
-              };
-              await syncUserAndProjectsToRTDB(fb.rtdb, newRecord, projectsList);
-              return { user: newRecord, isNewAccount: true, syncedProjects: null };
             }
             throw new Error(
-              signInErr && signInErr.message ? signInErr.message : "লগইন করতে সমস্যা হয়েছে।"
+              "লগইন ব্যর্থ (" +
+                (code || "error") +
+                "): " +
+                (signInErr && signInErr.message ? signInErr.message : "লগইন করতে সমস্যা হয়েছে।")
             );
           }
         }
@@ -1133,19 +1196,54 @@
         const [activeProjectId, setActiveProjectId] = useState(() =>
           projects[0] && projects[0].id ? projects[0].id : ""
         );
+        const [rtdbSyncState, setRtdbSyncState] = useState({
+          status: "idle",
+          label: "RTDB প্রস্তুত",
+          detail: ""
+        });
 
         const project = useMemo(
           () => projects.find((p) => p.id === activeProjectId) || projects[0],
           [projects, activeProjectId]
         );
 
+        const triggerRTDBSync = async (userObj, projectsObj) => {
+          const fb = getFirebaseServices();
+          if (!fb || !fb.rtdb || !userObj) {
+            setRtdbSyncState({
+              status: "offline",
+              label: "লোকাল মোড",
+              detail: "RTDB সংযুক্ত নয়"
+            });
+            return;
+          }
+          setRtdbSyncState({
+            status: "syncing",
+            label: "সিঙ্ক হচ্ছে...",
+            detail: ""
+          });
+          const res = await syncUserAndProjectsToRTDB(fb.rtdb, userObj, projectsObj);
+          if (res && res.ok) {
+            setRtdbSyncState({
+              status: "synced",
+              label: "RTDB সিঙ্কড (" + res.syncedAt + ")",
+              detail: "users/" + userObj.uid
+            });
+          } else {
+            setRtdbSyncState({
+              status: "error",
+              label: "RTDB সিঙ্ক ত্রুটি",
+              detail: res && res.error ? res.error : "Permission বা নেটওয়ার্ক সমস্যা"
+            });
+          }
+        };
+
         useEffect(() => {
           try {
             localStorage.setItem(STORAGE_PROJECTS_KEY, JSON.stringify(projects));
           } catch (_) {}
-          const fb = getFirebaseServices();
-          if (fb && fb.rtdb && currentUser) {
-            syncUserAndProjectsToRTDB(fb.rtdb, currentUser, projects);
+          if (currentUser) {
+            triggerRTDBSync(currentUser, projects);
           }
         }, [projects]);
 
@@ -1153,6 +1251,7 @@
           try {
             if (currentUser) {
               localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify(currentUser));
+              triggerRTDBSync(currentUser, projects);
             } else {
               localStorage.removeItem(STORAGE_SESSION_KEY);
             }
@@ -1233,13 +1332,25 @@
           return list.filter((f) => f.path.toLowerCase().includes(q));
         }, [project, fileSearch]);
 
+        const filteredHistory = useMemo(() => {
+          const q = historySearch.trim().toLowerCase();
+          if (!q) return projects;
+          return projects.filter(
+            (p) =>
+              p.name.toLowerCase().includes(q) ||
+              p.packageName.toLowerCase().includes(q)
+          );
+        }, [projects, historySearch]);
+
         const issues = useMemo(
           () => validateProjectFiles(project && project.files ? project.files : []),
           [project]
         );
 
-        const handleAuthSuccess = ({ user, isNewAccount, syncedProjects }) => {
+        const handleAuthSuccess = ({ user, isNewAccount, syncedProjects, syncResult }) => {
           setCurrentUser(user);
+          const nextProjects =
+            Array.isArray(syncedProjects) && syncedProjects.length > 0 ? syncedProjects : projects;
           if (Array.isArray(syncedProjects) && syncedProjects.length > 0) {
             setProjects(syncedProjects);
             setActiveProjectId(syncedProjects[0].id);
@@ -1249,20 +1360,39 @@
                 : ""
             );
           }
+          if (syncResult && syncResult.ok) {
+            setRtdbSyncState({
+              status: "synced",
+              label: "RTDB সিঙ্কড (" + syncResult.syncedAt + ")",
+              detail: "users/" + user.uid
+            });
+          } else if (syncResult && syncResult.error) {
+            setRtdbSyncState({
+              status: "error",
+              label: "RTDB সিঙ্ক ত্রুটি",
+              detail: syncResult.error
+            });
+          }
           setMessages((prev) => [
             ...prev,
             {
               id: "auth-" + Date.now(),
               role: "assistant",
-              content: isNewAccount
-                ? "নতুন অ্যাকাউন্ট তৈরি হয়েছে! ইমেইল: " +
-                  user.email +
-                  " | ইউজার ID: " +
-                  user.uid
-                : "পুরনো অ্যাকাউন্টে লগইন সম্পন্ন হয়েছে! ইমেইল: " +
-                  user.email +
-                  " | ইউজার ID: " +
-                  user.uid
+              content:
+                (isNewAccount
+                  ? "নতুন অ্যাকাউন্ট তৈরি হয়েছে! ইমেইল: " +
+                    user.email +
+                    " | ইউজার ID: " +
+                    user.uid
+                  : "পুরনো অ্যাকাউন্টে লগইন সম্পন্ন হয়েছে! ইমেইল: " +
+                    user.email +
+                    " | ইউজার ID: " +
+                    user.uid) +
+                (syncResult && !syncResult.ok
+                  ? "\n⚠️ Realtime Database সিঙ্ক সতর্কতা: " + syncResult.error
+                  : "\n✅ Realtime Database-এ ডেটা সিঙ্ক হয়েছে (প্রজেক্ট: " +
+                    nextProjects.length +
+                    "টি)।")
             }
           ]);
         };
@@ -1519,6 +1649,20 @@
                     <span className="max-w-[140px] truncate text-emerald-300">
                       {currentUser.email}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => triggerRTDBSync(currentUser, projects)}
+                      title={rtdbSyncState.detail || "Realtime Database-এ এখনই সিঙ্ক করুন"}
+                      className={
+                        rtdbSyncState.status === "error"
+                          ? "rounded-lg border border-rose-500/40 bg-rose-950/60 px-2 py-0.5 text-[10px] font-semibold text-rose-300 hover:bg-rose-900/60"
+                          : rtdbSyncState.status === "synced"
+                          ? "rounded-lg border border-emerald-500/40 bg-emerald-950/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-900/60"
+                          : "rounded-lg border border-amber-500/40 bg-amber-950/60 px-2 py-0.5 text-[10px] font-semibold text-amber-300 hover:bg-amber-900/60"
+                      }
+                    >
+                      {rtdbSyncState.label} · Sync Now
+                    </button>
                     <button
                       type="button"
                       onClick={handleLogout}
