@@ -42,30 +42,25 @@
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
     <div id="root"></div>
 
-    <script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
+    <script type="text/babel">
+      const { useState, useMemo, useEffect, Component } = React;
 
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-    apiKey: "AIzaSyDFFHWazvKFE0VOKtlQoyzKNahQTks2_MU",
-    authDomain: "droid-ai-studio.firebaseapp.com",
-    databaseURL: "https://droid-ai-studio-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "droid-ai-studio",
-    storageBucket: "droid-ai-studio.firebasestorage.app",
-    messagingSenderId: "749792756742",
-    appId: "1:749792756742:web:9c848e07d0803423742f87",
-    measurementId: "G-PN9RNW0TW6"
-  };
+      // =========================================================================
+      // 🔥 MANUAL FIREBASE CONFIGURATION (এখানে ম্যানুয়ালি আপনার Firebase Config বসান)
+      // ফাঁকা রাখলে অ্যাপ স্বয়ংক্রিয়ভাবে লোকাল স্টোরেজ মোডে নিরাপদে চলবে।
+      // UI-তে কোনো Firebase সেটআপ বাটন বা কনফিগ মডাল রাখা হয়নি।
+      // =========================================================================
+      const FIREBASE_CONFIG = {
+        apiKey: "AIzaSyDFFHWazvKFE0VOKtlQoyzKNahQTks2_MU",
+        authDomain: "droid-ai-studio.firebaseapp.com",
+        databaseURL: "https://droid-ai-studio-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "droid-ai-studio",
+        storageBucket: "droid-ai-studio.firebasestorage.app",
+        messagingSenderId: "749792756742",
+        appId: "1:749792756742:web:9c848e07d0803423742f87",
+        measurementId: "G-PN9RNW0TW6"
+      };
 
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-</script>
       const STORAGE_PROJECTS_KEY = "droid_ai_studio_projects_v4";
       const STORAGE_AUTH_USERS_KEY = "droid_ai_studio_local_users_v2";
       const STORAGE_SESSION_KEY = "droid_ai_studio_session_v2";
@@ -761,6 +756,8 @@
                   languageId: p.languageId || "kotlin-compose",
                   minSdk: p.minSdk || 21,
                   targetSdk: p.targetSdk || 36,
+                  logoDataUrl: p.logoDataUrl || "",
+                  logoFileName: p.logoFileName || "",
                   updatedAt: p.updatedAt || nowIso,
                   files: Array.isArray(p.files) ? p.files : []
                 };
@@ -779,6 +776,24 @@
         } catch (err) {
           console.warn("RTDB sync skipped or failed:", err);
         }
+      }
+
+      // Load saved projects from Firebase Realtime Database for an existing user
+      async function loadUserProjectsFromRTDB(rtdb, uid) {
+        if (!rtdb || !uid) return null;
+        try {
+          const snap = await rtdb.ref("users/" + uid + "/projects").once("value");
+          if (snap && snap.exists()) {
+            const val = snap.val();
+            if (val && typeof val === "object") {
+              const list = Object.values(val).filter((item) => item && item.id && Array.isArray(item.files));
+              return list.length > 0 ? list : null;
+            }
+          }
+        } catch (err) {
+          console.warn("RTDB project load skipped:", err);
+        }
+        return null;
       }
 
       // Unified email login / auto-signup with duplicate prevention
@@ -808,17 +823,19 @@
                 }
               } catch (_) {}
             }
+            const cloudProjects = await loadUserProjectsFromRTDB(fb.rtdb, u.uid);
+            const mergedProjects = cloudProjects || projectsList;
             const nextRecord = {
               uid: u.uid,
               email: cleanEmail,
               createdAt: prevData.createdAt || nowIso,
               lastLoginAt: nowIso,
               loginCount: (prevData.loginCount || 0) + 1,
-              projectCount: Array.isArray(projectsList) ? projectsList.length : 0,
+              projectCount: Array.isArray(mergedProjects) ? mergedProjects.length : 0,
               mode: "firebase"
             };
-            await syncUserAndProjectsToRTDB(fb.rtdb, nextRecord, projectsList);
-            return { user: nextRecord, isNewAccount: false };
+            await syncUserAndProjectsToRTDB(fb.rtdb, nextRecord, mergedProjects);
+            return { user: nextRecord, isNewAccount: false, syncedProjects: cloudProjects };
           } catch (signInErr) {
             const code = signInErr && signInErr.code ? signInErr.code : "";
             if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
@@ -842,7 +859,7 @@
                 mode: "firebase"
               };
               await syncUserAndProjectsToRTDB(fb.rtdb, newRecord, projectsList);
-              return { user: newRecord, isNewAccount: true };
+              return { user: newRecord, isNewAccount: true, syncedProjects: null };
             }
             throw new Error(
               signInErr && signInErr.message ? signInErr.message : "লগইন করতে সমস্যা হয়েছে।"
@@ -1221,17 +1238,17 @@
           [project]
         );
 
-        const filteredHistory = useMemo(() => {
-          const q = historySearch.trim().toLowerCase();
-          if (!q) return projects;
-          return projects.filter(
-            (p) =>
-              p.name.toLowerCase().includes(q) || p.packageName.toLowerCase().includes(q)
-          );
-        }, [projects, historySearch]);
-
-        const handleAuthSuccess = ({ user, isNewAccount }) => {
+        const handleAuthSuccess = ({ user, isNewAccount, syncedProjects }) => {
           setCurrentUser(user);
+          if (Array.isArray(syncedProjects) && syncedProjects.length > 0) {
+            setProjects(syncedProjects);
+            setActiveProjectId(syncedProjects[0].id);
+            setSelectedPath(
+              syncedProjects[0].files && syncedProjects[0].files[0]
+                ? syncedProjects[0].files[0].path
+                : ""
+            );
+          }
           setMessages((prev) => [
             ...prev,
             {
