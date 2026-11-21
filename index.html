@@ -2,9 +2,12 @@
 <html lang="bn" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <title>Droid AI Studio — ড্রয়েড এআই স্টুডিও</title>
-    <!-- Official Droid AI Studio Robot Favicon -->
+    <!-- Official Droid AI Studio Robot Favicon (Locked Brand Emblem) -->
     <link
       rel="icon"
       type="image/svg+xml"
@@ -64,7 +67,8 @@
         line-height: 1.55;
       }
       @keyframes pulseGlow {
-        0%, 100% {
+        0%,
+        100% {
           transform: scale(1);
           box-shadow: 0 0 32px rgba(16, 185, 129, 0.45), 0 0 64px rgba(139, 92, 246, 0.25);
         }
@@ -107,10 +111,11 @@
       }
     </script>
 
-    <!-- React 18 & Babel Standalone -->
+    <!-- React 18, Babel Standalone & JSZip for 1-Click Android Project Export -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   </head>
   <body class="min-h-screen bg-[#070b14] text-slate-100 antialiased selection:bg-purple-600/40 selection:text-white">
     <div id="root" class="min-h-screen flex flex-col"></div>
@@ -228,7 +233,9 @@
 
         try {
           const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`,
+            `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(
+              cleanKey
+            )}`,
             {
               method: "GET",
               signal: controller.signal
@@ -810,11 +817,22 @@ ${preset.items
 </resources>`
           },
           {
+            path: "app/src/main/res/values/themes.xml",
+            content: `<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.DroidApp" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary_accent</item>
+        <item name="android:statusBarColor">@color/bg_dark</item>
+    </style>
+</resources>`
+          },
+          {
             path: "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
             content: `<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="${hasLogo ? "@drawable/app_logo_custom" : "@android:drawable/sym_def_app_icon"}" />
+    <foreground android:drawable="${
+      hasLogo ? "@drawable/app_logo_custom" : "@android:drawable/sym_def_app_icon"
+    }" />
 </adaptive-icon>`
           },
           isGroovy
@@ -890,6 +908,28 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 }`
               },
+          isGroovy
+            ? {
+                path: "build.gradle",
+                content: `plugins {
+    id 'com.android.application' version '8.5.2' apply false
+    id 'org.jetbrains.kotlin.android' version '1.9.24' apply false
+}`
+              }
+            : {
+                path: "build.gradle.kts",
+                content: `plugins {
+    id("com.android.application") version "8.5.2" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+}`
+              },
+          {
+            path: "gradle.properties",
+            content: `org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+kotlin.code.style=official
+android.nonTransitiveRClass=true`
+          },
           {
             path: isGroovy ? "settings.gradle" : "settings.gradle.kts",
             content: isGroovy
@@ -1051,7 +1091,9 @@ ${customLogoDataUrl}`
           return val;
         };
 
-        const rootBgMatch = layoutXml.match(/android:background="(#[0-9A-Fa-f]{6,8}|@color\/[^"]+)"/);
+        const rootBgMatch = layoutXml.match(
+          /android:background="(#[0-9A-Fa-f]{6,8}|@color\/[^"]+)"/
+        );
         const resolvedRootBg = rootBgMatch ? resolveXmlAttr(rootBgMatch[1]) : "";
         const isPureBlackScreen =
           resolvedRootBg.toLowerCase() === "#000000" ||
@@ -1175,7 +1217,94 @@ ${customLogoDataUrl}`
       }
 
       // =========================================================================
-      // 6. DEFAULT AI SETTINGS & SYSTEM PROMPTS
+      // 6. CLOUD BUILD & EXPORT HELPERS (GITHUB ACTIONS APK/AAB + ZIP EXPORT)
+      // =========================================================================
+      function buildSupplementaryAndroidFiles(project) {
+        const isGroovy = project?.buildConfigDsl === "groovy";
+        const rootBuildGradle = isGroovy
+          ? {
+              path: "build.gradle",
+              content: `plugins {
+    id 'com.android.application' version '8.5.2' apply false
+    id 'org.jetbrains.kotlin.android' version '1.9.24' apply false
+}`
+            }
+          : {
+              path: "build.gradle.kts",
+              content: `plugins {
+    id("com.android.application") version "8.5.2" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+}`
+            };
+
+        const gradleProperties = {
+          path: "gradle.properties",
+          content: `org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+kotlin.code.style=official
+android.nonTransitiveRClass=true`
+        };
+
+        const existingPaths = new Set((project?.files || []).map((f) => f.path));
+        return [rootBuildGradle, gradleProperties].filter((item) => !existingPaths.has(item.path));
+      }
+
+      function generateDroidAiBuildWorkflowYaml(project) {
+        const safeSlug = sanitizeAppPackageSuffix(project?.name || "droidapp");
+        return `name: Droid AI Build (APK & AAB)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Project Source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Ensure Gradle Wrapper
+        run: |
+          if [ ! -f "./gradlew" ]; then
+            gradle wrapper --gradle-version 8.7
+          fi
+          chmod +x ./gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Build Release AAB
+        run: ./gradlew bundleRelease --stacktrace
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${safeSlug}-app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${safeSlug}-app-release-aab
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+`;
+      }
+
+      // =========================================================================
+      // 7. DEFAULT AI SETTINGS & SYSTEM PROMPTS
       // =========================================================================
       const DEFAULT_AI_SETTINGS = {
         preferredModel: "gemini-3.8-flash",
@@ -1188,7 +1317,7 @@ ${customLogoDataUrl}`
       };
 
       // =========================================================================
-      // 7. PERMANENT LOCKED DROID AI STUDIO ROBOT BRAND EMBLEM COMPONENT
+      // 8. PERMANENT LOCKED DROID AI STUDIO ROBOT BRAND EMBLEM COMPONENT
       // =========================================================================
       function DroidBrandLogo({ sizeClass = "h-8 w-8", roundedClass = "rounded-xl" }) {
         return (
@@ -1244,7 +1373,7 @@ ${customLogoDataUrl}`
       }
 
       // =========================================================================
-      // 8. MAIN DROID AI STUDIO APPLICATION COMPONENT
+      // 9. MAIN DROID AI STUDIO APPLICATION COMPONENT
       // =========================================================================
       function DroidAIStudioApp() {
         // --- 6-Second Branded Splash Screen State ---
@@ -1353,8 +1482,9 @@ ${customLogoDataUrl}`
         const [previewNavIndex, setPreviewNavIndex] = useState(0);
         const [previewToast, setPreviewToast] = useState("");
 
-        // --- GitHub Push Modal State ---
+        // --- GitHub Push & Build APK / AAB Hub State ---
         const [isGithubModalOpen, setIsGithubModalOpen] = useState(false);
+        const [hubActiveView, setHubActiveView] = useState("build"); // "build" | "github" | "zip"
         const [ghToken, setGhToken] = useState(() => localStorage.getItem("droid_gh_token") || "");
         const [ghOwner, setGhOwner] = useState(
           () => localStorage.getItem("droid_gh_owner") || "ssb-dev-hasan"
@@ -1367,6 +1497,18 @@ ${customLogoDataUrl}`
         const [isPushingGh, setIsPushingGh] = useState(false);
         const [ghPushStatus, setGhPushStatus] = useState(null);
 
+        // --- Cloud Build (APK & AAB) + 1-Click ZIP Export State ---
+        const [buildAppRepo, setBuildAppRepo] = useState("");
+        const [isCloudBuilding, setIsCloudBuilding] = useState(false);
+        const [cloudBuildStep, setCloudBuildStep] = useState("");
+        const [cloudBuildRun, setCloudBuildRun] = useState(null);
+        const [cloudBuildArtifacts, setCloudBuildArtifacts] = useState([]);
+        const [cloudBuildError, setCloudBuildError] = useState("");
+        const [downloadingArtifactId, setDownloadingArtifactId] = useState(null);
+        const [isZipExporting, setIsZipExporting] = useState(false);
+        const [zipExportStatus, setZipExportStatus] = useState(null);
+        const cloudPollRef = useRef(null);
+
         // Persist AI Settings
         useEffect(() => {
           try {
@@ -1378,6 +1520,13 @@ ${customLogoDataUrl}`
         useEffect(() => {
           chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }, [chatMessages, isGenerating]);
+
+        // Cleanup cloud polling on unmount
+        useEffect(() => {
+          return () => {
+            if (cloudPollRef.current) clearInterval(cloudPollRef.current);
+          };
+        }, []);
 
         // =========================================================================
         // MANDATORY LOGIN GATE ON ANY CLICK/INTERACTION WHEN SIGNED OUT
@@ -1552,6 +1701,12 @@ ${customLogoDataUrl}`
           [projects, activeProjectId]
         );
 
+        useEffect(() => {
+          if (activeProject) {
+            setBuildAppRepo(`${sanitizeAppPackageSuffix(activeProject.name)}-android-app`);
+          }
+        }, [activeProject]);
+
         const activeFile = useMemo(() => {
           if (!activeProject?.files?.length) return null;
           return (
@@ -1634,7 +1789,7 @@ ${customLogoDataUrl}`
             }
           }
 
-          // 2. Interactive Input Processing & Calculations (SIP / Calculator / Forms)
+          // 2. Interactive Input Processing & Calculations
           const inputWidgets = livePreviewData.widgets.filter((w) => w.kind === "input");
           const numericValues = inputWidgets
             .map((iw) => parseFloat(emuInputValues[iw.id]))
@@ -2362,7 +2517,59 @@ ${customLogoDataUrl}`
         };
 
         // =========================================================================
-        // GITHUB PUSH HANDLER
+        // SHARED GITHUB FILE UPSERT HELPER
+        // =========================================================================
+        const upsertFileToGitHubRepo = async ({
+          token,
+          owner,
+          repo,
+          branch,
+          path,
+          base64Content,
+          message
+        }) => {
+          const apiUrl = `https://api.github.com/repos/${encodeURIComponent(
+            owner
+          )}/${encodeURIComponent(repo)}/contents/${path
+            .split("/")
+            .map(encodeURIComponent)
+            .join("/")}`;
+
+          let existingSha = undefined;
+          const checkRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch)}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/vnd.github+json"
+            }
+          });
+          if (checkRes.ok) {
+            const existingJson = await checkRes.json();
+            existingSha = existingJson.sha;
+          }
+
+          const putRes = await fetch(apiUrl, {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/vnd.github+json",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              message,
+              content: base64Content,
+              branch,
+              ...(existingSha ? { sha: existingSha } : {})
+            })
+          });
+
+          if (!putRes.ok) {
+            const errJson = await putRes.json().catch(() => ({}));
+            throw new Error(errJson?.message || `${path} আপলোড ব্যর্থ (${putRes.status})`);
+          }
+        };
+
+        // =========================================================================
+        // GITHUB PUSH HANDLER (EXISTING FEATURE PRESERVED 100%)
         // =========================================================================
         const handlePushToGitHub = async (e) => {
           e.preventDefault();
@@ -2387,48 +2594,19 @@ ${customLogoDataUrl}`
           try {
             let pushedCount = 0;
             for (const file of activeProject.files) {
-              const apiUrl = `https://api.github.com/repos/${encodeURIComponent(
-                owner
-              )}/${encodeURIComponent(repo)}/contents/${file.path
-                .split("/")
-                .map(encodeURIComponent)
-                .join("/")}`;
-
-              let existingSha = undefined;
-              const checkRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch)}`, {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  Accept: "application/vnd.github+json"
-                }
-              });
-              if (checkRes.ok) {
-                const existingJson = await checkRes.json();
-                existingSha = existingJson.sha;
-              }
-
               const base64Content = file.assetDataUrl
                 ? file.assetDataUrl.split(",")[1] || ""
                 : btoa(unescape(encodeURIComponent(file.content || "")));
 
-              const putRes = await fetch(apiUrl, {
-                method: "PUT",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  Accept: "application/vnd.github+json",
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                  message: ghCommitMsg || `Update ${file.path}`,
-                  content: base64Content,
-                  branch,
-                  ...(existingSha ? { sha: existingSha } : {})
-                })
+              await upsertFileToGitHubRepo({
+                token,
+                owner,
+                repo,
+                branch,
+                path: file.path,
+                base64Content,
+                message: ghCommitMsg || `Update ${file.path}`
               });
-
-              if (!putRes.ok) {
-                const errJson = await putRes.json().catch(() => ({}));
-                throw new Error(errJson?.message || `${file.path} পুশ ব্যর্থ (${putRes.status})`);
-              }
               pushedCount++;
             }
 
@@ -2444,6 +2622,294 @@ ${customLogoDataUrl}`
           } finally {
             setIsPushingGh(false);
           }
+        };
+
+        // =========================================================================
+        // 1-CLICK ANDROID STUDIO PROJECT ZIP EXPORT HANDLER
+        // =========================================================================
+        const handleExportProjectZip = async () => {
+          if (!activeProject) return;
+          if (typeof window.JSZip === "undefined") {
+            setZipExportStatus({
+              ok: false,
+              msg: "❌ JSZip লোড হয়নি। ইন্টারনেট সংযোগ পরীক্ষা করে পেজ রিফ্রেশ করুন।"
+            });
+            return;
+          }
+
+          setIsZipExporting(true);
+          setZipExportStatus(null);
+
+          try {
+            const zip = new window.JSZip();
+            const slug = sanitizeAppPackageSuffix(activeProject.name);
+            const root = zip.folder(slug);
+
+            const exportFiles = [
+              ...activeProject.files,
+              ...buildSupplementaryAndroidFiles(activeProject)
+            ];
+
+            for (const f of exportFiles) {
+              if (f.assetDataUrl && f.assetDataUrl.includes(",")) {
+                root.file(f.path, f.assetDataUrl.split(",")[1], { base64: true });
+              } else {
+                root.file(f.path, f.content || "");
+              }
+            }
+
+            const blob = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${slug}-android-studio.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+            setZipExportStatus({
+              ok: true,
+              msg: `✅ ${slug}-android-studio.zip ডাউনলোড সম্পন্ন (${exportFiles.length}টি ফাইল)!`
+            });
+          } catch (err) {
+            setZipExportStatus({
+              ok: false,
+              msg: `❌ ZIP এক্সপোর্ট ব্যর্থ: ${err?.message || "ত্রুটি হয়েছে"}`
+            });
+          } finally {
+            setIsZipExporting(false);
+          }
+        };
+
+        // =========================================================================
+        // CLOUD BUILD APK & AAB ENGINE (.github/workflows/droid-ai-build.yml)
+        // =========================================================================
+        const fetchArtifactsForRun = async (token, owner, repo, runId) => {
+          try {
+            const res = await fetch(
+              `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+                repo
+              )}/actions/runs/${runId}/artifacts`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  Accept: "application/vnd.github+json"
+                }
+              }
+            );
+            if (!res.ok) return;
+            const json = await res.json();
+            const items = Array.isArray(json?.artifacts)
+              ? json.artifacts.filter((a) => !a.expired)
+              : [];
+            setCloudBuildArtifacts(items);
+          } catch {}
+        };
+
+        const pollCloudBuildStatus = (token, owner, repo) => {
+          if (cloudPollRef.current) clearInterval(cloudPollRef.current);
+
+          const checkRun = async () => {
+            try {
+              const res = await fetch(
+                `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+                  repo
+                )}/actions/runs?branch=main&per_page=3`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: "application/vnd.github+json"
+                  }
+                }
+              );
+              if (!res.ok) return;
+              const json = await res.json();
+              const latest = json?.workflow_runs?.[0];
+              if (!latest) return;
+
+              setCloudBuildRun(latest);
+
+              if (latest.status === "completed") {
+                if (cloudPollRef.current) {
+                  clearInterval(cloudPollRef.current);
+                  cloudPollRef.current = null;
+                }
+                setIsCloudBuilding(false);
+
+                if (latest.conclusion === "success") {
+                  setCloudBuildStep("✅ APK ও AAB বিল্ড সফল! নিচ থেকে সরাসরি ডাউনলোড করুন:");
+                  await fetchArtifactsForRun(token, owner, repo, latest.id);
+                } else {
+                  setCloudBuildStep("");
+                  setCloudBuildError(
+                    `❌ Gradle বিল্ড ব্যর্থ হয়েছে (${latest.conclusion || "failure"})। নিচের AI ফিক্স বাটনে ক্লিক করে কোড ঠিক করুন।`
+                  );
+                }
+              } else {
+                setCloudBuildStep(
+                  `⏳ ক্লাউড সার্ভারে APK ও AAB কম্পাইল হচ্ছে... (${latest.status})`
+                );
+              }
+            } catch {}
+          };
+
+          checkRun();
+          cloudPollRef.current = setInterval(checkRun, 6000);
+        };
+
+        const handleStartCloudApkAabBuild = async (e) => {
+          e.preventDefault();
+          if (!activeProject) return;
+
+          const token = ghToken.trim();
+          const owner = ghOwner.trim();
+          const targetRepo = buildAppRepo.trim();
+
+          if (!token || !owner || !targetRepo) {
+            setCloudBuildError("GitHub Token (repo + workflow পারমিশন), Owner ও App Repo নাম দিন।");
+            return;
+          }
+
+          if (targetRepo.toLowerCase() === "droid-ai.studio") {
+            setCloudBuildError(
+              "⚠️ সতর্কতা: মূল Droid-AI.Studio রিপোজিটরিতে অ্যাপ বিল্ড করবেন না—প্রতিটি অ্যাপের জন্য আলাদা রিপোজিটরি নাম দিন।"
+            );
+            return;
+          }
+
+          localStorage.setItem("droid_gh_token", token);
+          localStorage.setItem("droid_gh_owner", owner);
+
+          setIsCloudBuilding(true);
+          setCloudBuildError("");
+          setCloudBuildArtifacts([]);
+          setCloudBuildRun(null);
+          setCloudBuildStep("১/৩: অ্যাপের আলাদা বিল্ড রিপোজিটরি প্রস্তুত হচ্ছে...");
+
+          try {
+            const checkRepo = await fetch(
+              `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+                targetRepo
+              )}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  Accept: "application/vnd.github+json"
+                }
+              }
+            );
+
+            if (checkRepo.status === 404) {
+              setCloudBuildStep(`নতুন বিল্ড রিপোজিটরি "${targetRepo}" তৈরি হচ্ছে...`);
+              const createRes = await fetch("https://api.github.com/user/repos", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  Accept: "application/vnd.github+json",
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  name: targetRepo,
+                  description: `${activeProject.name} — Built via Droid AI Studio`,
+                  private: false,
+                  auto_init: true
+                })
+              });
+              if (!createRes.ok) {
+                const errD = await createRes.json().catch(() => ({}));
+                throw new Error(
+                  errD?.message ||
+                    `রিপোজিটরি "${targetRepo}" তৈরি করা যায়নি। GitHub Token-এ repo ও workflow স্কোপ দিন।`
+                );
+              }
+              await new Promise((r) => setTimeout(r, 2000));
+            }
+
+            setCloudBuildStep("২/৩: সোর্স কোড, লোগো ও Gradle Workflow আপলোড হচ্ছে...");
+
+            const filesToBuild = [
+              ...activeProject.files,
+              ...buildSupplementaryAndroidFiles(activeProject),
+              {
+                path: ".github/workflows/droid-ai-build.yml",
+                content: generateDroidAiBuildWorkflowYaml(activeProject)
+              }
+            ];
+
+            for (const f of filesToBuild) {
+              const b64 = f.assetDataUrl
+                ? f.assetDataUrl.split(",")[1] || ""
+                : btoa(unescape(encodeURIComponent(f.content || "")));
+
+              await upsertFileToGitHubRepo({
+                token,
+                owner,
+                repo: targetRepo,
+                branch: "main",
+                path: f.path,
+                base64Content: b64,
+                message: `Droid AI Build: ${f.path}`
+              });
+            }
+
+            setCloudBuildStep(
+              "৩/৩: GitHub Actions Gradle বিল্ড শুরু হয়েছে! ২-৩ মিনিটের মধ্যে APK ও AAB ডাউনলোড বাটন আসবে..."
+            );
+            pollCloudBuildStatus(token, owner, targetRepo);
+          } catch (err) {
+            setIsCloudBuilding(false);
+            setCloudBuildStep("");
+            setCloudBuildError(`❌ Cloud Build ত্রুটি: ${err?.message || "বিল্ড শুরু হয়নি।"}`);
+          }
+        };
+
+        const handleDownloadBuildArtifact = async (artifact) => {
+          const token = ghToken.trim();
+          const owner = ghOwner.trim();
+          const targetRepo = buildAppRepo.trim();
+          if (!token || !owner || !targetRepo || !artifact?.id) return;
+
+          setDownloadingArtifactId(artifact.id);
+          try {
+            const res = await fetch(
+              `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+                targetRepo
+              )}/actions/artifacts/${artifact.id}/zip`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  Accept: "application/vnd.github+json"
+                }
+              }
+            );
+            if (!res.ok) {
+              throw new Error(`ডাউনলোড ব্যর্থ (HTTP ${res.status})`);
+            }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${artifact.name}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
+          } catch (err) {
+            setCloudBuildError(`❌ ডাউনলোড ত্রুটি: ${err?.message}`);
+          } finally {
+            setDownloadingArtifactId(null);
+          }
+        };
+
+        const handleFixBuildErrorWithAi = () => {
+          setIsGithubModalOpen(false);
+          setActiveTab("chat");
+          handleSendMessage(
+            `আমার "${activeProject?.name}" (${activeProject?.packageName}) অ্যাপটি APK ও AAB বিল্ড করার সময় Gradle এরর এসেছে (${
+              cloudBuildError || "Build failed"
+            })। সব ফাইল পরীক্ষা করে বিল্ড এরর ফিক্স করে দাও।`
+          );
         };
 
         // =========================================================================
@@ -2533,7 +2999,7 @@ ${customLogoDataUrl}`
                   <button
                     type="button"
                     onClick={() => setIsNewProjectModalOpen(true)}
-                    className="rounded-xl border border-emerald-500/40 bg-emerald-950/70 px-2.5 py-1 text-xs font-bold text-emerald-300 transition hover:bg-emerald-900/80"
+                    className="rounded-xl border border-emerald-500/40 bg-emerald-950/70 px-2.5 py-1 text-xs font-bold text-emerald-300 transition hover:bg-emerald-900"
                   >
                     + প্রজেক্ট
                   </button>
@@ -2547,11 +3013,25 @@ ${customLogoDataUrl}`
                   </button>
                 </div>
 
-                {/* Right Actions: GitHub + User Account */}
+                {/* Right Actions: Build APK/AAB + GitHub + User Account */}
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setIsGithubModalOpen(true)}
+                    onClick={() => {
+                      setHubActiveView("build");
+                      setIsGithubModalOpen(true);
+                    }}
+                    className="rounded-xl border border-sky-500/40 bg-sky-950/70 px-2.5 py-1 text-xs font-bold text-sky-300 transition hover:bg-sky-900"
+                  >
+                    📦 Build / APK
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHubActiveView("github");
+                      setIsGithubModalOpen(true);
+                    }}
                     className="rounded-xl border border-slate-700 bg-slate-800/90 px-2.5 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
                   >
                     GitHub
@@ -2626,7 +3106,7 @@ ${customLogoDataUrl}`
                       <span className="text-xs font-extrabold text-purple-300">
                         Gemini AI Studio
                       </span>
-                      <span className="rounded-full bg-purple-950/90 border border-purple-500/40 px-2 py-0.5 text-[10px] font-bold text-purple-200">
+                      <span className="rounded-full border border-purple-500/40 bg-purple-950/90 px-2 py-0.5 text-[10px] font-bold text-purple-200">
                         {availableModels.length > 0
                           ? `${availableModels.length} মডেল`
                           : "BYOK মোড"}
@@ -3249,14 +3729,12 @@ ${customLogoDataUrl}`
 
                   {/* Emulator Screen Canvas */}
                   {livePreviewData.isPureBlackScreen ? (
-                    /* PURE-BLACK EMPTY ACTIVITY CANVAS: ONLY APP LOGO, APP NAME & CENTERED "Hello World!" */
                     <div className="flex flex-1 flex-col items-center justify-center bg-[#000000] px-6 text-center">
                       <p className="select-none text-xl font-bold tracking-wide text-white">
                         Hello World!
                       </p>
                     </div>
                   ) : (
-                    /* INTERACTIVE WIDGETS CANVAS FOR ALL OTHER TEMPLATES & AI-BUILT UIs */
                     <div className="custom-scrollbar flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
                       {livePreviewData.widgets.map((w, idx) => {
                         if (w.kind === "text") {
@@ -3568,7 +4046,9 @@ ${customLogoDataUrl}`
                       <div>
                         <label className="mb-1 flex items-center justify-between font-semibold text-slate-300">
                           <span>Package Name</span>
-                          <span className="text-[10px] font-bold text-amber-300">🔒 com.droid. ফিক্সড</span>
+                          <span className="text-[10px] font-bold text-amber-300">
+                            🔒 com.droid. ফিক্সড
+                          </span>
                         </label>
                         <div className="flex items-center overflow-hidden rounded-xl border border-slate-700 bg-slate-950 focus-within:border-emerald-500">
                           <span className="select-none border-r border-slate-800 bg-slate-900 px-2.5 py-2 font-mono text-xs font-bold text-emerald-400">
@@ -4005,114 +4485,352 @@ ${customLogoDataUrl}`
             )}
 
             {/* =================================================================== */}
-            {/* MODAL 5: GITHUB REPOSITORY PUSH                                     */}
+            {/* MODAL 5: BUILD APK / AAB, ZIP EXPORT & GITHUB PUSH CENTER           */}
             {/* =================================================================== */}
             {isGithubModalOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm">
-                <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-[#0d1424] p-4 shadow-2xl">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-sm font-extrabold text-white">
-                      🚀 GitHub রিপোজিটরিতে পুশ করুন
-                    </h2>
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm">
+                <div className="custom-scrollbar max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-[#0d1424] p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between border-b border-slate-800 pb-2.5">
+                    <div>
+                      <h2 className="text-sm font-extrabold text-white">
+                        📦 Build APK / AAB & Export ({activeProject?.name})
+                      </h2>
+                      <p className="text-[11px] text-slate-400">
+                        স্টুডিও থেকেই সরাসরি .apk / .aab ডাউনলোড, প্রজেক্ট .zip এক্সপোর্ট বা GitHub Push
+                      </p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => setIsGithubModalOpen(false)}
-                      className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-300"
+                      className="rounded-lg bg-slate-800 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-700"
                     >
                       ✕
                     </button>
                   </div>
 
-                  <form onSubmit={handlePushToGitHub} className="space-y-2.5 text-xs">
-                    <div>
-                      <label className="mb-1 block text-slate-300">
-                        GitHub Personal Access Token (repo scope)
-                      </label>
-                      <input
-                        type="password"
-                        required
-                        value={ghToken}
-                        onChange={(e) => setGhToken(e.target.value)}
-                        placeholder="ghp_..."
-                        className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
-                      />
-                    </div>
+                  {/* 3-Tab Switcher inside Build & Export Center */}
+                  <div className="mb-3.5 grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-800 bg-slate-950 p-1 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setHubActiveView("build")}
+                      className={`rounded-xl py-2 font-bold transition ${
+                        hubActiveView === "build"
+                          ? "bg-sky-600 text-white shadow"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      ☁️ APK & AAB বিল্ড
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHubActiveView("zip")}
+                      className={`rounded-xl py-2 font-bold transition ${
+                        hubActiveView === "zip"
+                          ? "bg-emerald-600 text-white shadow"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      🗜️ প্রজেক্ট .zip
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHubActiveView("github")}
+                      className={`rounded-xl py-2 font-bold transition ${
+                        hubActiveView === "github"
+                          ? "bg-purple-600 text-white shadow"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      🚀 GitHub Push
+                    </button>
+                  </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                  {/* VIEW A: 1-CLICK CLOUD APK & AAB BUILDER + DIRECT DOWNLOAD */}
+                  {hubActiveView === "build" && (
+                    <form onSubmit={handleStartCloudApkAabBuild} className="space-y-3 text-xs">
+                      <div className="rounded-xl border border-sky-500/40 bg-sky-950/35 p-3 leading-relaxed">
+                        <div className="font-extrabold text-sky-300">
+                          ☁️ GitHub Actions Cloud Gradle Build (.apk ও .aab)
+                        </div>
+                        <p className="mt-1 text-[11px] text-slate-200">
+                          স্বয়ংক্রিয়ভাবে <code className="text-sky-300">.github/workflows/droid-ai-build.yml</code> তৈরি হয়ে ক্লাউডে <strong>app-debug.apk</strong> এবং <strong>app-release.aab</strong> কম্পাইল হবে—বিল্ড শেষ হলে এখানেই ডাউনলোড বাটন চলে আসবে।
+                        </p>
+                        <p className="mt-1 text-[10px] text-amber-300">
+                          ⚠️ প্রতিটি অ্যাপের জন্য আলাদা রিপোজিটরি নাম দিন (মূল <strong>Droid-AI.Studio</strong> রিপোজিটরি ব্যবহার করবেন না)।
+                        </p>
+                      </div>
+
                       <div>
-                        <label className="mb-1 block text-slate-300">Owner / Username</label>
+                        <label className="mb-1 block text-slate-300">
+                          GitHub Personal Access Token (repo + workflow)
+                        </label>
                         <input
-                          type="text"
+                          type="password"
                           required
-                          value={ghOwner}
-                          onChange={(e) => setGhOwner(e.target.value)}
+                          value={ghToken}
+                          onChange={(e) => setGhToken(e.target.value)}
+                          placeholder="ghp_..."
                           className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
                         />
                       </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="mb-1 block text-slate-300">GitHub Owner</label>
+                          <input
+                            type="text"
+                            required
+                            value={ghOwner}
+                            onChange={(e) => setGhOwner(e.target.value)}
+                            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-slate-300">App Build Repository</label>
+                          <input
+                            type="text"
+                            required
+                            value={buildAppRepo}
+                            onChange={(e) => setBuildAppRepo(e.target.value)}
+                            placeholder="my-android-app"
+                            className="w-full rounded-xl border border-sky-500/40 bg-slate-950 px-3 py-2 font-mono text-slate-100"
+                          />
+                        </div>
+                      </div>
+
+                      {cloudBuildStep && (
+                        <div className="rounded-xl border border-sky-500/40 bg-sky-950/60 p-2.5 text-[11px] font-semibold text-sky-200">
+                          {cloudBuildStep}
+                        </div>
+                      )}
+
+                      {cloudBuildRun && (
+                        <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-[11px]">
+                          <span>
+                            Build Run #{cloudBuildRun.run_number} •{" "}
+                            <strong className="text-emerald-300">{cloudBuildRun.status}</strong>
+                          </span>
+                          <a
+                            href={cloudBuildRun.html_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-sky-400 hover:underline"
+                          >
+                            Logs ↗
+                          </a>
+                        </div>
+                      )}
+
+                      {cloudBuildArtifacts.length > 0 && (
+                        <div className="space-y-2 rounded-xl border border-emerald-500/40 bg-emerald-950/45 p-3">
+                          <div className="font-bold text-emerald-300">
+                            🎉 বিল্ড সম্পন্ন! সরাসরি APK ও AAB ডাউনলোড করুন:
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {cloudBuildArtifacts.map((art) => (
+                              <button
+                                key={art.id}
+                                type="button"
+                                disabled={downloadingArtifactId === art.id}
+                                onClick={() => handleDownloadBuildArtifact(art)}
+                                className="rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-extrabold text-white shadow hover:bg-emerald-500 disabled:opacity-50"
+                              >
+                                {downloadingArtifactId === art.id
+                                  ? "ডাউনলোড হচ্ছে..."
+                                  : art.name.includes("aab")
+                                  ? "⬇️ Download AAB"
+                                  : "⬇️ Download APK"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {cloudBuildError && (
+                        <div className="space-y-2 rounded-xl border border-rose-500/45 bg-rose-950/60 p-3 text-[11px] text-rose-200">
+                          <div>{cloudBuildError}</div>
+                          <button
+                            type="button"
+                            onClick={handleFixBuildErrorWithAi}
+                            className="w-full rounded-xl bg-purple-600 py-2 text-xs font-bold text-white shadow hover:bg-purple-500"
+                          >
+                            🤖 AI দিয়ে বিল্ড এরর ফিক্স করুন
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setIsGithubModalOpen(false)}
+                          className="rounded-xl bg-slate-800 px-3.5 py-2 text-slate-300"
+                        >
+                          বন্ধ করুন
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isCloudBuilding}
+                          className="rounded-xl bg-sky-600 px-4 py-2 font-extrabold text-white shadow hover:bg-sky-500 disabled:opacity-50"
+                        >
+                          {isCloudBuilding ? "বিল্ড চলছে..." : "☁️ Build APK & AAB শুরু করুন"}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* VIEW B: 1-CLICK ANDROID STUDIO PROJECT .ZIP EXPORT */}
+                  {hubActiveView === "zip" && (
+                    <div className="space-y-3 text-xs">
+                      <div className="rounded-xl border border-emerald-500/35 bg-emerald-950/35 p-3 leading-relaxed">
+                        <div className="font-bold text-emerald-300">
+                          🗜️ সম্পূর্ণ Android Studio প্রজেক্ট .zip ডাউনলোড
+                        </div>
+                        <p className="mt-1 text-[11px] text-slate-200">
+                          এক ক্লিকে সম্পূর্ণ Gradle প্রজেক্ট,{" "}
+                          <code className="text-emerald-300">AndroidManifest.xml</code>, কাস্টম{" "}
+                          <code className="text-emerald-300">app_logo_custom.png</code> ও সব Kotlin/Java/XML ফাইলসহ রেডিমেড <strong>.zip</strong> ডাউনলোড হবে—যা সরাসরি পিসির Android Studio বা মোবাইলের AndroidIDE-তে ওপেন করতে পারবেন।
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-800 bg-slate-950 p-2.5 font-mono text-[11px] text-slate-300">
+                        <div>📦 প্যাকেজ: {activeProject?.packageName}</div>
+                        <div className="mt-0.5">
+                          ⚙️ SDK: Min API {activeProject?.minSdk} → Target API{" "}
+                          {activeProject?.targetSdk}
+                        </div>
+                        <div className="mt-0.5">
+                          📄 মোট ফাইল:{" "}
+                          {(activeProject?.files?.length || 0) +
+                            buildSupplementaryAndroidFiles(activeProject).length}
+                          টি
+                        </div>
+                      </div>
+
+                      {zipExportStatus && (
+                        <div
+                          className={`rounded-xl border p-2.5 text-[11px] ${
+                            zipExportStatus.ok
+                              ? "border-emerald-500/40 bg-emerald-950/60 text-emerald-200"
+                              : "border-rose-500/40 bg-rose-950/60 text-rose-200"
+                          }`}
+                        >
+                          {zipExportStatus.msg}
+                        </div>
+                      )}
+
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setIsGithubModalOpen(false)}
+                          className="rounded-xl bg-slate-800 px-3.5 py-2 text-slate-300"
+                        >
+                          বন্ধ করুন
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isZipExporting}
+                          onClick={handleExportProjectZip}
+                          className="rounded-xl bg-emerald-600 px-4 py-2 font-extrabold text-white shadow hover:bg-emerald-500 disabled:opacity-50"
+                        >
+                          {isZipExporting ? "ZIP তৈরি হচ্ছে..." : "⬇️ প্রজেক্ট .zip ডাউনলোড করুন"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* VIEW C: EXISTING GITHUB REPOSITORY PUSH */}
+                  {hubActiveView === "github" && (
+                    <form onSubmit={handlePushToGitHub} className="space-y-2.5 text-xs">
                       <div>
-                        <label className="mb-1 block text-slate-300">Repository Name</label>
+                        <label className="mb-1 block text-slate-300">
+                          GitHub Personal Access Token (repo scope)
+                        </label>
                         <input
-                          type="text"
+                          type="password"
                           required
-                          value={ghRepo}
-                          onChange={(e) => setGhRepo(e.target.value)}
+                          value={ghToken}
+                          onChange={(e) => setGhToken(e.target.value)}
+                          placeholder="ghp_..."
                           className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
                         />
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="mb-1 block text-slate-300">Branch</label>
-                        <input
-                          type="text"
-                          value={ghBranch}
-                          onChange={(e) => setGhBranch(e.target.value)}
-                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
-                        />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="mb-1 block text-slate-300">Owner / Username</label>
+                          <input
+                            type="text"
+                            required
+                            value={ghOwner}
+                            onChange={(e) => setGhOwner(e.target.value)}
+                            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-slate-300">Repository Name</label>
+                          <input
+                            type="text"
+                            required
+                            value={ghRepo}
+                            onChange={(e) => setGhRepo(e.target.value)}
+                            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="mb-1 block text-slate-300">Commit Message</label>
-                        <input
-                          type="text"
-                          value={ghCommitMsg}
-                          onChange={(e) => setGhCommitMsg(e.target.value)}
-                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
-                        />
-                      </div>
-                    </div>
 
-                    {ghPushStatus && (
-                      <div
-                        className={`rounded-xl border p-2 text-[11px] ${
-                          ghPushStatus.ok
-                            ? "border-emerald-500/40 bg-emerald-950/60 text-emerald-200"
-                            : "border-rose-500/40 bg-rose-950/60 text-rose-200"
-                        }`}
-                      >
-                        {ghPushStatus.msg}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="mb-1 block text-slate-300">Branch</label>
+                          <input
+                            type="text"
+                            value={ghBranch}
+                            onChange={(e) => setGhBranch(e.target.value)}
+                            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-slate-300">Commit Message</label>
+                          <input
+                            type="text"
+                            value={ghCommitMsg}
+                            onChange={(e) => setGhCommitMsg(e.target.value)}
+                            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                          />
+                        </div>
                       </div>
-                    )}
 
-                    <div className="flex justify-end gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsGithubModalOpen(false)}
-                        className="rounded-xl bg-slate-800 px-3.5 py-2 text-slate-300"
-                      >
-                        বন্ধ করুন
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={isPushingGh}
-                        className="rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
-                      >
-                        {isPushingGh
-                          ? "পুশ হচ্ছে..."
-                          : `সব ফাইল (${activeProject?.files?.length || 0}) পুশ করুন`}
-                      </button>
-                    </div>
-                  </form>
+                      {ghPushStatus && (
+                        <div
+                          className={`rounded-xl border p-2.5 text-[11px] ${
+                            ghPushStatus.ok
+                              ? "border-emerald-500/40 bg-emerald-950/60 text-emerald-200"
+                              : "border-rose-500/40 bg-rose-950/60 text-rose-200"
+                          }`}
+                        >
+                          {ghPushStatus.msg}
+                        </div>
+                      )}
+
+                      <div className="flex justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsGithubModalOpen(false)}
+                          className="rounded-xl bg-slate-800 px-3.5 py-2 text-slate-300"
+                        >
+                          বন্ধ করুন
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isPushingGh}
+                          className="rounded-xl bg-purple-600 px-4 py-2 font-bold text-white hover:bg-purple-500 disabled:opacity-50"
+                        >
+                          {isPushingGh
+                            ? "পুশ হচ্ছে..."
+                            : `সব ফাইল (${activeProject?.files?.length || 0}) পুশ করুন`}
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               </div>
             )}
