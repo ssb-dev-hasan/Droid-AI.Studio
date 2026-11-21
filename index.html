@@ -88,18 +88,16 @@
         off
       } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-      const runtimeFirebaseConfig =
-        typeof window.__firebase_config !== "undefined"
-          ? JSON.parse(window.__firebase_config)
-          : {
-              apiKey: ["AIzaSy", "DroidAIStudio", "WebClientKey"].join(""),
-              authDomain: "droid-ai-studio.firebaseapp.com",
-              databaseURL: "https://droid-ai-studio-default-rtdb.asia-southeast1.firebasedatabase.app",
-              projectId: "droid-ai-studio",
-              storageBucket: "droid-ai-studio.firebasestorage.app",
-              messagingSenderId: "849201746310",
-              appId: "1:849201746310:web:droidaistudio2026"
-            };
+      const firebaseConfig = {
+    apiKey: "AIzaSyDFFHWazvKFE0VOKtlQoyzKNahQTks2_MU",
+    authDomain: "droid-ai-studio.firebaseapp.com",
+    databaseURL: "https://droid-ai-studio-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "droid-ai-studio",
+    storageBucket: "droid-ai-studio.firebasestorage.app",
+    messagingSenderId: "749792756742",
+    appId: "1:749792756742:web:9c848e07d0803423742f87",
+    measurementId: "G-PN9RNW0TW6"
+  };
 
       let firebaseApp = null;
       let firebaseAuth = null;
