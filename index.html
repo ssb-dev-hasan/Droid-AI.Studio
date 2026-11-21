@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Droid AI Studio — Android AI Code IDE</title>
+    <title>Droid AI Studio — ড্রয়েড এআই স্টুডিও</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <script>
@@ -57,87 +57,66 @@
         tab-size: 4;
         line-height: 1.55;
       }
+      @keyframes pulseGlow {
+        0%, 100% {
+          transform: scale(1);
+          box-shadow: 0 0 32px rgba(16, 185, 129, 0.45), 0 0 64px rgba(139, 92, 246, 0.25);
+        }
+        50% {
+          transform: scale(1.05);
+          box-shadow: 0 0 48px rgba(16, 185, 129, 0.75), 0 0 88px rgba(139, 92, 246, 0.45);
+        }
+      }
+      .splash-logo-glow {
+        animation: pulseGlow 2.4s ease-in-out infinite;
+      }
     </style>
-  </head>
-  <body class="min-h-screen bg-[#070b14] text-slate-100 antialiased selection:bg-purple-600/40 selection:text-white">
-    <div id="root" class="min-h-screen flex flex-col"></div>
+
+    <!-- Synchronous Firebase Compat SDKs (Guaranteed Immediate Availability) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <script>
+      const firebaseConfig = {
+        apiKey: "AIzaSyDFFHWazvKFE0VOKtlQoyzKNahQTks2_MU",
+        authDomain: "droid-ai-studio.firebaseapp.com",
+        databaseURL: "https://droid-ai-studio-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "droid-ai-studio",
+        storageBucket: "droid-ai-studio.firebasestorage.app",
+        messagingSenderId: "749792756742",
+        appId: "1:749792756742:web:9c848e07d0803423742f87",
+        measurementId: "G-PN9RNW0TW6"
+      };
+
+      try {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+        }
+        window.DroidFirebaseReady = true;
+        window.DroidAuth = firebase.auth();
+        window.DroidDB = firebase.database();
+      } catch (err) {
+        console.error("Firebase init error:", err);
+        window.DroidFirebaseReady = false;
+      }
+    </script>
 
     <!-- React 18 & Babel Standalone -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="min-h-screen bg-[#070b14] text-slate-100 antialiased selection:bg-purple-600/40 selection:text-white">
+    <div id="root" class="min-h-screen flex flex-col"></div>
 
-    <!-- Firebase Modular SDK Bridge -->
-    <script type="module">
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-      import {
-        getAuth,
-        onAuthStateChanged,
-        signInWithEmailAndPassword,
-        createUserWithEmailAndPassword,
-        GoogleAuthProvider,
-        signInWithPopup,
-        signOut
-      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-      import {
-        getDatabase,
-        ref,
-        set,
-        get,
-        onValue,
-        off
-      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-
-      const firebaseConfig = {
-    apiKey: "AIzaSyDFFHWazvKFE0VOKtlQoyzKNahQTks2_MU",
-    authDomain: "droid-ai-studio.firebaseapp.com",
-    databaseURL: "https://droid-ai-studio-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "droid-ai-studio",
-    storageBucket: "droid-ai-studio.firebasestorage.app",
-    messagingSenderId: "749792756742",
-    appId: "1:749792756742:web:9c848e07d0803423742f87",
-    measurementId: "G-PN9RNW0TW6"
-  };
-
-      let firebaseApp = null;
-      let firebaseAuth = null;
-      let firebaseDb = null;
-
-      try {
-        firebaseApp = initializeApp(runtimeFirebaseConfig);
-        firebaseAuth = getAuth(firebaseApp);
-        firebaseDb = getDatabase(firebaseApp);
-      } catch (err) {
-        console.warn("Firebase initialization notice:", err);
-      }
-
-      window.DroidFirebase = {
-        app: firebaseApp,
-        auth: firebaseAuth,
-        db: firebaseDb,
-        onAuthStateChanged,
-        signInWithEmailAndPassword,
-        createUserWithEmailAndPassword,
-        GoogleAuthProvider,
-        signInWithPopup,
-        signOut,
-        ref,
-        set,
-        get,
-        onValue,
-        off
-      };
-
-      window.dispatchEvent(new Event("droid-firebase-ready"));
-    </script>
-
-    <!-- Main Single-File React Application -->
     <script type="text/babel">
       const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
       // =========================================================================
       // 1. STRICT PER-USER BYOK STORAGE HELPERS (NO SHARED OR HARDCODED API KEYS)
       // =========================================================================
+      const LOCKED_PACKAGE_PREFIX = "com.droid.";
+
       function getUserScopedKeyStorageName(uid) {
         return uid ? `droid_studio_gemini_key_${uid}` : "droid_studio_gemini_key_guest";
       }
@@ -155,6 +134,20 @@
           .trim()
           .toLowerCase()
           .replace(/[.#$\[\]]/g, "_");
+      }
+
+      function sanitizeAppPackageSuffix(rawText) {
+        const cleaned = String(rawText || "")
+          .toLowerCase()
+          .replace(/^com\.droid\./i, "")
+          .replace(/[^a-z0-9]/g, "")
+          .slice(0, 24);
+        return cleaned || "myapp";
+      }
+
+      function buildLockedPackageName(suffixOrAppName) {
+        const suffix = sanitizeAppPackageSuffix(suffixOrAppName);
+        return `${LOCKED_PACKAGE_PREFIX}${suffix}`;
       }
 
       // =========================================================================
@@ -334,17 +327,9 @@
         { id: "rose", label: "Rose", hex: "#F43F5E" }
       ];
 
-      function formatAutoPackageName(appName) {
-        const slug = String(appName || "myapp")
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "")
-          .slice(0, 22);
-        return `com.droid.${slug || "myapp"}`;
-      }
-
       function generateAuthenticAndroidProject({
         name,
-        packageName,
+        packageSuffix,
         templateId,
         codeLang,
         minSdk,
@@ -357,8 +342,8 @@
         customLogoName
       }) {
         const cleanName = String(name || "Bangla News").trim();
-        const cleanPkg = String(packageName || "com.droid.myapp").trim();
-        const pkgPath = cleanPkg.replace(/\./g, "/");
+        const lockedPkg = buildLockedPackageName(packageSuffix || cleanName);
+        const pkgPath = lockedPkg.replace(/\./g, "/");
         const isJava = codeLang === "java";
         const isGroovy = buildConfigDsl === "groovy";
         const parsedMinSdk = Number(minSdk) || 24;
@@ -373,12 +358,11 @@
           "empty-views": {
             subtitle: "Empty Views Material 3 Activity",
             buttonText: "থিম বদলান",
-            navType: "none",
             items: [
               {
                 cat: "স্টার্টার",
                 title: `${cleanName} প্রজেক্ট প্রস্তুত`,
-                summary: `Min SDK ${parsedMinSdk} • Target SDK ${parsedTargetSdk} • ${
+                summary: `Package ${lockedPkg} • Min SDK ${parsedMinSdk} • Target SDK ${parsedTargetSdk} • ${
                   isJava ? "Java" : "Kotlin"
                 } কনফিগার করা হয়েছে।`,
                 time: "এইমাত্র"
@@ -388,7 +372,6 @@
           "bottom-nav": {
             subtitle: "Bottom Navigation Views Activity",
             buttonText: "ট্যাব বদলান",
-            navType: "bottom",
             items: [
               {
                 cat: "Home",
@@ -407,7 +390,6 @@
           "nav-drawer": {
             subtitle: "Navigation Drawer Views Activity",
             buttonText: "মেনু ড্রয়ার",
-            navType: "drawer",
             items: [
               {
                 cat: "Drawer Menu",
@@ -420,7 +402,6 @@
           "login-auth": {
             subtitle: "User Login & Registration Screen",
             buttonText: "সাইন ইন",
-            navType: "login",
             items: [
               {
                 cat: "Authentication",
@@ -433,7 +414,6 @@
           "bangla-news": {
             subtitle: "আজকের শীর্ষ সংবাদ",
             buttonText: "থিম বদলান",
-            navType: "none",
             items: [
               {
                 cat: "প্রযুক্তি",
@@ -458,7 +438,6 @@
           "ecommerce-store": {
             subtitle: "সেরা ডিল ও কালেকশন",
             buttonText: "কার্ট (০)",
-            navType: "none",
             items: [
               {
                 cat: "ইলেকট্রনিক্স",
@@ -481,7 +460,7 @@
         const mainSourceFile = isJava
           ? {
               path: `app/src/main/java/${pkgPath}/MainActivity.java`,
-              content: `package ${cleanPkg};
+              content: `package ${lockedPkg};
 
 import android.os.Bundle;
 import android.widget.Button;
@@ -520,14 +499,14 @@ public class MainActivity extends AppCompatActivity {
             }
           : {
               path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
-              content: `package ${cleanPkg}
+              content: `package ${lockedPkg}
 
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.recyclerview.widget.LinearLayoutManager
-import ${cleanPkg}.databinding.ActivityMainBinding
+import ${lockedPkg}.databinding.ActivityMainBinding
 
 data class AppItem(
     val id: Int,
@@ -607,11 +586,11 @@ ${preset.items
 }
 
 android {
-    namespace '${cleanPkg}'
+    namespace '${lockedPkg}'
     compileSdk ${parsedTargetSdk}
 
     defaultConfig {
-        applicationId "${cleanPkg}"
+        applicationId "${lockedPkg}"
         minSdk ${parsedMinSdk}
         targetSdk ${parsedTargetSdk}
         versionCode 1
@@ -637,11 +616,11 @@ dependencies {
 }
 
 android {
-    namespace = "${cleanPkg}"
+    namespace = "${lockedPkg}"
     compileSdk = ${parsedTargetSdk}
 
     defaultConfig {
-        applicationId = "${cleanPkg}"
+        applicationId = "${lockedPkg}"
         minSdk = ${parsedMinSdk}
         targetSdk = ${parsedTargetSdk}
         versionCode = 1
@@ -770,7 +749,7 @@ include(":app")`
             path: "app/src/main/AndroidManifest.xml",
             content: `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="${cleanPkg}">
+    package="${lockedPkg}">
 
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -836,7 +815,7 @@ include(":app")`
         return {
           id: "proj_" + now,
           name: cleanName,
-          packageName: cleanPkg,
+          packageName: lockedPkg,
           language: isJava ? "java-xml" : "kotlin-xml",
           templateId: templateId || "bangla-news",
           accentColor: colorHex,
@@ -854,7 +833,7 @@ include(":app")`
       function createBanglaNewsStarterProject() {
         const proj = generateAuthenticAndroidProject({
           name: "Bangla News",
-          packageName: "com.droid.banglanews",
+          packageSuffix: "banglanews",
           templateId: "bangla-news",
           codeLang: "kotlin",
           minSdk: 24,
@@ -928,7 +907,6 @@ include(":app")`
       function parseGeneratedFiles(replyText, existingFiles = []) {
         const updatesMap = new Map();
 
-        // Pass 1: Strict <<<FILE:path>>> ... <<<END_FILE>>> blocks
         const strictRegex = /<<<FILE:([^\n>]+)>>>\s*\n([\s\S]*?)<<<END_FILE>>>/g;
         let match;
         while ((match = strictRegex.exec(replyText)) !== null) {
@@ -939,7 +917,6 @@ include(":app")`
           }
         }
 
-        // Pass 2: Fallback Markdown fenced blocks if strict tags were omitted
         if (updatesMap.size === 0) {
           const mdBlockRegex =
             /(?:(?:^|\n)[^\n`]{0,120}?([A-Za-z0-9_./-]+\.(?:kt|java|xml|kts|gradle|json))[^\n`]{0,40}\n)?```(?:[a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
@@ -971,7 +948,7 @@ include(":app")`
       }
 
       // =========================================================================
-      // 5. DYNAMIC LIVE PREVIEW PARSER (PARSES ACTUAL XML, CODE & CUSTOM LOGO)
+      // 5. DYNAMIC LIVE PREVIEW PARSER
       // =========================================================================
       function parseProjectForLivePreview(project) {
         const files = Array.isArray(project?.files) ? project.files : [];
@@ -1121,16 +1098,123 @@ include(":app")`
         temperature: 0.5,
         maxOutputTokens: 4096,
         systemInstruction:
-          "তুমি Droid AI Studio-র দক্ষ বাংলা Android ডেভেলপার ও চ্যাট অ্যাসিস্ট্যান্ট। সাধারণ প্রশ্নে সংক্ষিপ্ত, আন্তরিক ও স্পষ্ট বাংলায় উত্তর দাও। যখন কোড তৈরি, নতুন ফিচার যোগ বা ফাইল ফিক্স করতে বলা হবে, তখন প্রজেক্টের Package Name, Min/Target SDK এবং Kotlin/Java কনফিগারেশন মেনে প্রতিটি পরিবর্তিত বা নতুন ফাইল <<<FILE:path/to/file>>> এবং <<<END_FILE>>> ব্লকের ভেতরে সম্পূর্ণ রানযোগ্য কোডসহ প্রদান করো।"
+          "তুমি Droid AI Studio-র দক্ষ বাংলা Android ডেভেলপার ও চ্যাট অ্যাসিস্ট্যান্ট। সাধারণ প্রশ্নে সংক্ষিপ্ত, আন্তরিক ও স্পষ্ট বাংলায় উত্তর দাও। যখন কোড তৈরি, নতুন ফিচার যোগ বা ফাইল ফিক্স করতে বলা হবে, তখন প্রজেক্টের Package Name (com.droid.*), Min/Target SDK এবং Kotlin/Java কনফিগারেশন মেনে প্রতিটি পরিবর্তিত বা নতুন ফাইল <<<FILE:path/to/file>>> এবং <<<END_FILE>>> ব্লকের ভেতরে সম্পূর্ণ রানযোগ্য কোডসহ প্রদান করো।"
       };
 
       // =========================================================================
-      // 7. MAIN APPLICATION COMPONENT
+      // 7. BRANDED 6-SECOND SPLASH SCREEN COMPONENT
+      // =========================================================================
+      function BrandedSplashScreen({ onComplete }) {
+        const [progress, setProgress] = useState(0);
+
+        useEffect(() => {
+          const totalDurationMs = 6000;
+          const start = Date.now();
+          const interval = setInterval(() => {
+            const elapsed = Date.now() - start;
+            const pct = Math.min(100, Math.round((elapsed / totalDurationMs) * 100));
+            setProgress(pct);
+            if (elapsed >= totalDurationMs) {
+              clearInterval(interval);
+              onComplete();
+            }
+          }, 50);
+
+          return () => clearInterval(interval);
+        }, [onComplete]);
+
+        const statusStep =
+          progress < 34
+            ? "Firebase অথেনটিকেশন ও ডাটাবেস সংযোগ হচ্ছে..."
+            : progress < 68
+            ? "BYOK প্রাইভেট কী আইসোলেশন যাচাই হচ্ছে..."
+            : "ড্রয়েড এআই স্টুডিও ওয়ার্কস্পেস প্রস্তুত হচ্ছে...";
+
+        return (
+          <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#060913] px-6 text-center">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.12),transparent_65%)]"></div>
+
+            <div className="relative z-10 flex flex-col items-center">
+              {/* Custom Glowing Droid AI Studio Emblem */}
+              <div className="splash-logo-glow flex h-24 w-24 items-center justify-center rounded-3xl border border-emerald-400/40 bg-gradient-to-br from-emerald-500 via-teal-600 to-indigo-700 shadow-2xl">
+                <svg
+                  className="h-14 w-14 text-white"
+                  viewBox="0 0 64 64"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M20 14L15 7M44 14L49 7"
+                    stroke="currentColor"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                  />
+                  <rect
+                    x="13"
+                    y="16"
+                    width="38"
+                    height="32"
+                    rx="12"
+                    fill="rgba(255,255,255,0.14)"
+                    stroke="currentColor"
+                    strokeWidth="3.2"
+                  />
+                  <circle cx="24" cy="30" r="3.5" fill="#A7F3D0" />
+                  <circle cx="40" cy="30" r="3.5" fill="#A7F3D0" />
+                  <path
+                    d="M25 39C27.5 41.5 36.5 41.5 39 39"
+                    stroke="#A7F3D0"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M32 48V56M22 54H42"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
+
+              <div className="mt-6 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-950/60 px-3 py-1 text-[11px] font-bold text-emerald-300">
+                <span>⚡ ANDROID AI IDE • BYOK SECURED</span>
+              </div>
+
+              <h1 className="mt-3 bg-gradient-to-r from-white via-emerald-200 to-purple-300 bg-clip-text text-2xl font-black tracking-tight text-transparent sm:text-3xl">
+                ড্রয়েড এআই স্টুডিও
+              </h1>
+              <p className="mt-1 text-sm font-bold tracking-wide text-slate-300">
+                Droid AI Studio
+              </p>
+
+              {/* Progress Bar */}
+              <div className="mt-7 w-64 max-w-full sm:w-72">
+                <div className="h-2 w-full overflow-hidden rounded-full border border-slate-800 bg-slate-900/90 p-0.5">
+                  <div
+                    style={{ width: `${progress}%` }}
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-purple-500 transition-all duration-75"
+                  />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="truncate">{statusStep}</span>
+                  <span className="ml-2 font-mono font-bold text-emerald-300">{progress}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // =========================================================================
+      // 8. MAIN APPLICATION COMPONENT
       // =========================================================================
       function DroidAIStudioApp() {
+        // --- 6-Second Branded Splash State ---
+        const [showSplash, setShowSplash] = useState(true);
+
         // --- Firebase & Auth State ---
-        const [fbReady, setFbReady] = useState(Boolean(window.DroidFirebase?.auth));
         const [currentUser, setCurrentUser] = useState(null);
+        const [authChecked, setAuthChecked] = useState(false);
         const [rtdbSyncStatus, setRtdbSyncStatus] = useState("লোকাল মোড");
         const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
         const [authMode, setAuthMode] = useState("login");
@@ -1177,10 +1261,10 @@ include(":app")`
         const [newFilePathInput, setNewFilePathInput] = useState("");
         const [codeCopySuccess, setCodeCopySuccess] = useState(false);
 
-        // --- Authentic Android Studio New Project Wizard State ---
+        // --- Authentic Android Studio New Project Wizard State (Locked com.droid.) ---
         const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
         const [newProjName, setNewProjName] = useState("");
-        const [newProjPkg, setNewProjPkg] = useState("com.droid.myapp");
+        const [newProjPkgSuffix, setNewProjPkgSuffix] = useState("myapp");
         const [newProjPkgManual, setNewProjPkgManual] = useState(false);
         const [newProjTemplate, setNewProjTemplate] = useState("empty-views");
         const [newProjLang, setNewProjLang] = useState("kotlin");
@@ -1228,7 +1312,7 @@ include(":app")`
           {
             id: "welcome_1",
             role: "assistant",
-            text: "আসসালামু আলাইকুম! আমি Droid AI Studio। উপরে আপনার নিজস্ব Gemini API Key বসিয়ে সরাসরি বাংলায় চ্যাট করুন বা '+ প্রজেক্ট' থেকে আসল Android Studio টেমপ্লেট, Min/Target SDK ও লোগোসহ নতুন অ্যাপ বানান। AI কোড আপডেট দিলে '✅ Accept ও ফাইল আপডেট করুন' বাটনে ক্লিক করলেই সব ফাইল ও প্রিভিউ আপডেট হয়ে যাবে।",
+            text: "আসসালামু আলাইকুম! আমি Droid AI Studio। আপনার ইমেইল দিয়ে লগইন করে নিজস্ব Gemini API Key বসান এবং সরাসরি বাংলায় চ্যাট বা Android প্রজেক্ট তৈরি ও কোডিং শুরু করুন।",
             modelUsed: "system"
           }
         ]);
@@ -1281,22 +1365,20 @@ include(":app")`
           }
         }, [messages, isGenerating, activeTab]);
 
-        useEffect(() => {
-          const handleReady = () => setFbReady(true);
-          window.addEventListener("droid-firebase-ready", handleReady);
-          return () => window.removeEventListener("droid-firebase-ready", handleReady);
-        }, []);
-
         // =========================================================================
-        // STRICT PER-USER AUTH & BYOK ISOLATION LIFECYCLE
+        // STRICT PER-USER AUTH & BYOK ISOLATION LIFECYCLE (SYNCHRONOUS COMPAT SDK)
         // =========================================================================
         useEffect(() => {
-          if (!fbReady || !window.DroidFirebase?.auth) return;
-          const { auth, db, onAuthStateChanged, ref, get, onValue, off } = window.DroidFirebase;
+          if (!window.DroidAuth) {
+            setAuthChecked(true);
+            return;
+          }
 
-          let projectsListenerRef = null;
+          const auth = window.DroidAuth;
+          const db = window.DroidDB;
+          let projectsRef = null;
 
-          const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+          const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
             const newUid = user?.uid || null;
 
             if (prevUidRef.current !== newUid) {
@@ -1307,38 +1389,26 @@ include(":app")`
               prevUidRef.current = newUid;
             }
 
-            if (projectsListenerRef) {
-              off(projectsListenerRef);
-              projectsListenerRef = null;
+            if (projectsRef) {
+              projectsRef.off();
+              projectsRef = null;
             }
 
             setCurrentUser(user || null);
+            setAuthChecked(true);
 
             if (!user) {
-              setRtdbSyncStatus("লোকাল মোড");
-              try {
-                const guestKey = localStorage.getItem(getUserScopedKeyStorageName(null)) || "";
-                setApiKeyInput(guestKey);
-                setSavedApiKey(guestKey);
-
-                const guestProjsRaw = localStorage.getItem(getUserScopedProjectsStorageName(null));
-                if (guestProjsRaw) {
-                  const parsed = JSON.parse(guestProjsRaw);
-                  if (Array.isArray(parsed) && parsed.length > 0) {
-                    setProjects(parsed);
-                    setActiveProjectId(parsed[0].id);
-                  }
-                } else {
-                  const starter = createBanglaNewsStarterProject();
-                  setProjects([starter]);
-                  setActiveProjectId(starter.id);
-                }
-
-                const guestHistRaw = localStorage.getItem(getUserScopedHistoryStorageName(null));
-                setHistoryMap(guestHistRaw ? JSON.parse(guestHistRaw) : {});
-              } catch {}
+              setRtdbSyncStatus("লগইন প্রয়োজন");
+              const starter = createBanglaNewsStarterProject();
+              setProjects([starter]);
+              setActiveProjectId(starter.id);
+              setHistoryMap({});
               return;
             }
+
+            // User is logged in via Email — close login modal automatically
+            setIsAuthModalOpen(false);
+            setAuthError("");
 
             const uid = user.uid;
             setRtdbSyncStatus("সিঙ্ক হচ্ছে...");
@@ -1350,7 +1420,7 @@ include(":app")`
 
             if (db) {
               try {
-                const keySnap = await get(ref(db, `users/${uid}/private/geminiApiKey`));
+                const keySnap = await db.ref(`users/${uid}/private/geminiApiKey`).once("value");
                 if (keySnap.exists() && typeof keySnap.val() === "string") {
                   resolvedKey = keySnap.val().trim();
                   localStorage.setItem(getUserScopedKeyStorageName(uid), resolvedKey);
@@ -1383,9 +1453,9 @@ include(":app")`
             }
 
             if (db) {
-              projectsListenerRef = ref(db, `users/${uid}/projects`);
-              onValue(
-                projectsListenerRef,
+              projectsRef = db.ref(`users/${uid}/projects`);
+              projectsRef.on(
+                "value",
                 (snapshot) => {
                   setRtdbSyncStatus("RTDB সিঙ্কড");
                   if (snapshot.exists()) {
@@ -1399,9 +1469,7 @@ include(":app")`
                     const starter = createBanglaNewsStarterProject();
                     setProjects([starter]);
                     setActiveProjectId(starter.id);
-                    window.DroidFirebase.set(ref(db, `users/${uid}/projects/${starter.id}`), starter).catch(
-                      () => {}
-                    );
+                    db.ref(`users/${uid}/projects/${starter.id}`).set(starter).catch(() => {});
                   }
                 },
                 () => {
@@ -1413,9 +1481,32 @@ include(":app")`
 
           return () => {
             unsubscribeAuth();
-            if (projectsListenerRef) off(projectsListenerRef);
+            if (projectsRef) projectsRef.off();
           };
-        }, [fbReady]);
+        }, []);
+
+        // =========================================================================
+        // MANDATORY LOGIN GATE INTERCEPTOR (ANY CLICK WHEN LOGGED OUT OPENS LOGIN)
+        // =========================================================================
+        const requireAuthenticatedUser = useCallback(() => {
+          if (!currentUser) {
+            setAuthError("");
+            setAuthMode("login");
+            setIsAuthModalOpen(true);
+            return false;
+          }
+          return true;
+        }, [currentUser]);
+
+        const handleWorkspaceClickCapture = (e) => {
+          if (!showSplash && authChecked && !currentUser && !isAuthModalOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            setAuthError("অ্যাপটি ব্যবহার করতে অনুগ্রহ করে আপনার ইমেইল দিয়ে লগইন করুন।");
+            setAuthMode("login");
+            setIsAuthModalOpen(true);
+          }
+        };
 
         const syncProjectsToStorageAndCloud = useCallback(
           (nextProjects) => {
@@ -1424,14 +1515,14 @@ include(":app")`
               localStorage.setItem(getUserScopedProjectsStorageName(uid), JSON.stringify(nextProjects));
             } catch {}
 
-            if (uid && window.DroidFirebase?.db) {
-              const { db, ref, set } = window.DroidFirebase;
+            if (uid && window.DroidDB) {
               const payloadMap = {};
               nextProjects.forEach((p) => {
                 if (p?.id) payloadMap[p.id] = p;
               });
               setRtdbSyncStatus("সিঙ্ক হচ্ছে...");
-              set(ref(db, `users/${uid}/projects`), payloadMap)
+              window.DroidDB.ref(`users/${uid}/projects`)
+                .set(payloadMap)
                 .then(() => setRtdbSyncStatus("RTDB সিঙ্কড"))
                 .catch(() => setRtdbSyncStatus("লোকাল সেভড"));
             }
@@ -1443,11 +1534,12 @@ include(":app")`
         // BYOK API KEY SAVE, TEST & DELETE HANDLERS
         // =========================================================================
         const handleSaveApiKey = async (rawVal) => {
+          if (!currentUser) return;
           const clean = String(rawVal ?? apiKeyInput).trim();
           setApiKeyInput(clean);
           setSavedApiKey(clean);
 
-          const uid = currentUser?.uid || null;
+          const uid = currentUser.uid;
           try {
             if (clean) {
               localStorage.setItem(getUserScopedKeyStorageName(uid), clean);
@@ -1456,10 +1548,9 @@ include(":app")`
             }
           } catch {}
 
-          if (uid && window.DroidFirebase?.db) {
-            const { db, ref, set } = window.DroidFirebase;
+          if (window.DroidDB) {
             try {
-              await set(ref(db, `users/${uid}/private/geminiApiKey`), clean || null);
+              await window.DroidDB.ref(`users/${uid}/private/geminiApiKey`).set(clean || null);
             } catch (err) {
               console.warn("RTDB key save error:", err);
             }
@@ -1467,6 +1558,7 @@ include(":app")`
         };
 
         const handleTestAndLoadModels = async () => {
+          if (!requireAuthenticatedUser()) return;
           const clean = String(apiKeyInput || "").trim();
           if (!clean) {
             setApiTestStatus({
@@ -1501,6 +1593,7 @@ include(":app")`
         };
 
         const handleDeleteApiKey = async () => {
+          if (!requireAuthenticatedUser()) return;
           setApiKeyInput("");
           setSavedApiKey("");
           setApiTestStatus({
@@ -1509,15 +1602,14 @@ include(":app")`
           });
           setAvailableModels(PREFERRED_MODEL_ORDER.map((id) => ({ id, displayName: id })));
 
-          const uid = currentUser?.uid || null;
+          const uid = currentUser.uid;
           try {
             localStorage.removeItem(getUserScopedKeyStorageName(uid));
           } catch {}
 
-          if (uid && window.DroidFirebase?.db) {
-            const { db, ref, set } = window.DroidFirebase;
+          if (window.DroidDB) {
             try {
-              await set(ref(db, `users/${uid}/private/geminiApiKey`), null);
+              await window.DroidDB.ref(`users/${uid}/private/geminiApiKey`).set(null);
             } catch {}
           }
         };
@@ -1555,6 +1647,7 @@ include(":app")`
         );
 
         const handleRestoreSnapshot = (snap) => {
+          if (!requireAuthenticatedUser()) return;
           if (!activeProject || !snap || !Array.isArray(snap.files)) return;
           const restoredFiles = JSON.parse(JSON.stringify(snap.files));
           const nextProjects = projects.map((p) =>
@@ -1619,6 +1712,7 @@ include(":app")`
         };
 
         const handleAcceptStagedUpdate = (messageId) => {
+          if (!requireAuthenticatedUser()) return;
           const targetMsg = messages.find((m) => m.id === messageId);
           if (!targetMsg || !targetMsg.stagedFiles || targetMsg.stageStatus === "accepted") return;
 
@@ -1647,6 +1741,7 @@ include(":app")`
         };
 
         const handleRejectStagedUpdate = (messageId) => {
+          if (!requireAuthenticatedUser()) return;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === messageId
@@ -1712,6 +1807,7 @@ include(":app")`
         };
 
         const handleSendMessage = async (overridePrompt) => {
+          if (!requireAuthenticatedUser()) return;
           const promptText = String(overridePrompt ?? chatInput).trim();
           if (!promptText || isGenerating) return;
 
@@ -1750,7 +1846,6 @@ include(":app")`
           if (intent === "code" && activeProject) {
             const fileSummaries = activeProject.files
               .map((f) => {
-                // Avoid sending huge base64 strings verbatim in prompt context while informing AI of logo asset
                 if (f.assetDataUrl || f.path.endsWith(".png")) {
                   return `--- FILE: ${f.path} ---\n[Binary Image Asset: Custom App Logo embedded at @drawable/app_logo_custom]`;
                 }
@@ -1760,7 +1855,7 @@ include(":app")`
 
             composedUserContent = `প্রজেক্ট মেটাডাটা:
 - App Name: ${activeProject.name}
-- Package Name: ${activeProject.packageName}
+- Locked Package Name: ${activeProject.packageName}
 - Template: ${activeProject.templateId || "custom"}
 - Language: ${activeProject.language}
 - Min SDK: API ${activeProject.minSdk || 24} | Target/Compile SDK: API ${activeProject.targetSdk || 35}
@@ -1773,7 +1868,7 @@ ${fileSummaries}
 ব্যবহারকারীর নির্দেশনা:
 ${promptText}
 
-নির্দেশনা: প্রজেক্টের Package Name ও SDK কনফিগারেশন বজায় রেখে পরিবর্তিত বা নতুন প্রতিটি ফাইল অবশ্যই <<<FILE:path/to/file>>> এবং <<<END_FILE>>> ট্যাগের ভেতরে সম্পূর্ণ রানযোগ্য কোডসহ দেবে।`;
+নির্দেশনা: প্রজেক্টের Package Name (${activeProject.packageName}) ও SDK কনফিগারেশন বজায় রেখে পরিবর্তিত বা নতুন প্রতিটি ফাইল অবশ্যই <<<FILE:path/to/file>>> এবং <<<END_FILE>>> ট্যাগের ভেতরে সম্পূর্ণ রানযোগ্য কোডসহ দেবে।`;
           }
 
           const recentTurns = messages
@@ -1966,7 +2061,7 @@ ${promptText}
         };
 
         // =========================================================================
-        // NEW PROJECT WIZARD (LOGO UPLOAD + FULL ANDROID STUDIO CONFIG)
+        // NEW PROJECT WIZARD (LOCKED com.droid. PREFIX + LOGO UPLOAD + SDK CONFIG)
         // =========================================================================
         const handleLogoFileUpload = (e) => {
           const file = e.target.files?.[0];
@@ -1992,12 +2087,13 @@ ${promptText}
 
         const handleCreateNewProject = (e) => {
           e.preventDefault();
+          if (!requireAuthenticatedUser()) return;
           const finalName = String(newProjName || "My Android App").trim();
-          const finalPkg = String(newProjPkg || formatAutoPackageName(finalName)).trim();
+          const finalSuffix = sanitizeAppPackageSuffix(newProjPkgSuffix || finalName);
 
           const created = generateAuthenticAndroidProject({
             name: finalName,
-            packageName: finalPkg,
+            packageSuffix: finalSuffix,
             templateId: newProjTemplate,
             codeLang: newProjLang,
             minSdk: newProjMinSdk,
@@ -2017,12 +2113,12 @@ ${promptText}
           syncProjectsToStorageAndCloud(nextProjects);
           recordProjectSnapshot(
             created,
-            `নতুন Android প্রজেক্ট (${created.templateId}, SDK ${created.minSdk}-${created.targetSdk})`,
+            `নতুন প্রজেক্ট (${created.packageName}, SDK ${created.minSdk}-${created.targetSdk})`,
             "Initial"
           );
 
           setNewProjName("");
-          setNewProjPkg("com.droid.myapp");
+          setNewProjPkgSuffix("myapp");
           setNewProjPkgManual(false);
           setNewProjLogoDataUrl("");
           setNewProjLogoName("");
@@ -2032,6 +2128,7 @@ ${promptText}
         };
 
         const handleCodeEditorChange = (newContent) => {
+          if (!requireAuthenticatedUser()) return;
           if (!activeProject || !selectedFilePath) return;
           const nextProjects = projects.map((p) => {
             if (p.id !== activeProject.id) return p;
@@ -2047,6 +2144,7 @@ ${promptText}
         };
 
         const handleManualSaveCode = () => {
+          if (!requireAuthenticatedUser()) return;
           syncProjectsToStorageAndCloud(projects);
           if (activeProject) {
             recordProjectSnapshot(
@@ -2061,6 +2159,7 @@ ${promptText}
 
         const handleAddNewFile = (e) => {
           e.preventDefault();
+          if (!requireAuthenticatedUser()) return;
           const cleanPath = String(newFilePathInput || "").trim();
           if (!cleanPath || !activeProject) return;
 
@@ -2089,6 +2188,7 @@ ${promptText}
         };
 
         const handleDeleteCurrentFile = () => {
+          if (!requireAuthenticatedUser()) return;
           if (!activeProject || !selectedFilePath || activeProject.files.length <= 1) return;
           const remaining = activeProject.files.filter((f) => f.path !== selectedFilePath);
           const nextProjects = projects.map((p) =>
@@ -2100,6 +2200,7 @@ ${promptText}
         };
 
         const handleCopyCurrentCode = () => {
+          if (!requireAuthenticatedUser()) return;
           if (!activeFile) return;
           const el = document.createElement("textarea");
           el.value = activeFile.content;
@@ -2118,84 +2219,70 @@ ${promptText}
           setTimeout(() => setPreviewToast(""), 2600);
         }
 
+        // =========================================================================
+        // EMAIL & PASSWORD FIREBASE AUTHENTICATION HANDLERS
+        // =========================================================================
         const handleEmailAuthSubmit = async (e) => {
           e.preventDefault();
-          if (!window.DroidFirebase?.auth) {
-            setAuthError("Firebase SDK এখনো প্রস্তুত নয়।");
+          if (!window.DroidAuth) {
+            setAuthError("Firebase Authentication লোড হতে পারেনি। ইন্টারনেট সংযোগ যাচাই করে পেজ রিফ্রেশ করুন।");
             return;
           }
           setAuthLoading(true);
           setAuthError("");
-          const {
-            auth,
-            db,
-            ref,
-            set,
-            signInWithEmailAndPassword,
-            createUserWithEmailAndPassword
-          } = window.DroidFirebase;
 
           try {
             if (authMode === "signup") {
-              const cred = await createUserWithEmailAndPassword(
-                auth,
+              const cred = await window.DroidAuth.createUserWithEmailAndPassword(
                 authEmail.trim(),
                 authPassword
               );
-              if (db && cred.user) {
+              if (window.DroidDB && cred.user) {
                 const emailKey = sanitizeEmailKey(cred.user.email);
-                await set(ref(db, `user_emails/${emailKey}`), {
-                  uid: cred.user.uid,
-                  email: cred.user.email
-                }).catch(() => {});
+                await window.DroidDB.ref(`user_emails/${emailKey}`)
+                  .set({
+                    uid: cred.user.uid,
+                    email: cred.user.email
+                  })
+                  .catch(() => {});
               }
             } else {
-              await signInWithEmailAndPassword(auth, authEmail.trim(), authPassword);
+              await window.DroidAuth.signInWithEmailAndPassword(
+                authEmail.trim(),
+                authPassword
+              );
             }
             setIsAuthModalOpen(false);
             setAuthEmail("");
             setAuthPassword("");
           } catch (err) {
-            setAuthError(err.message || "অথেনটিকেশন ব্যর্থ হয়েছে।");
-          } finally {
-            setAuthLoading(false);
-          }
-        };
-
-        const handleGoogleSignIn = async () => {
-          if (!window.DroidFirebase?.auth) return;
-          setAuthLoading(true);
-          setAuthError("");
-          const { auth, db, ref, set, GoogleAuthProvider, signInWithPopup } = window.DroidFirebase;
-          try {
-            const provider = new GoogleAuthProvider();
-            const cred = await signInWithPopup(auth, provider);
-            if (db && cred.user) {
-              const emailKey = sanitizeEmailKey(cred.user.email);
-              await set(ref(db, `user_emails/${emailKey}`), {
-                uid: cred.user.uid,
-                email: cred.user.email
-              }).catch(() => {});
+            const code = err?.code || "";
+            if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
+              setAuthError("ইমেইল বা পাসওয়ার্ড সঠিক নয়। নতুন অ্যাকাউন্ট খুলতে 'নতুন অ্যাকাউন্ট' ট্যাবে ক্লিক করুন।");
+            } else if (code === "auth/email-already-in-use") {
+              setAuthError("এই ইমেইল দিয়ে ইতিমধ্যেই অ্যাকাউন্ট তৈরি করা আছে। 'লগইন' ট্যাব থেকে প্রবেশ করুন।");
+            } else if (code === "auth/weak-password") {
+              setAuthError("পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।");
+            } else {
+              setAuthError(err.message || "লগইন ব্যর্থ হয়েছে।");
             }
-            setIsAuthModalOpen(false);
-          } catch (err) {
-            setAuthError(err.message || "Google সাইন-ইন ব্যর্থ হয়েছে।");
           } finally {
             setAuthLoading(false);
           }
         };
 
         const handleLogout = async () => {
-          if (!window.DroidFirebase?.auth) return;
+          if (!window.DroidAuth) return;
           setApiKeyInput("");
           setSavedApiKey("");
           setApiTestStatus(null);
-          await window.DroidFirebase.signOut(window.DroidFirebase.auth);
-          setIsAuthModalOpen(false);
+          await window.DroidAuth.signOut();
+          setIsAuthModalOpen(true);
         };
 
         const handlePushToGitHub = async (e) => {
           e.preventDefault();
+          if (!requireAuthenticatedUser()) return;
           if (!activeProject || !ghToken.trim() || !ghOwner.trim() || !ghRepo.trim()) {
             setGhPushStatus({ ok: false, msg: "GitHub Token, Owner এবং Repo নাম পূরণ করুন।" });
             return;
@@ -2265,10 +2352,16 @@ ${promptText}
 
         const userDisplayBadge = currentUser
           ? currentUser.email?.split("@")[0] || "প্রোফাইল"
-          : "লগইন";
+          : "লগইন করুন";
 
         return (
-          <div className="flex min-h-screen flex-col bg-[#070b14] text-slate-100">
+          <div
+            onClickCapture={handleWorkspaceClickCapture}
+            className="flex min-h-screen flex-col bg-[#070b14] text-slate-100"
+          >
+            {/* 6-SECOND BRANDED SPLASH SCREEN */}
+            {showSplash && <BrandedSplashScreen onComplete={() => setShowSplash(false)} />}
+
             {/* =================================================================== */}
             {/* TOP IDE HEADER                                                      */}
             {/* =================================================================== */}
@@ -2296,7 +2389,7 @@ ${promptText}
                         className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                           rtdbSyncStatus.includes("RTDB")
                             ? "border border-emerald-500/40 bg-emerald-950/80 text-emerald-300"
-                            : "border border-slate-700 bg-slate-800/90 text-slate-300"
+                            : "border border-amber-500/40 bg-amber-950/70 text-amber-300"
                         }`}
                       >
                         {rtdbSyncStatus}
@@ -2306,7 +2399,10 @@ ${promptText}
                     <div className="mt-0.5 flex flex-wrap items-center gap-1">
                       <select
                         value={activeProject?.id || ""}
-                        onChange={(e) => setActiveProjectId(e.target.value)}
+                        onChange={(e) => {
+                          if (!requireAuthenticatedUser()) return;
+                          setActiveProjectId(e.target.value);
+                        }}
                         className="max-w-[130px] truncate rounded-lg border border-slate-700/80 bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none sm:max-w-[180px]"
                       >
                         {projects.map((p) => (
@@ -2319,6 +2415,7 @@ ${promptText}
                       <button
                         type="button"
                         onClick={() => {
+                          if (!requireAuthenticatedUser()) return;
                           setNewProjLogoError("");
                           setIsNewProjectModalOpen(true);
                         }}
@@ -2329,7 +2426,10 @@ ${promptText}
 
                       <button
                         type="button"
-                        onClick={() => setIsHistoryModalOpen(true)}
+                        onClick={() => {
+                          if (!requireAuthenticatedUser()) return;
+                          setIsHistoryModalOpen(true);
+                        }}
                         className="rounded-lg border border-amber-500/40 bg-amber-950/50 px-2 py-0.5 text-[10px] font-bold text-amber-300 hover:bg-amber-900/60"
                       >
                         📜 হিস্ট্রি ({activeProjectHistory.length})
@@ -2342,6 +2442,7 @@ ${promptText}
                   <button
                     type="button"
                     onClick={() => {
+                      if (!requireAuthenticatedUser()) return;
                       setGhPushStatus(null);
                       setIsGithubModalOpen(true);
                     }}
@@ -2359,10 +2460,10 @@ ${promptText}
                     className={`rounded-xl border px-2.5 py-1.5 text-[11px] font-bold transition ${
                       currentUser
                         ? "border-emerald-500/40 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900/70"
-                        : "border-purple-500/40 bg-purple-950/70 text-purple-200 hover:bg-purple-900/70"
+                        : "border-purple-500/50 bg-purple-700 text-white shadow hover:bg-purple-600"
                     }`}
                   >
-                    {currentUser ? `👤 ${userDisplayBadge}` : "🔐 লগইন"}
+                    {currentUser ? `👤 ${userDisplayBadge}` : "🔐 ইমেইল লগইন"}
                   </button>
                 </div>
               </div>
@@ -2371,7 +2472,10 @@ ${promptText}
               <div className="mx-auto mt-2 grid max-w-5xl grid-cols-3 gap-1 rounded-xl border border-slate-800 bg-slate-950/90 p-1">
                 <button
                   type="button"
-                  onClick={() => setActiveTab("chat")}
+                  onClick={() => {
+                    if (!requireAuthenticatedUser()) return;
+                    setActiveTab("chat");
+                  }}
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-bold transition ${
                     activeTab === "chat"
                       ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md"
@@ -2383,7 +2487,10 @@ ${promptText}
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab("code")}
+                  onClick={() => {
+                    if (!requireAuthenticatedUser()) return;
+                    setActiveTab("code");
+                  }}
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-bold transition ${
                     activeTab === "code"
                       ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md"
@@ -2395,7 +2502,10 @@ ${promptText}
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab("preview")}
+                  onClick={() => {
+                    if (!requireAuthenticatedUser()) return;
+                    setActiveTab("preview");
+                  }}
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-bold transition ${
                     activeTab === "preview"
                       ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md"
@@ -2406,6 +2516,25 @@ ${promptText}
                 </button>
               </div>
             </header>
+
+            {/* LOGGED-OUT INTERACTIVE BANNER PROMPT */}
+            {!showSplash && authChecked && !currentUser && (
+              <div
+                onClick={() => {
+                  setAuthError("");
+                  setAuthMode("login");
+                  setIsAuthModalOpen(true);
+                }}
+                className="mx-auto mt-2.5 flex w-[calc(100%-1.5rem)] max-w-5xl cursor-pointer items-center justify-between gap-2 rounded-2xl border border-amber-500/40 bg-amber-950/50 px-3.5 py-2.5 text-xs text-amber-200 shadow-lg"
+              >
+                <span>
+                  🔒 অ্যাপটি ব্যবহার করতে আপনার <strong>ইমেইল ও পাসওয়ার্ড</strong> দিয়ে লগইন করুন।
+                </span>
+                <span className="shrink-0 rounded-xl bg-amber-500 px-3 py-1 font-extrabold text-slate-950">
+                  এখনই লগইন
+                </span>
+              </div>
+            )}
 
             {/* =================================================================== */}
             {/* TAB 1: CONVERSATIONAL BENGALI CHAT & BYOK GEMINI AI STUDIO PANEL    */}
@@ -2423,7 +2552,7 @@ ${promptText}
                       </span>
                       {activeProject && (
                         <span className="hidden rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 font-mono text-[10px] text-slate-300 sm:inline">
-                          SDK {activeProject.minSdk || 24}–{activeProject.targetSdk || 35}
+                          {activeProject.packageName}
                         </span>
                       )}
                     </div>
@@ -2439,7 +2568,10 @@ ${promptText}
                       </a>
                       <button
                         type="button"
-                        onClick={() => setIsSettingsDrawerOpen((v) => !v)}
+                        onClick={() => {
+                          if (!requireAuthenticatedUser()) return;
+                          setIsSettingsDrawerOpen((v) => !v);
+                        }}
                         className={`rounded-lg border px-2 py-1 text-[10px] font-bold transition ${
                           isSettingsDrawerOpen
                             ? "border-purple-500 bg-purple-700 text-white"
@@ -2488,7 +2620,7 @@ ${promptText}
                       <span className="font-medium text-slate-300">
                         {currentUser
                           ? `নিজস্ব API Key (BYOK) — শুধুমাত্র ${currentUser.email}-এর জন্য সংরক্ষিত`
-                          : "গেস্ট BYOK মোড — লগইন করলে আপনার UID প্রোফাইলে সুরক্ষিত থাকবে"}
+                          : "ব্যবহার করতে ইমেইল দিয়ে লগইন করুন"}
                       </span>
                     </div>
 
@@ -2926,15 +3058,17 @@ ${promptText}
                   </div>
                 </div>
 
-                {/* Project Metadata Banner in Editor */}
                 {activeProject && (
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800/80 bg-slate-950/70 px-3 py-1.5 text-[11px] text-slate-400">
                     <span>
-                      Package: <strong className="font-mono text-slate-200">{activeProject.packageName}</strong>
+                      Locked Package:{" "}
+                      <strong className="font-mono text-emerald-300">
+                        {activeProject.packageName}
+                      </strong>
                     </span>
                     <span>
-                      Min SDK: <strong className="text-emerald-400">API {activeProject.minSdk || 24}</strong> • Target SDK:{" "}
-                      <strong className="text-emerald-400">API {activeProject.targetSdk || 35}</strong>
+                      Min SDK: <strong className="text-slate-200">API {activeProject.minSdk || 24}</strong> • Target SDK:{" "}
+                      <strong className="text-slate-200">API {activeProject.targetSdk || 35}</strong>
                     </span>
                   </div>
                 )}
@@ -2974,7 +3108,7 @@ ${promptText}
             )}
 
             {/* =================================================================== */}
-            {/* TAB 3: DYNAMIC LIVE MOBILE PREVIEW (WITH UPLOADED LOGO & TEMPLATES) */}
+            {/* TAB 3: DYNAMIC LIVE MOBILE PREVIEW                                  */}
             {/* =================================================================== */}
             {activeTab === "preview" && (
               <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center p-3">
@@ -2997,20 +3131,17 @@ ${promptText}
                   </button>
                 </div>
 
-                {/* Realistic Mobile Phone Frame */}
                 <div
                   className={`relative flex min-h-[540px] w-full max-w-[360px] flex-col overflow-hidden rounded-[2.2rem] border-[6px] border-slate-800 shadow-2xl transition-colors ${
                     previewDarkMode ? "bg-[#0F172A] text-slate-100" : "bg-slate-50 text-slate-900"
                   }`}
                 >
-                  {/* Android Status Bar */}
                   <div className="flex items-center justify-between bg-black/30 px-5 py-1.5 text-[10px] font-semibold opacity-80">
                     <span>14:05</span>
                     <div className="h-3 w-16 rounded-full bg-black/70"></div>
                     <span>5G 🔋 96%</span>
                   </div>
 
-                  {/* Dynamic App Header with Uploaded Logo */}
                   <div className="px-4 pt-3 pb-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2.5">
@@ -3062,7 +3193,6 @@ ${promptText}
                       {livePreviewData.subtitle}
                     </p>
 
-                    {/* Dynamic Inputs (Login / Search) */}
                     {livePreviewData.inputs.map((inp, i) => (
                       <div key={i} className="mt-2">
                         <input
@@ -3097,7 +3227,6 @@ ${promptText}
                     )}
                   </div>
 
-                  {/* Dynamic RecyclerView Cards Feed */}
                   <div className="custom-scrollbar flex-1 space-y-2.5 overflow-y-auto px-4 pb-4 pt-1">
                     {(livePreviewData.items.length > 0
                       ? livePreviewData.items
@@ -3144,7 +3273,6 @@ ${promptText}
                       ))}
                   </div>
 
-                  {/* Bottom Navigation Bar if Bottom Nav Template Selected */}
                   {livePreviewData.templateId === "bottom-nav" && (
                     <div
                       className={`grid grid-cols-3 border-t py-2 text-center text-[10px] font-bold ${
@@ -3181,7 +3309,7 @@ ${promptText}
             )}
 
             {/* =================================================================== */}
-            {/* MODAL 1: 100% AUTHENTIC ANDROID STUDIO NEW PROJECT WIZARD           */}
+            {/* MODAL 1: AUTHENTIC ANDROID STUDIO NEW PROJECT WIZARD (LOCKED PREFIX) */}
             {/* =================================================================== */}
             {isNewProjectModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm">
@@ -3236,7 +3364,7 @@ ${promptText}
                       </div>
                     </div>
 
-                    {/* Step 2: App Name & Package Name */}
+                    {/* Step 2: App Name & LOCKED com.droid. Package Name */}
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                       <div>
                         <label className="mb-1 block font-semibold text-slate-300">
@@ -3250,7 +3378,7 @@ ${promptText}
                             const val = e.target.value;
                             setNewProjName(val);
                             if (!newProjPkgManual) {
-                              setNewProjPkg(formatAutoPackageName(val));
+                              setNewProjPkgSuffix(sanitizeAppPackageSuffix(val));
                             }
                           }}
                           placeholder="যেমন: Bangla News Pro"
@@ -3259,19 +3387,30 @@ ${promptText}
                       </div>
 
                       <div>
-                        <label className="mb-1 block font-semibold text-slate-300">
-                          Package Name
+                        <label className="mb-1 flex items-center justify-between font-semibold text-slate-300">
+                          <span>Package Name</span>
+                          <span className="text-[10px] font-bold text-amber-300">🔒 com.droid. ফিক্সড</span>
                         </label>
-                        <input
-                          type="text"
-                          required
-                          value={newProjPkg}
-                          onChange={(e) => {
-                            setNewProjPkgManual(true);
-                            setNewProjPkg(e.target.value);
-                          }}
-                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-slate-200 focus:border-emerald-500 focus:outline-none"
-                        />
+                        <div className="flex items-center overflow-hidden rounded-xl border border-slate-700 bg-slate-950 focus-within:border-emerald-500">
+                          <span className="select-none border-r border-slate-800 bg-slate-900 px-2.5 py-2 font-mono text-xs font-bold text-emerald-400">
+                            com.droid.
+                          </span>
+                          <input
+                            type="text"
+                            required
+                            value={newProjPkgSuffix}
+                            onChange={(e) => {
+                              setNewProjPkgManual(true);
+                              const cleaned = e.target.value
+                                .toLowerCase()
+                                .replace(/[^a-z0-9]/g, "")
+                                .slice(0, 24);
+                              setNewProjPkgSuffix(cleaned);
+                            }}
+                            placeholder="myapp"
+                            className="min-w-0 flex-1 bg-transparent px-2.5 py-2 font-mono text-xs text-slate-100 focus:outline-none"
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -3567,22 +3706,24 @@ ${promptText}
             )}
 
             {/* =================================================================== */}
-            {/* MODAL 4: FIREBASE AUTHENTICATION (BYOK ACCOUNT ISOLATION)           */}
+            {/* MODAL 4: MANDATORY EMAIL LOGIN & SIGNUP MODAL (BYOK ISOLATION)      */}
             {/* =================================================================== */}
             {isAuthModalOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm">
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 backdrop-blur-md">
                 <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-[#0d1424] p-4 shadow-2xl">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-sm font-extrabold text-white">
-                      🔐 Firebase অ্যাকাউন্ট ও BYOK প্রোফাইল
+                      🔐 ড্রয়েড এআই স্টুডিও — ইমেইল লগইন
                     </h2>
-                    <button
-                      type="button"
-                      onClick={() => setIsAuthModalOpen(false)}
-                      className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-300"
-                    >
-                      ✕
-                    </button>
+                    {currentUser && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAuthModalOpen(false)}
+                        className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-300"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
 
                   {currentUser ? (
@@ -3608,10 +3749,17 @@ ${promptText}
                     </div>
                   ) : (
                     <div className="space-y-3 text-xs">
+                      <p className="text-[11px] leading-relaxed text-slate-300">
+                        আপনার নিজস্ব প্রজেক্ট ও API Key সুরক্ষিত রাখতে ইমেইল ও পাসওয়ার্ড দিয়ে প্রবেশ করুন:
+                      </p>
+
                       <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-950 p-1">
                         <button
                           type="button"
-                          onClick={() => setAuthMode("login")}
+                          onClick={() => {
+                            setAuthError("");
+                            setAuthMode("login");
+                          }}
                           className={`rounded-lg py-1.5 font-bold ${
                             authMode === "login"
                               ? "bg-purple-600 text-white"
@@ -3622,7 +3770,10 @@ ${promptText}
                         </button>
                         <button
                           type="button"
-                          onClick={() => setAuthMode("signup")}
+                          onClick={() => {
+                            setAuthError("");
+                            setAuthMode("signup");
+                          }}
                           className={`rounded-lg py-1.5 font-bold ${
                             authMode === "signup"
                               ? "bg-purple-600 text-white"
@@ -3634,7 +3785,7 @@ ${promptText}
                       </div>
 
                       {authError && (
-                        <div className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2 text-[11px] text-rose-200">
+                        <div className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-[11px] text-rose-200">
                           {authError}
                         </div>
                       )}
@@ -3645,8 +3796,8 @@ ${promptText}
                           required
                           value={authEmail}
                           onChange={(e) => setAuthEmail(e.target.value)}
-                          placeholder="ইমেইল ঠিকানা"
-                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 focus:border-purple-500 focus:outline-none"
+                          placeholder="আপনার ইমেইল ঠিকানা লিখুন"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-slate-100 focus:border-purple-500 focus:outline-none"
                         />
                         <input
                           type="password"
@@ -3654,29 +3805,20 @@ ${promptText}
                           value={authPassword}
                           onChange={(e) => setAuthPassword(e.target.value)}
                           placeholder="পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)"
-                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 focus:border-purple-500 focus:outline-none"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-slate-100 focus:border-purple-500 focus:outline-none"
                         />
                         <button
                           type="submit"
                           disabled={authLoading}
-                          className="w-full rounded-xl bg-emerald-600 py-2 font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                          className="w-full rounded-xl bg-emerald-600 py-2.5 font-extrabold text-white shadow-lg hover:bg-emerald-500 disabled:opacity-50"
                         >
                           {authLoading
                             ? "অপেক্ষা করুন..."
                             : authMode === "signup"
-                            ? "সাইন-আপ করুন"
-                            : "লগইন করুন"}
+                            ? "ইমেইল দিয়ে সাইন-আপ করুন"
+                            : "ইমেইল দিয়ে লগইন করুন"}
                         </button>
                       </form>
-
-                      <button
-                        type="button"
-                        onClick={handleGoogleSignIn}
-                        disabled={authLoading}
-                        className="w-full rounded-xl border border-slate-700 bg-slate-800 py-2 font-bold text-white hover:bg-slate-700"
-                      >
-                        🌐 Google দিয়ে সাইন-ইন করুন
-                      </button>
                     </div>
                   )}
                 </div>
