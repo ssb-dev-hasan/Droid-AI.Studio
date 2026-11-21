@@ -2,11 +2,15 @@ package com.droid.aistudio;
 
 import android.annotation.SuppressLint;
 import android.app.DownloadManager;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Base64;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
@@ -163,11 +167,6 @@ public class MainActivity extends AppCompatActivity {
                 String base64Part = dataUrl.contains(",") ? dataUrl.split(",")[1] : dataUrl;
                 byte[] bytes = Base64.decode(base64Part, Base64.DEFAULT);
 
-                File downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                if (!downloadsFolder.exists()) {
-                    downloadsFolder.mkdirs();
-                }
-
                 String finalName = (fileName == null || fileName.trim().isEmpty())
                         ? "DroidAIStudio_Project.zip"
                         : fileName.trim();
@@ -175,14 +174,41 @@ public class MainActivity extends AppCompatActivity {
                     finalName = finalName + ".zip";
                 }
 
-                File outFile = new File(downloadsFolder, finalName);
-                try (OutputStream os = new FileOutputStream(outFile)) {
-                    os.write(bytes);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ContentResolver resolver = context.getContentResolver();
+                    ContentValues values = new ContentValues();
+                    values.put(MediaStore.Downloads.DISPLAY_NAME, finalName);
+                    values.put(MediaStore.Downloads.MIME_TYPE, "application/zip");
+                    values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                    values.put(MediaStore.Downloads.IS_PENDING, 1);
+
+                    Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                    if (uri == null) {
+                        throw new IllegalStateException("MediaStore URI তৈরি করা যায়নি");
+                    }
+                    try (OutputStream os = resolver.openOutputStream(uri)) {
+                        if (os == null) {
+                            throw new IllegalStateException("OutputStream খোলা যায়নি");
+                        }
+                        os.write(bytes);
+                    }
+                    values.clear();
+                    values.put(MediaStore.Downloads.IS_PENDING, 0);
+                    resolver.update(uri, values, null, null);
+                } else {
+                    File downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    if (!downloadsFolder.exists()) {
+                        downloadsFolder.mkdirs();
+                    }
+                    File outFile = new File(downloadsFolder, finalName);
+                    try (OutputStream os = new FileOutputStream(outFile)) {
+                        os.write(bytes);
+                    }
                 }
 
-                final String savedPath = outFile.getName();
+                final String savedName = finalName;
                 ((AppCompatActivity) context).runOnUiThread(() ->
-                        Toast.makeText(context, "ZIP সেভ হয়েছে: Downloads/" + savedPath, Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "ZIP সেভ হয়েছে: Downloads/" + savedName, Toast.LENGTH_LONG).show()
                 );
             } catch (Exception e) {
                 ((AppCompatActivity) context).runOnUiThread(() ->
