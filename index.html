@@ -150,6 +150,18 @@
           : "droid_studio_project_ai_settings_guest";
       }
 
+      function createInitialProjectChatMessages(projectName) {
+        const label = projectName ? `"${projectName}"` : "Droid AI Studio";
+        return [
+          {
+            id: `welcome_${Date.now()}`,
+            role: "assistant",
+            text: `স্বাগতম ${label} প্রজেক্টে! এই প্রজেক্টের জন্য আলাদা চ্যাট হিস্ট্রি ও AI সেটিংস স্বয়ংক্রিয়ভাবে সংরক্ষিত হচ্ছে। বাংলায় চ্যাট করুন, স্ক্রিনশট/ছবি শেয়ার করুন অথবা কোড আপডেট তৈরি করে ✅ Accept বাটনে চাপ দিন।`,
+            timestamp: Date.now()
+          }
+        ];
+      }
+
       function sanitizeEmailKey(email) {
         return String(email || "")
           .trim()
@@ -169,20 +181,6 @@
       function buildLockedPackageName(suffixOrAppName) {
         const suffix = sanitizeAppPackageSuffix(suffixOrAppName);
         return `${LOCKED_PACKAGE_PREFIX}${suffix}`;
-      }
-
-      function buildInitialProjectWelcomeMessages(projectObj) {
-        const projLabel = projectObj?.name
-          ? `"${projectObj.name}" (${projectObj.packageName})`
-          : "এই প্রজেক্ট";
-        return [
-          {
-            id: `welcome_${projectObj?.id || Date.now()}`,
-            role: "assistant",
-            text: `স্বাগতম Droid AI Studio-তে! এখন আপনি ${projLabel} প্রজেক্টে কাজ করছেন। আপনার নিজস্ব Gemini API Key যুক্ত করে বাংলায় চ্যাট করুন, স্ক্রিনশট/ছবি শেয়ার করুন অথবা নতুন ফিচার ও বাগ ফিক্স তৈরি করুন। কোড জেনারেট হলে রিভিউ করে ✅ Accept বাটনে চাপ দিলেই সরাসরি প্রজেক্ট ফাইল ও ইমুলেটর আপডেট হয়ে যাবে।`,
-            timestamp: Date.now()
-          }
-        ];
       }
 
       // =========================================================================
@@ -306,8 +304,8 @@
         {
           id: "empty-views",
           label: "Empty Views Activity",
-          badge: "Core",
-          desc: "হুবহু Android Studio-এর ConstraintLayout (@+id/main), মাঝখানে Hello World! ও enableEdgeToEdge()"
+          badge: "Android Studio",
+          desc: "হুবহু Android Studio-এর ConstraintLayout, মাঝখানে Hello World! ও enableEdgeToEdge()"
         },
         {
           id: "bottom-nav",
@@ -500,7 +498,6 @@
         const preset = templatePresets[templateId] || templatePresets["bangla-news"];
         const isCleanEmpty = Boolean(preset.isCleanEmpty);
 
-        // Authentic Android Studio Empty Views Activity (ConstraintLayout + enableEdgeToEdge + Insets)
         const mainSourceFile = isJava
           ? isCleanEmpty
             ? {
@@ -508,7 +505,6 @@
                 content: `package ${lockedPkg};
 
 import android.os.Bundle;
-
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
@@ -581,6 +577,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : AppCompatActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -818,7 +815,6 @@ ${preset.items
             path: "app/src/main/res/values/themes.xml",
             content: isCleanEmpty
               ? `<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
     <style name="Base.Theme.DroidApp" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/primary_accent</item>
     </style>
@@ -876,7 +872,7 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     ${m3Enabled ? "implementation 'com.google.android.material:material:1.12.0'" : ""}
-    implementation 'androidx.activity:activity:1.9.1'
+    implementation 'androidx.activity:activity:1.9.2'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
 }`
@@ -914,7 +910,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     ${m3Enabled ? 'implementation("com.google.android.material:material:1.12.0")' : ""}
-    implementation("androidx.activity:activity:1.9.1")
+    implementation("androidx.activity:activity:1.9.2")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 }`
@@ -981,13 +977,22 @@ ${customLogoDataUrl}`
       }
 
       // =========================================================================
-      // 4. ROBUST MULTI-FORMAT AI CODE EXTRACTION PARSER & PATH RESOLVER
+      // 4. ROBUST MULTI-FORMAT AI CODE EXTRACTION PARSER
       // =========================================================================
-      function resolveMatchedProjectFilePath(rawCandidatePath, existingFiles = []) {
-        const normalized = String(rawCandidatePath || "")
+      function stripAccidentalOuterCodeFences(rawBody) {
+        let text = String(rawBody || "").replace(/\r\n/g, "\n").trim();
+        const fenced = text.match(/^```[a-zA-Z0-9_-]*\n([\s\S]*?)\n```$/);
+        if (fenced) {
+          return fenced[1].trim();
+        }
+        return text;
+      }
+
+      function resolveMatchedProjectFilePath(candidatePath, existingFiles = []) {
+        const normalized = String(candidatePath || "")
           .trim()
           .replace(/^['"`]+|['"`]+$/g, "")
-          .replace(/^\/+/, "");
+          .replace(/^\.?\//, "");
         if (!normalized) return "";
 
         const exact = existingFiles.find((f) => f.path === normalized);
@@ -999,86 +1004,40 @@ ${customLogoDataUrl}`
         if (suffixMatch) return suffixMatch.path;
 
         const baseName = normalized.split("/").pop();
-        const keyBasenames = new Set([
-          "MainActivity.kt",
-          "MainActivity.java",
-          "activity_main.xml",
-          "strings.xml",
-          "colors.xml",
-          "themes.xml",
-          "AndroidManifest.xml",
-          "build.gradle.kts",
-          "build.gradle",
-          "settings.gradle.kts",
-          "settings.gradle",
-          "gradle.properties"
-        ]);
-        if (baseName && keyBasenames.has(baseName)) {
-          const baseMatch = existingFiles.find((f) => f.path.split("/").pop() === baseName);
-          if (baseMatch) return baseMatch.path;
-        }
-
-        if (baseName && baseName.endsWith(".xml") && !normalized.includes("/")) {
-          if (
-            baseName.startsWith("ic_") ||
-            baseName.startsWith("bg_") ||
-            baseName.startsWith("shape_")
-          ) {
-            return `app/src/main/res/drawable/${baseName}`;
-          }
-          return `app/src/main/res/layout/${baseName}`;
-        }
-
-        if (
-          baseName &&
-          (baseName.endsWith(".kt") || baseName.endsWith(".java")) &&
-          !normalized.includes("/")
-        ) {
-          const mainAct = existingFiles.find(
-            (f) => f.path.endsWith("/MainActivity.kt") || f.path.endsWith("/MainActivity.java")
-          );
-          if (mainAct) {
-            const dir = mainAct.path.substring(0, mainAct.path.lastIndexOf("/"));
-            return `${dir}/${baseName}`;
+        if (baseName) {
+          const baseMatches = existingFiles.filter((f) => f.path.split("/").pop() === baseName);
+          if (baseMatches.length === 1) {
+            return baseMatches[0].path;
           }
         }
 
         return normalized;
       }
 
-      function stripAccidentalOuterCodeFences(rawCode) {
-        const trimmed = String(rawCode || "").replace(/\n$/, "");
-        const fenceWrapped = trimmed.match(
-          /^```[a-zA-Z0-9_-]*\r?\n([\s\S]*?)(?:\r?\n```)?$/
-        );
-        return fenceWrapped ? fenceWrapped[1] : trimmed;
-      }
-
       function extractFileUpdatesFromAiResponse(rawResponseText, existingFiles = []) {
-        const text = String(rawResponseText || "");
+        const text = String(rawResponseText || "").replace(/\r\n/g, "\n");
         const extractedMap = new Map();
 
-        // Format A: Explicit <<<FILE:path>>> ... <<<END_FILE>>> (supports unclosed EOF truncation)
-        const explicitRegex =
-          /<<<FILE:\s*([^\r\n>]+?)\s*>>>\s*\r?\n([\s\S]*?)(?:<<<END_FILE>>>|(?=\r?\n<<<FILE:)|$)/g;
+        // Format A: Explicit <<<FILE:path>>> ... <<<END_FILE>>> (even if truncated at end)
+        const explicitRegex = /<<<FILE:\s*([^\r\n>]+?)\s*>>>\s*\n([\s\S]*?)(?:<<<END_FILE>>>|$)/g;
         let match;
         while ((match = explicitRegex.exec(text)) !== null) {
-          const resolvedPath = resolveMatchedProjectFilePath(match[1], existingFiles);
+          const cleanPath = resolveMatchedProjectFilePath(match[1], existingFiles);
           const codeBody = stripAccidentalOuterCodeFences(match[2]);
-          if (resolvedPath && codeBody.trim()) {
-            extractedMap.set(resolvedPath, codeBody);
+          if (cleanPath && codeBody) {
+            extractedMap.set(cleanPath, codeBody);
           }
         }
 
-        // Format B: Standard Markdown fenced code blocks (also extracts files mixed alongside Format A)
+        // Format B: Standard Markdown fenced code blocks (runs alongside Format A so mixed responses never miss files)
         const mdFenceRegex =
-          /(?:(?:^|\n)(?:#{1,4}\s*|\*\*\s*|File:\s*|Path:\s*)?`?([A-Za-z0-9_./-]+\.(?:kt|java|xml|gradle|kts|json|properties))`?\s*\**\s*\n)?```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)(?:\r?\n```|$)/g;
+          /(?:(?:^|\n)(?:#{1,4}\s*|\*\*\s*|File:\s*|Path:\s*|ফাইল:\s*)?`?([A-Za-z0-9_./-]+\.(?:kt|java|xml|gradle|kts|json|properties))`?\s*\**\s*\n)?```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
         let mdMatch;
         while ((mdMatch = mdFenceRegex.exec(text)) !== null) {
           let candidatePath = (mdMatch[1] || "").trim();
-          const langHint = (mdMatch[2] || "").toLowerCase();
-          const body = (mdMatch[3] || "").replace(/\n$/, "");
-          if (!body.trim() || body.includes("<<<FILE:")) continue;
+          const fenceLang = (mdMatch[2] || "").trim().toLowerCase();
+          const body = stripAccidentalOuterCodeFences(mdMatch[3] || "");
+          if (!body) continue;
 
           if (!candidatePath) {
             const firstLines = body.split("\n").slice(0, 4).join("\n");
@@ -1087,34 +1046,19 @@ ${customLogoDataUrl}`
             );
             if (commentPathMatch) {
               candidatePath = commentPathMatch[1].trim();
-            }
-          }
-
-          if (!candidatePath) {
-            if (
-              (langHint === "xml" || body.trimStart().startsWith("<?xml")) &&
-              /<(?:androidx\.constraintlayout\.widget\.ConstraintLayout|LinearLayout|RelativeLayout|ScrollView|androidx\.core\.widget\.NestedScrollView|FrameLayout|androidx\.coordinatorlayout\.widget\.CoordinatorLayout)\b/.test(
-                body
-              )
+            } else if (
+              (fenceLang === "xml" || body.startsWith("<")) &&
+              (body.includes("layout_width") || body.includes("android:id="))
             ) {
               candidatePath = "app/src/main/res/layout/activity_main.xml";
             } else if (
-              (langHint === "kotlin" || langHint === "kt") &&
-              /class\s+MainActivity\b/.test(body)
+              (fenceLang === "kotlin" || fenceLang === "java") &&
+              body.includes("class MainActivity")
             ) {
-              candidatePath = "MainActivity.kt";
-            } else if (langHint === "java" && /class\s+MainActivity\b/.test(body)) {
-              candidatePath = "MainActivity.java";
-            } else if (
-              (langHint === "xml" || body.trimStart().startsWith("<resources")) &&
-              /<string\s+name=/.test(body)
-            ) {
-              candidatePath = "strings.xml";
-            } else if (
-              (langHint === "xml" || body.trimStart().startsWith("<resources")) &&
-              /<color\s+name=/.test(body)
-            ) {
-              candidatePath = "colors.xml";
+              const existingMain = existingFiles.find(
+                (f) => f.path.endsWith("/MainActivity.kt") || f.path.endsWith("/MainActivity.java")
+              );
+              if (existingMain) candidatePath = existingMain.path;
             }
           }
 
@@ -1140,7 +1084,7 @@ ${customLogoDataUrl}`
       }
 
       // =========================================================================
-      // 5. FULL INTERACTIVE ANDROID EMULATOR & REAL-TIME CODE-TO-PREVIEW PARSER
+      // 5. FULL INTERACTIVE ANDROID EMULATOR & MULTI-LAYOUT PARSER
       // =========================================================================
       function parseProjectForLivePreview(project, selectedLayoutPath) {
         const files = Array.isArray(project?.files) ? project.files : [];
@@ -1197,17 +1141,30 @@ ${customLogoDataUrl}`
           return val;
         };
 
-        // Detect live background color edits on root XML container
-        const rootTagMatch = layoutXml.match(/<([A-Za-z0-9_.]+)\b([\s\S]*?)>/);
-        const rootAttrs = rootTagMatch ? rootTagMatch[2] || "" : "";
-        const rootBgAttrMatch = rootAttrs.match(
+        // Extract dynamic text overrides set in Kotlin/Java code (e.g., tvHelloWorld.text = "...")
+        const codeTextOverrides = {};
+        const propTextRegex =
+          /(?:binding\.)?([A-Za-z0-9_]+)\s*\.\s*(?:text\s*=|setText\s*\()\s*"([^"]*)"/g;
+        let ptm;
+        while ((ptm = propTextRegex.exec(combinedCode)) !== null) {
+          codeTextOverrides[ptm[1]] = ptm[2];
+        }
+
+        const findViewTextRegex =
+          /findViewById(?:<[^>]+>)?\s*\(\s*R\.id\.([A-Za-z0-9_]+)\s*\)\s*\.\s*(?:text\s*=|setText\s*\()\s*"([^"]*)"/g;
+        let fvtm;
+        while ((fvtm = findViewTextRegex.exec(combinedCode)) !== null) {
+          codeTextOverrides[fvtm[1]] = fvtm[2];
+        }
+
+        const rootBgMatch = layoutXml.match(
           /android:background="(#[0-9A-Fa-f]{6,8}|@color\/[^"]+)"/
         );
-        const customRootBg = rootBgAttrMatch ? resolveXmlAttr(rootBgAttrMatch[1]) : "";
+        const resolvedRootBg = rootBgMatch ? resolveXmlAttr(rootBgMatch[1]) : "";
         const isPureBlackScreen =
-          customRootBg.toLowerCase() === "#000000" ||
-          customRootBg.toLowerCase() === "#000" ||
-          customRootBg.toLowerCase() === "#ff000000";
+          resolvedRootBg.toLowerCase() === "#000000" ||
+          resolvedRootBg.toLowerCase() === "#000" ||
+          resolvedRootBg.toLowerCase() === "#ff000000";
 
         const hexInLayout = layoutXml.match(/android:backgroundTint="(#[0-9A-Fa-f]{6,8})"/);
         const accentColor =
@@ -1216,18 +1173,9 @@ ${customLogoDataUrl}`
           project?.accentColor ||
           "#10B981";
 
-        // Parse runtime Kotlin/Java text overrides (e.g., tvHelloWorld.text = "..." or tv.setText("..."))
-        const codeTextOverrides = {};
-        const ktTextRegex =
-          /(?:binding\.)?([A-Za-z0-9_]+)\.(?:text\s*=\s*|setText\s*\(\s*)"([^"]*)"/g;
-        let ktm;
-        while ((ktm = ktTextRegex.exec(combinedCode)) !== null) {
-          codeTextOverrides[ktm[1]] = ktm[2];
-        }
-
         const widgets = [];
         const tagRegex =
-          /<(TextView|com\.google\.android\.material\.textview\.MaterialTextView|Button|com\.google\.android\.material\.button\.MaterialButton|ImageButton|com\.google\.android\.material\.floatingactionbutton\.FloatingActionButton|EditText|com\.google\.android\.material\.textfield\.TextInputEditText|SearchView|androidx\.appcompat\.widget\.SearchView|Switch|androidx\.appcompat\.widget\.SwitchCompat|com\.google\.android\.material\.materialswitch\.MaterialSwitch|CheckBox|RecyclerView|androidx\.recyclerview\.widget\.RecyclerView)\b([\s\S]*?)(?:\/>|<\/\1>)/g;
+          /<(TextView|Button|com\.google\.android\.material\.button\.MaterialButton|ImageButton|com\.google\.android\.material\.floatingactionbutton\.FloatingActionButton|EditText|com\.google\.android\.material\.textfield\.TextInputEditText|SearchView|androidx\.appcompat\.widget\.SearchView|Switch|androidx\.appcompat\.widget\.SwitchCompat|com\.google\.android\.material\.materialswitch\.MaterialSwitch|CheckBox|RecyclerView|androidx\.recyclerview\.widget\.RecyclerView)\b([\s\S]*?)(?:\/>|<\/\1>)/g;
 
         let wm;
         let autoIdx = 0;
@@ -1237,13 +1185,12 @@ ${customLogoDataUrl}`
           const attrs = wm[2] || "";
           const idMatch = attrs.match(/android:id="@\+id\/([^"]+)"/);
           const id = idMatch ? idMatch[1] : `widget_${autoIdx}`;
-          const textMatch = attrs.match(/android:text="([^"]*)"/);
-          const hintMatch = attrs.match(/android:(?:hint|queryHint)="([^"]*)"/);
+          const textMatch = attrs.match(/android:text="([^"]+)"/);
+          const hintMatch = attrs.match(/android:(?:hint|queryHint)="([^"]+)"/);
           const inputTypeMatch = attrs.match(/android:inputType="([^"]+)"/);
           const checkedMatch = attrs.match(/android:checked="(true|false)"/);
           const tintMatch = attrs.match(/android:backgroundTint="([^"]+)"/);
           const textColorMatch = attrs.match(/android:textColor="([^"]+)"/);
-          const textSizeMatch = attrs.match(/android:textSize="(\d+)sp"/);
 
           const xmlText = textMatch ? resolveXmlAttr(textMatch[1]) : "";
           const text = codeTextOverrides[id] !== undefined ? codeTextOverrides[id] : xmlText;
@@ -1252,7 +1199,6 @@ ${customLogoDataUrl}`
           const checked = checkedMatch ? checkedMatch[1] === "true" : false;
           const bgTint = tintMatch ? resolveXmlAttr(tintMatch[1]) : accentColor;
           const textColor = textColorMatch ? resolveXmlAttr(textColorMatch[1]) : "";
-          const textSizeSp = textSizeMatch ? Number(textSizeMatch[1]) : 0;
 
           let kind = "text";
           if (
@@ -1288,8 +1234,7 @@ ${customLogoDataUrl}`
             inputType,
             checked,
             bgTint,
-            textColor,
-            textSizeSp
+            textColor
           });
         }
 
@@ -1319,8 +1264,6 @@ ${customLogoDataUrl}`
           appTitleWidget?.text || stringMap.app_name || project?.name || "Android App";
 
         const bodyWidgets = widgets.filter((w) => w.id !== "tvAppTitle");
-
-        // True only when layout is an authentic single centered TextView Empty Views screen
         const isCenteredSingleTextLayout =
           layoutXml.includes("ConstraintLayout") &&
           bodyWidgets.length === 1 &&
@@ -1330,8 +1273,8 @@ ${customLogoDataUrl}`
           appTitle,
           accentColor,
           logoDataUrl,
-          customRootBg,
           isPureBlackScreen,
+          resolvedRootBg,
           isCenteredSingleTextLayout,
           templateId: project?.templateId || "empty-views",
           minSdk: project?.minSdk || 24,
@@ -1438,12 +1381,12 @@ jobs:
       // =========================================================================
       const DEFAULT_AI_SETTINGS = {
         preferredModel: "gemini-3.8-flash",
-        temperature: 0.35,
+        temperature: 0.25,
         maxOutputTokens: 8192,
         chatMode: "auto",
         autoApplyCodeUpdates: false,
         systemPersona:
-          "তুমি Droid AI Studio-এর একজন সিনিয়র Android (Kotlin/Java/XML/Gradle) আর্কিটেক্ট ও ডেভেলপমেন্ট সহকারী। সবসময় পরিষ্কার বাংলায় উত্তর দাও। কোনো কোড লেখার আগে অবশ্যই প্রজেক্টের সব ফাইল, প্যাকেজ নেম, XML ID ও Gradle ডিপেন্ডেন্সি গভীরভাবে বিশ্লেষণ করে নিশ্চিত হবে যেন কোনো বাগ বা অসম্পূর্ণ কোড না থাকে।"
+          "তুমি Droid AI Studio-এর একজন সিনিয়র Android (Kotlin/Java/XML/Gradle) আর্কিটেক্ট। সবসময় পরিষ্কার বাংলায় উত্তর দাও। কোনো কোড লেখার আগে অবশ্যই প্রজেক্টের সব ফাইল, প্যাকেজ নেম, XML ভিউ আইডি (@+id/...) ও Gradle ডিপেন্ডেন্সি গভীরভাবে বিশ্লেষণ করে সংক্ষেপে পরিকল্পনা ব্যাখ্যা করবে। এরপর প্রতিটি পরিবর্তিত বা নতুন ফাইলের সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত রানযোগ্য কোড (কোনো অংশ বাদ বা সংক্ষিপ্ত না করে) অবশ্যই <<<FILE:পাথ>>> এবং <<<END_FILE>>> ব্লকের ভেতরে দেবে।"
       };
 
       // =========================================================================
@@ -1546,15 +1489,18 @@ jobs:
         const [isTestingApi, setIsTestingApi] = useState(false);
         const [apiStatusBanner, setApiStatusBanner] = useState(null);
         const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+        const [isApiPanelExpanded, setIsApiPanelExpanded] = useState(true);
+        const [projectAiSettingsMap, setProjectAiSettingsMap] = useState({});
 
-        // --- Projects, Isolated Per-Project Chats, Isolated Per-Project AI Settings & History ---
+        // --- Projects & History Snapshots State ---
         const [projects, setProjects] = useState([]);
         const [activeProjectId, setActiveProjectId] = useState("");
         const [projectHistoryMap, setProjectHistoryMap] = useState({});
-        const [projectChatMap, setProjectChatMap] = useState({});
-        const [projectAiSettingsMap, setProjectAiSettingsMap] = useState({});
         const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
         const [isDeleteProjectModalOpen, setIsDeleteProjectModalOpen] = useState(false);
+
+        // --- Per-Project Isolated Chat History Map (Auto-Saved Locally & RTDB) ---
+        const [projectChatMap, setProjectChatMap] = useState({});
 
         // --- New Project Wizard State (Android Studio Authentic + Locked com.droid.) ---
         const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
@@ -1585,8 +1531,107 @@ jobs:
         const [chatAttachments, setChatAttachments] = useState([]);
         const [isGenerating, setIsGenerating] = useState(false);
         const abortControllerRef = useRef(null);
+        const chatContainerRef = useRef(null);
         const chatEndRef = useRef(null);
         const chatImageInputRef = useRef(null);
+
+        const scrollToChatBottom = useCallback((smooth = true) => {
+          requestAnimationFrame(() => {
+            if (chatContainerRef.current) {
+              chatContainerRef.current.scrollTo({
+                top: chatContainerRef.current.scrollHeight,
+                behavior: smooth ? "smooth" : "auto"
+              });
+            }
+            chatEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
+          });
+        }, []);
+
+        // Active project reference (used by per-project chat & settings)
+        const activeProject = useMemo(
+          () => projects.find((p) => p.id === activeProjectId) || projects[0] || null,
+          [projects, activeProjectId]
+        );
+
+        const currentProjectKey = activeProject?.id || activeProjectId || "default";
+
+        const aiSettings = useMemo(() => {
+          const saved = projectAiSettingsMap[currentProjectKey];
+          return saved ? { ...DEFAULT_AI_SETTINGS, ...saved } : DEFAULT_AI_SETTINGS;
+        }, [projectAiSettingsMap, currentProjectKey]);
+
+        const chatMessages = useMemo(() => {
+          const list = projectChatMap[currentProjectKey];
+          if (Array.isArray(list) && list.length > 0) return list;
+          return createInitialProjectChatMessages(activeProject?.name);
+        }, [projectChatMap, currentProjectKey, activeProject?.name]);
+
+        const updateActiveProjectAiSettings = useCallback(
+          (updater) => {
+            const projId = currentProjectKey;
+            setProjectAiSettingsMap((prev) => {
+              const current = prev[projId]
+                ? { ...DEFAULT_AI_SETTINGS, ...prev[projId] }
+                : { ...DEFAULT_AI_SETTINGS };
+              const nextSettings = typeof updater === "function" ? updater(current) : updater;
+              const nextMap = { ...prev, [projId]: nextSettings };
+              const uid = currentUser?.uid;
+              try {
+                localStorage.setItem(
+                  getUserScopedProjectAiSettingsStorageName(uid),
+                  JSON.stringify(nextMap)
+                );
+              } catch {}
+              if (uid && window.DroidDB && projId && projId !== "default") {
+                window.DroidDB.ref(`users/${uid}/projectAiSettings/${projId}`)
+                  .set(nextSettings)
+                  .catch(() => {});
+              }
+              return nextMap;
+            });
+          },
+          [currentProjectKey, currentUser]
+        );
+
+        const updateActiveProjectChatMessages = useCallback(
+          (updater) => {
+            const projId = currentProjectKey;
+            const projName = activeProject?.name;
+            setProjectChatMap((prev) => {
+              const existing =
+                Array.isArray(prev[projId]) && prev[projId].length > 0
+                  ? prev[projId]
+                  : createInitialProjectChatMessages(projName);
+              const nextMessages = typeof updater === "function" ? updater(existing) : updater;
+              const trimmedMessages = nextMessages.slice(-60);
+              const nextMap = { ...prev, [projId]: trimmedMessages };
+              const uid = currentUser?.uid;
+              try {
+                localStorage.setItem(
+                  getUserScopedProjectChatsStorageName(uid),
+                  JSON.stringify(nextMap)
+                );
+              } catch {}
+              if (uid && window.DroidDB && projId && projId !== "default") {
+                window.DroidDB.ref(`users/${uid}/projectChats/${projId}`)
+                  .set(trimmedMessages)
+                  .catch(() => {});
+              }
+              return nextMap;
+            });
+          },
+          [currentProjectKey, activeProject?.name, currentUser]
+        );
+
+        // Sync active model dropdown when switching projects
+        useEffect(() => {
+          if (!aiSettings.preferredModel) return;
+          if (availableModels.length === 0) {
+            setActiveModelId(aiSettings.preferredModel);
+          } else if (availableModels.some((m) => m.id === aiSettings.preferredModel)) {
+            setActiveModelId(aiSettings.preferredModel);
+          }
+        }, [currentProjectKey, aiSettings.preferredModel, availableModels]);
 
         // --- Full Interactive Android Emulator State ---
         const [previewRefreshTick, setPreviewRefreshTick] = useState(0);
@@ -1628,118 +1673,10 @@ jobs:
         const [zipExportStatus, setZipExportStatus] = useState(null);
         const cloudPollRef = useRef(null);
 
-        // Active project derived reference
-        const activeProject = useMemo(
-          () => projects.find((p) => p.id === activeProjectId) || projects[0] || null,
-          [projects, activeProjectId]
-        );
-
-        // Per-Project Isolated AI Settings (auto-loaded & auto-saved per project)
-        const aiSettings = useMemo(() => {
-          const pid = activeProject?.id;
-          if (pid && projectAiSettingsMap[pid]) {
-            return { ...DEFAULT_AI_SETTINGS, ...projectAiSettingsMap[pid] };
-          }
-          return DEFAULT_AI_SETTINGS;
-        }, [activeProject, projectAiSettingsMap]);
-
-        const updateActiveProjectAiSettings = useCallback(
-          (updater) => {
-            const pid = activeProject?.id;
-            if (!pid) return;
-            setProjectAiSettingsMap((prev) => {
-              const current = { ...DEFAULT_AI_SETTINGS, ...(prev[pid] || {}) };
-              const updated = typeof updater === "function" ? updater(current) : updater;
-              const nextMap = { ...prev, [pid]: updated };
-              const uid = currentUser?.uid;
-              try {
-                localStorage.setItem(
-                  getUserScopedProjectAiSettingsStorageName(uid),
-                  JSON.stringify(nextMap)
-                );
-              } catch {}
-              if (uid && window.DroidDB) {
-                window.DroidDB.ref(`users/${uid}/projectAiSettings/${pid}`)
-                  .set(updated)
-                  .catch(() => {});
-              }
-              return nextMap;
-            });
-          },
-          [activeProject, currentUser]
-        );
-
-        // Sync activeModelId whenever switching to a project with its own preferredModel
-        useEffect(() => {
-          if (!activeProject?.id) return;
-          const savedPreferred = projectAiSettingsMap[activeProject.id]?.preferredModel;
-          if (savedPreferred) {
-            if (availableModels.length === 0 || availableModels.some((m) => m.id === savedPreferred)) {
-              setActiveModelId(savedPreferred);
-            }
-          }
-        }, [activeProject?.id, projectAiSettingsMap, availableModels]);
-
-        // Per-Project Isolated Chat History (auto-loaded & auto-saved per project)
-        const chatMessages = useMemo(() => {
-          const pid = activeProject?.id;
-          if (pid && Array.isArray(projectChatMap[pid]) && projectChatMap[pid].length > 0) {
-            return projectChatMap[pid];
-          }
-          return buildInitialProjectWelcomeMessages(activeProject);
-        }, [activeProject, projectChatMap]);
-
-        const updateActiveProjectChatMessages = useCallback(
-          (updater, explicitProjectId = null) => {
-            const targetPid = explicitProjectId || activeProject?.id;
-            if (!targetPid) return;
-            const targetProj = projects.find((p) => p.id === targetPid) || activeProject;
-            setProjectChatMap((prev) => {
-              const currentMsgs =
-                Array.isArray(prev[targetPid]) && prev[targetPid].length > 0
-                  ? prev[targetPid]
-                  : buildInitialProjectWelcomeMessages(targetProj);
-              const nextMsgs = typeof updater === "function" ? updater(currentMsgs) : updater;
-              const trimmedMsgs = nextMsgs.slice(-60);
-              const nextMap = { ...prev, [targetPid]: trimmedMsgs };
-              const uid = currentUser?.uid;
-              try {
-                localStorage.setItem(
-                  getUserScopedProjectChatsStorageName(uid),
-                  JSON.stringify(nextMap)
-                );
-              } catch {}
-              if (uid && window.DroidDB) {
-                const cloudSafeMsgs = trimmedMsgs.map((m) => {
-                  if (!Array.isArray(m.attachments) || m.attachments.length === 0) return m;
-                  return {
-                    ...m,
-                    attachments: m.attachments.map((att) => ({
-                      id: att.id,
-                      name: att.name,
-                      mimeType: att.mimeType
-                    }))
-                  };
-                });
-                window.DroidDB.ref(`users/${uid}/projectChats/${targetPid}`)
-                  .set(cloudSafeMsgs)
-                  .catch(() => {});
-              }
-              return nextMap;
-            });
-          },
-          [activeProject, projects, currentUser]
-        );
-
-        // Clear un-sent image drafts when switching between projects
-        useEffect(() => {
-          setChatAttachments([]);
-        }, [activeProjectId]);
-
         // Auto-scroll chat
         useEffect(() => {
-          chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, [chatMessages, isGenerating, activeProjectId]);
+          scrollToChatBottom(true);
+        }, [chatMessages, isGenerating, activeProjectId, scrollToChatBottom]);
 
         // Cleanup cloud polling on unmount
         useEffect(() => {
@@ -1777,6 +1714,7 @@ jobs:
           }
 
           const unsubscribe = auth.onAuthStateChanged(async (user) => {
+            // Immediately clear previous user's API key & model state on user switch/logout
             setGeminiApiKey("");
             setAvailableModels([]);
             setApiStatusBanner(null);
@@ -1801,9 +1739,11 @@ jobs:
               setSelectedFilePath(guestDefault.files[0].path);
               setProjectHistoryMap({});
               setProjectChatMap({
-                [guestDefault.id]: buildInitialProjectWelcomeMessages(guestDefault)
+                [guestDefault.id]: createInitialProjectChatMessages(guestDefault.name)
               });
-              setProjectAiSettingsMap({});
+              setProjectAiSettingsMap({
+                [guestDefault.id]: { ...DEFAULT_AI_SETTINGS }
+              });
               setAuthChecked(true);
               return;
             }
@@ -1828,6 +1768,17 @@ jobs:
             }
 
             setGeminiApiKey(loadedKey);
+            setIsApiPanelExpanded(!loadedKey);
+            if (loadedKey) {
+              discoverEligibleGeminiModels(loadedKey)
+                .then((models) => {
+                  setAvailableModels(models);
+                  const preferred =
+                    models.find((m) => m.id === aiSettings.preferredModel)?.id || models[0]?.id;
+                  if (preferred) setActiveModelId(preferred);
+                })
+                .catch(() => {});
+            }
 
             // 2. Load user's isolated projects, history, per-project chats & per-project AI settings
             let userProjects = [];
@@ -1841,23 +1792,31 @@ jobs:
 
             try {
               const histRaw = localStorage.getItem(getUserScopedHistoryStorageName(uid));
-              setProjectHistoryMap(histRaw ? JSON.parse(histRaw) || {} : {});
+              if (histRaw) {
+                setProjectHistoryMap(JSON.parse(histRaw) || {});
+              } else {
+                setProjectHistoryMap({});
+              }
             } catch {
               setProjectHistoryMap({});
             }
 
-            let loadedProjectChats = {};
+            let loadedChatsMap = {};
             try {
               const chatsRaw = localStorage.getItem(getUserScopedProjectChatsStorageName(uid));
-              if (chatsRaw) loadedProjectChats = JSON.parse(chatsRaw) || {};
+              if (chatsRaw) {
+                loadedChatsMap = JSON.parse(chatsRaw) || {};
+              }
             } catch {}
 
-            let loadedProjectSettings = {};
+            let loadedSettingsMap = {};
             try {
               const settingsRaw = localStorage.getItem(
                 getUserScopedProjectAiSettingsStorageName(uid)
               );
-              if (settingsRaw) loadedProjectSettings = JSON.parse(settingsRaw) || {};
+              if (settingsRaw) {
+                loadedSettingsMap = JSON.parse(settingsRaw) || {};
+              }
             } catch {}
 
             if (db) {
@@ -1867,7 +1826,6 @@ jobs:
                   db.ref(`users/${uid}/projectChats`).once("value"),
                   db.ref(`users/${uid}/projectAiSettings`).once("value")
                 ]);
-
                 const cloudObj = projSnap.val();
                 if (cloudObj && typeof cloudObj === "object") {
                   const cloudList = Object.values(cloudObj).filter(
@@ -1885,19 +1843,19 @@ jobs:
 
                 const cloudChats = chatsSnap.val();
                 if (cloudChats && typeof cloudChats === "object") {
-                  loadedProjectChats = { ...cloudChats, ...loadedProjectChats };
+                  loadedChatsMap = { ...loadedChatsMap, ...cloudChats };
                   localStorage.setItem(
                     getUserScopedProjectChatsStorageName(uid),
-                    JSON.stringify(loadedProjectChats)
+                    JSON.stringify(loadedChatsMap)
                   );
                 }
 
                 const cloudSettings = settingsSnap.val();
                 if (cloudSettings && typeof cloudSettings === "object") {
-                  loadedProjectSettings = { ...cloudSettings, ...loadedProjectSettings };
+                  loadedSettingsMap = { ...loadedSettingsMap, ...cloudSettings };
                   localStorage.setItem(
                     getUserScopedProjectAiSettingsStorageName(uid),
-                    JSON.stringify(loadedProjectSettings)
+                    JSON.stringify(loadedSettingsMap)
                   );
                 }
 
@@ -1933,31 +1891,11 @@ jobs:
               }
             }
 
-            const initialProj = userProjects[0];
-            if (!loadedProjectChats[initialProj.id]) {
-              loadedProjectChats[initialProj.id] = buildInitialProjectWelcomeMessages(initialProj);
-            }
-
-            setProjectChatMap(loadedProjectChats);
-            setProjectAiSettingsMap(loadedProjectSettings);
+            setProjectChatMap(loadedChatsMap);
+            setProjectAiSettingsMap(loadedSettingsMap);
             setProjects(userProjects);
-            setActiveProjectId(initialProj.id);
-            setSelectedFilePath(initialProj.files[0]?.path || "");
-
-            if (loadedKey) {
-              const initialPreferredModel =
-                loadedProjectSettings[initialProj.id]?.preferredModel ||
-                DEFAULT_AI_SETTINGS.preferredModel;
-              discoverEligibleGeminiModels(loadedKey)
-                .then((models) => {
-                  setAvailableModels(models);
-                  const preferred =
-                    models.find((m) => m.id === initialPreferredModel)?.id || models[0]?.id;
-                  if (preferred) setActiveModelId(preferred);
-                })
-                .catch(() => {});
-            }
-
+            setActiveProjectId(userProjects[0].id);
+            setSelectedFilePath(userProjects[0].files[0]?.path || "");
             setAuthChecked(true);
           });
 
@@ -1990,6 +1928,7 @@ jobs:
           setEmuEventLogs([]);
           setPreviewSearchQuery("");
           setPreviewNavIndex(0);
+          setChatAttachments([]);
         }, [activeProjectId]);
 
         const appendEmuLog = useCallback((entryText) => {
@@ -2245,6 +2184,107 @@ jobs:
         };
 
         // =========================================================================
+        // DELETE ACTIVE PROJECT HANDLER (LOCAL + FIREBASE RTDB + ISOLATED DATA)
+        // =========================================================================
+        const handleDeleteActiveProject = async () => {
+          if (!activeProject) return;
+          const deletedId = activeProject.id;
+          const uid = currentUser?.uid;
+
+          let remainingProjects = projects.filter((p) => p.id !== deletedId);
+          let createdFallback = null;
+
+          if (remainingProjects.length === 0) {
+            createdFallback = generateAuthenticAndroidProject({
+              name: "My Android App",
+              packageSuffix: "myapp",
+              templateId: "empty-views",
+              codeLang: "kotlin",
+              minSdk: 24,
+              targetSdk: 35,
+              buildConfigDsl: "kts",
+              useViewBinding: true,
+              useMaterial3: true,
+              accentHex: "#10B981"
+            });
+            remainingProjects = [createdFallback];
+          }
+
+          setProjects(remainingProjects);
+          setActiveProjectId(remainingProjects[0].id);
+          setSelectedFilePath(remainingProjects[0].files[0]?.path || "");
+          setPreviewLayoutPath("");
+          setPreviewRefreshTick((t) => t + 1);
+
+          try {
+            localStorage.setItem(
+              getUserScopedProjectsStorageName(uid),
+              JSON.stringify(remainingProjects)
+            );
+          } catch {}
+
+          // Clean up deleted project's isolated chat history, AI settings, and history snapshots
+          setProjectChatMap((prev) => {
+            const next = { ...prev };
+            delete next[deletedId];
+            if (createdFallback) {
+              next[createdFallback.id] = createInitialProjectChatMessages(createdFallback.name);
+            }
+            try {
+              localStorage.setItem(getUserScopedProjectChatsStorageName(uid), JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+
+          setProjectAiSettingsMap((prev) => {
+            const next = { ...prev };
+            delete next[deletedId];
+            if (createdFallback) {
+              next[createdFallback.id] = { ...DEFAULT_AI_SETTINGS };
+            }
+            try {
+              localStorage.setItem(
+                getUserScopedProjectAiSettingsStorageName(uid),
+                JSON.stringify(next)
+              );
+            } catch {}
+            return next;
+          });
+
+          setProjectHistoryMap((prev) => {
+            const next = { ...prev };
+            delete next[deletedId];
+            try {
+              localStorage.setItem(getUserScopedHistoryStorageName(uid), JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+
+          if (uid && window.DroidDB) {
+            setRtdbSynced(false);
+            try {
+              await Promise.all([
+                window.DroidDB.ref(`users/${uid}/projects/${deletedId}`).remove(),
+                window.DroidDB.ref(`users/${uid}/projectChats/${deletedId}`).remove(),
+                window.DroidDB.ref(`users/${uid}/projectAiSettings/${deletedId}`).remove(),
+                ...(createdFallback
+                  ? [
+                      window.DroidDB.ref(`users/${uid}/projects/${createdFallback.id}`).set(
+                        createdFallback
+                      )
+                    ]
+                  : [])
+              ]);
+              setRtdbSynced(true);
+            } catch (err) {
+              console.warn("RTDB project delete sync error:", err);
+            }
+          }
+
+          setIsDeleteProjectModalOpen(false);
+        };
+
+        // =========================================================================
         // BYOK GEMINI API KEY SAVE, TEST & CLEAR HANDLERS
         // =========================================================================
         const handleSaveAndTestApiKey = async (explicitKey) => {
@@ -2277,6 +2317,7 @@ jobs:
               type: "success",
               text: `✅ সংযোগ সফল! ${models.length}টি সক্রিয় টেক্সট/কোড মডেল লোড হয়েছে (অডিও/TTS/ইমেজ মডেল বাদ দেওয়া হয়েছে)।`
             });
+            setIsApiPanelExpanded(false);
           } catch (err) {
             setApiStatusBanner({
               type: "error",
@@ -2290,6 +2331,7 @@ jobs:
         const handleClearUserApiKey = async () => {
           const uid = currentUser?.uid;
           setGeminiApiKey("");
+          setIsApiPanelExpanded(true);
           setAvailableModels([]);
           setApiStatusBanner({
             type: "info",
@@ -2360,44 +2402,33 @@ jobs:
         // MANUAL ACCEPT / REJECT & APPLY FILE UPDATES
         // =========================================================================
         const applyFileUpdatesToActiveProject = useCallback(
-          (updates, sourceLabel = "AI কোড আপডেট", explicitTargetProjectId = null) => {
-            const targetProjId = explicitTargetProjectId || activeProject?.id;
-            if (!targetProjId || !Array.isArray(updates) || updates.length === 0) return false;
+          (updates, sourceLabel = "AI কোড আপডেট") => {
+            if (!activeProjectId || !Array.isArray(updates) || updates.length === 0) return false;
 
-            const targetProj = projects.find((p) => p.id === targetProjId);
-            if (!targetProj) return false;
+            const targetProject =
+              projects.find((p) => p.id === activeProjectId) || projects[0] || null;
+            if (!targetProject) return false;
 
-            recordProjectSnapshot(targetProj, `${sourceLabel}-এর আগের অবস্থা`, "Pre-Update");
+            recordProjectSnapshot(targetProject, `${sourceLabel}-এর আগের অবস্থা`, "Pre-Update");
 
-            const nextFiles = [...(targetProj.files || [])];
-            const normalizedAppliedPaths = [];
-            let updatedLayoutPath = "";
-
+            const nextFiles = [...targetProject.files];
+            const appliedPaths = [];
             updates.forEach((upd) => {
-              const matchedPath = resolveMatchedProjectFilePath(upd.path, nextFiles);
-              if (!matchedPath) return;
-              normalizedAppliedPaths.push(matchedPath);
-
-              const idx = nextFiles.findIndex((f) => f.path === matchedPath);
+              const resolvedPath = resolveMatchedProjectFilePath(upd.path, nextFiles);
+              if (!resolvedPath) return;
+              appliedPaths.push(resolvedPath);
+              const idx = nextFiles.findIndex((f) => f.path === resolvedPath);
               if (idx !== -1) {
                 nextFiles[idx] = { ...nextFiles[idx], content: upd.content };
               } else {
-                nextFiles.push({ path: matchedPath, content: upd.content });
-              }
-
-              if (
-                matchedPath.includes("/res/layout/") &&
-                matchedPath.endsWith(".xml") &&
-                !matchedPath.split("/").pop().startsWith("item_")
-              ) {
-                updatedLayoutPath = matchedPath;
+                nextFiles.push({ path: resolvedPath, content: upd.content });
               }
             });
 
-            if (normalizedAppliedPaths.length === 0) return false;
+            if (appliedPaths.length === 0) return false;
 
             const updatedProject = {
-              ...targetProj,
+              ...targetProject,
               updatedAt: Date.now(),
               files: nextFiles
             };
@@ -2405,38 +2436,19 @@ jobs:
             const updatedList = projects.map((p) =>
               p.id === updatedProject.id ? updatedProject : p
             );
+            persistProjectList(updatedList, updatedProject);
 
-            setProjects(updatedList);
-            const uid = currentUser?.uid;
-            try {
-              localStorage.setItem(
-                getUserScopedProjectsStorageName(uid),
-                JSON.stringify(updatedList)
-              );
-            } catch {}
-
-            if (uid && window.DroidDB) {
-              setRtdbSynced(false);
-              window.DroidDB.ref(`users/${uid}/projects/${updatedProject.id}`)
-                .set(updatedProject)
-                .then(() => setRtdbSynced(true))
-                .catch((err) => console.warn("RTDB project sync error:", err));
-            }
-
-            const resolvedFocusPath =
-              normalizedAppliedPaths.find((p) => p.endsWith("activity_main.xml")) ||
-              normalizedAppliedPaths.find((p) => p.endsWith(".kt") || p.endsWith(".java")) ||
-              normalizedAppliedPaths.find((p) => p.endsWith(".xml")) ||
-              normalizedAppliedPaths[0];
-
-            if (resolvedFocusPath) {
-              setSelectedFilePath(resolvedFocusPath);
-            }
-            setPreviewLayoutPath(updatedLayoutPath || "");
+            const preferredFocus =
+              appliedPaths.find((p) => p.endsWith("activity_main.xml")) ||
+              appliedPaths.find((p) => p.endsWith(".kt") || p.endsWith(".java")) ||
+              appliedPaths[0];
+            setSelectedFilePath(preferredFocus);
+            setPreviewLayoutPath("");
+            setEmuDynamicOutputs({});
             setPreviewRefreshTick((t) => t + 1);
             return true;
           },
-          [activeProject, projects, currentUser, recordProjectSnapshot]
+          [activeProjectId, projects, persistProjectList, recordProjectSnapshot]
         );
 
         const handleAcceptStagedUpdate = (messageId) => {
@@ -2445,8 +2457,7 @@ jobs:
 
           const ok = applyFileUpdatesToActiveProject(
             targetMsg.stagedUpdates,
-            `AI আপডেট (${targetMsg.stagedUpdates.length} ফাইল)`,
-            targetMsg.projectId || activeProject?.id
+            `AI আপডেট (${targetMsg.stagedUpdates.length} ফাইল)`
           );
           if (ok) {
             updateActiveProjectChatMessages((prev) =>
@@ -2462,116 +2473,17 @@ jobs:
         };
 
         // =========================================================================
-        // PERMANENT PROJECT DELETE HANDLER (LOCAL + RTDB + ISOLATED SESSIONS)
+        // CHAT IMAGE & SCREENSHOT ATTACHMENT HANDLERS (FILE PICKER + PASTE)
         // =========================================================================
-        const handleConfirmDeleteActiveProject = () => {
-          if (!activeProject) return;
-          const deletedId = activeProject.id;
-          const uid = currentUser?.uid;
+        const processSelectedChatImages = useCallback((fileList) => {
+          const files = Array.from(fileList || []).filter((f) => f && f.type.startsWith("image/"));
+          if (files.length === 0) return;
 
-          const remaining = projects.filter((p) => p.id !== deletedId);
-          let nextProjectsList = remaining;
-          let fallbackCreated = null;
-
-          if (nextProjectsList.length === 0) {
-            fallbackCreated = generateAuthenticAndroidProject({
-              name: "Bangla News",
-              packageSuffix: "banglanews",
-              templateId: "bangla-news",
-              codeLang: "kotlin",
-              minSdk: 24,
-              targetSdk: 35,
-              buildConfigDsl: "kts",
-              useViewBinding: true,
-              useMaterial3: true,
-              accentHex: "#10B981"
-            });
-            nextProjectsList = [fallbackCreated];
-          }
-
-          const nextActiveProj = nextProjectsList[0];
-          setProjects(nextProjectsList);
-          setActiveProjectId(nextActiveProj.id);
-          setSelectedFilePath(nextActiveProj.files[0]?.path || "");
-          setPreviewLayoutPath("");
-          setPreviewRefreshTick((t) => t + 1);
-
-          try {
-            localStorage.setItem(
-              getUserScopedProjectsStorageName(uid),
-              JSON.stringify(nextProjectsList)
-            );
-          } catch {}
-
-          setProjectChatMap((prev) => {
-            const nextMap = { ...prev };
-            delete nextMap[deletedId];
-            if (fallbackCreated) {
-              nextMap[fallbackCreated.id] = buildInitialProjectWelcomeMessages(fallbackCreated);
-            }
-            try {
-              localStorage.setItem(
-                getUserScopedProjectChatsStorageName(uid),
-                JSON.stringify(nextMap)
-              );
-            } catch {}
-            return nextMap;
-          });
-
-          setProjectAiSettingsMap((prev) => {
-            const nextMap = { ...prev };
-            delete nextMap[deletedId];
-            try {
-              localStorage.setItem(
-                getUserScopedProjectAiSettingsStorageName(uid),
-                JSON.stringify(nextMap)
-              );
-            } catch {}
-            return nextMap;
-          });
-
-          setProjectHistoryMap((prev) => {
-            const nextMap = { ...prev };
-            delete nextMap[deletedId];
-            try {
-              localStorage.setItem(
-                getUserScopedHistoryStorageName(uid),
-                JSON.stringify(nextMap)
-              );
-            } catch {}
-            return nextMap;
-          });
-
-          if (uid && window.DroidDB) {
-            Promise.all([
-              window.DroidDB.ref(`users/${uid}/projects/${deletedId}`).remove(),
-              window.DroidDB.ref(`users/${uid}/projectChats/${deletedId}`).remove(),
-              window.DroidDB.ref(`users/${uid}/projectAiSettings/${deletedId}`).remove(),
-              fallbackCreated
-                ? window.DroidDB.ref(`users/${uid}/projects/${fallbackCreated.id}`).set(
-                    fallbackCreated
-                  )
-                : Promise.resolve()
-            ]).catch((err) => console.warn("RTDB delete cleanup error:", err));
-          }
-
-          setIsDeleteProjectModalOpen(false);
-        };
-
-        // =========================================================================
-        // CHAT IMAGE / SCREENSHOT ATTACHMENT HANDLERS (UPLOAD & PASTE)
-        // =========================================================================
-        const processImageFilesForChat = useCallback((fileList) => {
-          const filesArr = Array.from(fileList || []).filter((f) =>
-            String(f?.type || "").startsWith("image/")
-          );
-          if (filesArr.length === 0) return;
-
-          filesArr.slice(0, 4).forEach((file) => {
+          files.slice(0, 4).forEach((file) => {
             if (file.size > 4 * 1024 * 1024) {
               setApiStatusBanner({
                 type: "error",
-                text: `⚠️ "${file.name}" ছবিটি ৪ MB-এর বড়। অনুগ্রহ করে ৪ MB-এর নিচের ছবি বা স্ক্রিনশট দিন।`
+                text: `⚠️ "${file.name}" ছবিটি 4MB-এর বেশি। অনুগ্রহ করে ছোট স্ক্রিনশট বা ছবি দিন।`
               });
               return;
             }
@@ -2584,7 +2496,7 @@ jobs:
                 [
                   ...prev,
                   {
-                    id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                     name: file.name || "screenshot.png",
                     mimeType: file.type || "image/png",
                     dataUrl,
@@ -2597,25 +2509,29 @@ jobs:
           });
         }, []);
 
-        const handleChatFileSelect = (e) => {
-          processImageFilesForChat(e.target.files);
+        const handleChatImageFileChange = (e) => {
+          processSelectedChatImages(e.target.files);
           e.target.value = "";
         };
 
         const handleChatInputPaste = (e) => {
-          const items = Array.from(e.clipboardData?.items || []);
-          const imageFiles = items
-            .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-            .map((item) => item.getAsFile())
-            .filter(Boolean);
-          if (imageFiles.length > 0) {
+          const items = e.clipboardData?.items;
+          if (!items) return;
+          const pastedImages = [];
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type && items[i].type.startsWith("image/")) {
+              const f = items[i].getAsFile();
+              if (f) pastedImages.push(f);
+            }
+          }
+          if (pastedImages.length > 0) {
             e.preventDefault();
-            processImageFilesForChat(imageFiles);
+            processSelectedChatImages(pastedImages);
           }
         };
 
         const handleRemoveChatAttachment = (attId) => {
-          setChatAttachments((prev) => prev.filter((item) => item.id !== attId));
+          setChatAttachments((prev) => prev.filter((a) => a.id !== attId));
         };
 
         // =========================================================================
@@ -2630,12 +2546,17 @@ jobs:
         };
 
         const handleSendMessage = async (overridePromptText) => {
-          const promptText = String(
+          const rawTypedText = String(
             overridePromptText !== undefined ? overridePromptText : chatInput
           ).trim();
-          const pendingAttachments = overridePromptText === undefined ? [...chatAttachments] : [];
+          const pendingAttachments =
+            overridePromptText === undefined ? [...chatAttachments] : [];
 
-          if ((!promptText && pendingAttachments.length === 0) || isGenerating) return;
+          if ((!rawTypedText && pendingAttachments.length === 0) || isGenerating) return;
+
+          const promptText =
+            rawTypedText ||
+            "এই স্ক্রিনশট/ছবিটি বিশ্লেষণ করো এবং প্রয়োজনীয় Android সমাধান বা কোড দাও।";
 
           const cleanKey = geminiApiKey.trim();
           if (!cleanKey) {
@@ -2646,24 +2567,19 @@ jobs:
             return;
           }
 
-          const targetProjectSnapshot = activeProject;
-          const targetProjectId = targetProjectSnapshot?.id;
-
           const userMsg = {
             id: `usr_${Date.now()}`,
             role: "user",
-            text:
-              promptText ||
-              "সংযুক্ত স্ক্রিনশট/ছবিটি বিশ্লেষণ করে বর্তমান Android প্রজেক্টের জন্য প্রয়োজনীয় কোড বা সমাধান তৈরি করো।",
-            attachments: pendingAttachments.map((att) => ({
-              id: att.id,
-              name: att.name,
-              mimeType: att.mimeType,
-              dataUrl: att.dataUrl
+            text: promptText,
+            attachments: pendingAttachments.map((a) => ({
+              id: a.id,
+              name: a.name,
+              mimeType: a.mimeType,
+              dataUrl: a.dataUrl
             })),
             timestamp: Date.now()
           };
-          updateActiveProjectChatMessages((prev) => [...prev, userMsg], targetProjectId);
+          updateActiveProjectChatMessages((prev) => [...prev, userMsg]);
           if (overridePromptText === undefined) {
             setChatInput("");
             setChatAttachments([]);
@@ -2696,65 +2612,60 @@ jobs:
               (mode === "fast-chat" ||
                 (mode === "auto" &&
                   promptText.length < 70 &&
-                  !/কোড|ফাইল|ফিক্স|বাগ|তৈরি|বাটন|স্ক্রিন|লগইন|বিশ্লেষণ|পরিকল্পনা|add|fix|code|create|activity|xml|kotlin|java|analyze|plan/i.test(
+                  !/কোড|ফাইল|ফিক্স|বাগ|তৈরি|বাটন|স্ক্রিন|লগইন|বিশ্লেষণ|পরিকল্পনা|add|fix|code|create|activity|xml|kotlin|java|analyze/i.test(
                     promptText
                   )));
 
             let systemInstructionText = aiSettings.systemPersona;
-            let composedUserPrompt =
-              promptText ||
-              "সংযুক্ত স্ক্রিনশট/ছবিটি দেখে বর্তমান Android প্রজেক্ট অনুযায়ী সমাধান বা কোড দাও।";
+            let composedUserPrompt = promptText;
 
-            if (
-              (!isFastChatOnly || isAnalyzeOnlyMode || pendingAttachments.length > 0) &&
-              targetProjectSnapshot
-            ) {
-              const nonBinaryFiles = (targetProjectSnapshot.files || []).filter(
-                (f) => !f.assetDataUrl
-              );
-              const fullFileTree = nonBinaryFiles
-                .map((f, idx) => `${idx + 1}. ${f.path} (${f.content.split("\n").length} লাইন)`)
+            if (!isFastChatOnly && activeProject) {
+              const nonBinaryFiles = activeProject.files.filter((f) => !f.assetDataUrl);
+              const projectFileTree = nonBinaryFiles
+                .map((f) => `• ${f.path} (${(f.content || "").split("\n").length} লাইন)`)
                 .join("\n");
+
               const projectSummaryFiles = nonBinaryFiles
                 .map((f) => `--- FILE: ${f.path} ---\n${f.content}`)
                 .join("\n\n");
 
               if (isAnalyzeOnlyMode) {
-                systemInstructionText += `\n\nবর্তমান সক্রিয় Android প্রজেক্টের তথ্য:
-- App Name: ${targetProjectSnapshot.name}
-- Package Name: ${targetProjectSnapshot.packageName}
-- Language: ${targetProjectSnapshot.language}
-- Min SDK: API ${targetProjectSnapshot.minSdk}, Target SDK: API ${targetProjectSnapshot.targetSdk}
-- Template: ${targetProjectSnapshot.templateId}
+                systemInstructionText += `\n\nবর্তমান Android প্রজেক্টের সম্পূর্ণ তথ্য:
+- App Name: ${activeProject.name}
+- Package Name: ${activeProject.packageName}
+- Language: ${activeProject.language}
+- Min SDK: API ${activeProject.minSdk}, Target SDK: API ${activeProject.targetSdk}
+- Template: ${activeProject.templateId}
 
-তুমি এখন [🧠 বিশ্লেষণ ও পরিকল্পনা (Analyze First)] মোডে আছো। এই মোডে কঠোর নির্দেশনা:
-১. কোনো <<<FILE:...>>> ব্লক বা কোড আপডেট আউটপুট দেবে না।
-২. প্রথমে পুরো প্রজেক্টের সব ফাইল পড়ে বাংলায় নিচের ৩টি অংশে স্পষ্ট রিপোর্ট দাও:
-   - ### 🔍 বর্তমান প্রজেক্ট অডিট (ফাইল কাঠামো, প্যাকেজ নেম, বিদ্যমান XML ID ও লজিক)
-   - ### ⚠️ সম্ভাব্য সমস্যা বা সীমাবদ্ধতা (যদি থাকে)
-   - ### 📋 ধাপে ধাপে বাস্তবায়ন পরিকল্পনা (কোন কোন ফাইলে কী কী পরিবর্তন করা হবে)
-৩. শেষে ইউজারকে জিজ্ঞেস করো: "আপনি কি এই পরিকল্পনা অনুযায়ী কোড তৈরি করতে চান?"`;
+প্রজেক্টের ফাইল-ট্রি:
+${projectFileTree}
+
+গুরুত্বপূর্ণ নির্দেশনা (Deep Project Analysis Mode):
+- এখনই কোনো <<<FILE:...>>> কোড ব্লক লিখবে না।
+- প্রথমে প্রজেক্টের প্রতিটি ফাইল (Manifest, Gradle, strings.xml, colors.xml, layout XML এবং Kotlin/Java কোড) গভীরভাবে পড়ে বাংলায় বিস্তারিত বিশ্লেষণ দাও:
+  ১. বর্তমান আর্কিটেকচার ও কী কী ফিচার আছে,
+  ২. কোথায় কোথায় ত্রুটি বা অসম্পূর্ণতা আছে,
+  ৩. ইউজারের চাহিদা পূরণে কোন কোন ফাইলে কী কী পরিবর্তন করতে হবে তার ধাপে ধাপে পরিকল্পনা।`;
               } else {
-                systemInstructionText += `\n\nবর্তমান সক্রিয় Android প্রজেক্টের তথ্য:
-- App Name: ${targetProjectSnapshot.name}
-- Package Name: ${targetProjectSnapshot.packageName}
-- Language: ${targetProjectSnapshot.language}
-- Min SDK: API ${targetProjectSnapshot.minSdk}, Target SDK: API ${targetProjectSnapshot.targetSdk}
-- Template: ${targetProjectSnapshot.templateId}
+                systemInstructionText += `\n\nবর্তমান Android প্রজেক্টের সম্পূর্ণ তথ্য:
+- App Name: ${activeProject.name}
+- Package Name: ${activeProject.packageName}
+- Language: ${activeProject.language}
+- Min SDK: API ${activeProject.minSdk}, Target SDK: API ${activeProject.targetSdk}
+- Template: ${activeProject.templateId}
 
-কঠোর Deep Project Analysis ও নির্ভুল কোডিং নিয়ম:
-১. কোড লেখার আগে অবশ্যই প্রজেক্টের সব ফাইল ভালোভাবে পড়ে নাও এবং উত্তরের শুরুতে সংক্ষেপে "### 🔍 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা" শিরোনামে উল্লেখ করো কোন কোন ফাইল পরিবর্তন হবে এবং XML ID (\`@+id/...\`), Package Name (\`${targetProjectSnapshot.packageName}\`) ও Gradle ডিপেন্ডেন্সি কীভাবে ম্যাচ করা হয়েছে।
-২. যেসব ফাইল তৈরি বা পরিবর্তন করবে (বিশেষ করে app/src/main/res/layout/activity_main.xml এবং MainActivity), সেগুলোর সম্পূর্ণ রানযোগ্য কোড নিচের ফরম্যাটে আলাদা আলাদা ব্লকে দেবে:
-<<<FILE:app/src/main/res/layout/activity_main.xml>>>
-সম্পূর্ণ XML কোড
-<<<END_FILE>>>
+প্রজেক্টের ফাইল-ট্রি:
+${projectFileTree}
+
+বাধ্যতামূলক কোডিং নিয়ম (Strict Analysis-Before-Code):
+১. ঝটপট অনুমান করে কোড লিখবে না। প্রথমে প্রজেক্টের সব ফাইল, প্যাকেজ নেম (${activeProject.packageName}), XML ভিউ আইডি (@+id/...) ও build.gradle ডিপেন্ডেন্সি যাচাই করে \`### 🔍 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা\` শিরোনামে ৩–৫ লাইনে ব্যাখ্যা লিখবে কী কী পরিবর্তন করা হচ্ছে।
+২. এরপর পরিবর্তিত বা নতুন প্রতিটি ফাইলের সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত রানযোগ্য কোড (কোনো \`// বাকি কোড আগের মতো\` সংক্ষেপণ ছাড়া) নিচের ফরম্যাটে দেবে যাতে ইউজার Accept বাটনে ক্লিক করলেই সরাসরি ফাইল ও প্রিভিউ আপডেট হয়:
 <<<FILE:app/src/main/path/FileName.ext>>>
 সম্পূর্ণ কোড
-<<<END_FILE>>>
-৩. কখনোই "// বাকি কোড আগের মতো" বা আংশিক কোড লিখবে না; প্রতিটি পরিবর্তিত ফাইলের শুরু থেকে শেষ পর্যন্ত ১০০% সম্পূর্ণ ও নির্ভুল কোড দেবে।`;
+<<<END_FILE>>>`;
               }
 
-              composedUserPrompt = `প্রজেক্টের সম্পূর্ণ ফাইল ট্রি (${nonBinaryFiles.length}টি ফাইল):\n${fullFileTree}\n\nপ্রজেক্টের সব ফাইলের সম্পূর্ণ কোড:\n${projectSummaryFiles}\n\nইউজারের নির্দেশনা:\n${composedUserPrompt}`;
+              composedUserPrompt = `বর্তমান প্রজেক্টের সম্পূর্ণ ফাইলসমূহ:\n${projectSummaryFiles}\n\nইউজারের নির্দেশনা:\n${promptText}`;
             }
 
             const recentHistory = chatMessages
@@ -2762,7 +2673,7 @@ jobs:
               .filter((m) => m.role === "user" || m.role === "assistant")
               .map((m) => ({
                 role: m.role === "assistant" ? "model" : "user",
-                parts: [{ text: String(m.text || "").slice(0, 2500) }]
+                parts: [{ text: String(m.text || "").slice(0, 2000) }]
               }));
 
             const currentUserParts = [{ text: composedUserPrompt }];
@@ -2782,16 +2693,6 @@ jobs:
               { role: "user", parts: currentUserParts }
             ];
 
-            const isCodingTurn = !isFastChatOnly && !isAnalyzeOnlyMode;
-            const effectiveTemperature = isCodingTurn
-              ? Math.min(Number(aiSettings.temperature) || 0.15, 0.15)
-              : isAnalyzeOnlyMode
-              ? 0.25
-              : Number(aiSettings.temperature) || 0.35;
-            const effectiveMaxTokens = isFastChatOnly
-              ? 1024
-              : Math.max(Number(aiSettings.maxOutputTokens) || 8192, 8192);
-
             let finalResponseText = "";
             let succeededModel = "";
             let lastErrMessage = "";
@@ -2802,7 +2703,7 @@ jobs:
               }
 
               const perAttemptController = new AbortController();
-              const timeoutHandle = setTimeout(() => perAttemptController.abort(), 35000);
+              const timeoutHandle = setTimeout(() => perAttemptController.abort(), 30000);
               const onMasterAbort = () => perAttemptController.abort();
               masterController.signal.addEventListener("abort", onMasterAbort, { once: true });
 
@@ -2821,8 +2722,12 @@ jobs:
                     },
                     contents: contentsPayload,
                     generationConfig: {
-                      temperature: effectiveTemperature,
-                      maxOutputTokens: effectiveMaxTokens
+                      temperature: isFastChatOnly
+                        ? Number(aiSettings.temperature) || 0.35
+                        : Math.min(Number(aiSettings.temperature) || 0.2, 0.2),
+                      maxOutputTokens: isFastChatOnly
+                        ? 1024
+                        : Math.max(Number(aiSettings.maxOutputTokens) || 8192, 8192)
                     }
                   })
                 });
@@ -2871,20 +2776,17 @@ jobs:
               );
             }
 
-            const extractedUpdates = isAnalyzeOnlyMode
-              ? []
-              : extractFileUpdatesFromAiResponse(
-                  finalResponseText,
-                  targetProjectSnapshot?.files || []
-                );
+            const extractedUpdates = extractFileUpdatesFromAiResponse(
+              finalResponseText,
+              activeProject?.files || []
+            );
 
             let reviewStatus = "none";
             if (extractedUpdates.length > 0) {
               if (aiSettings.autoApplyCodeUpdates) {
                 applyFileUpdatesToActiveProject(
                   extractedUpdates,
-                  `Auto-Update (${succeededModel})`,
-                  targetProjectId
+                  `Auto-Update (${succeededModel})`
                 );
                 reviewStatus = "accepted";
               } else {
@@ -2895,7 +2797,6 @@ jobs:
             const assistantMsg = {
               id: `ai_${Date.now()}`,
               role: "assistant",
-              projectId: targetProjectId,
               text: finalResponseText,
               modelUsed: succeededModel,
               stagedUpdates: extractedUpdates,
@@ -2903,34 +2804,28 @@ jobs:
               timestamp: Date.now()
             };
 
-            updateActiveProjectChatMessages((prev) => [...prev, assistantMsg], targetProjectId);
+            updateActiveProjectChatMessages((prev) => [...prev, assistantMsg]);
           } catch (err) {
             if (err?.name === "AbortError") {
-              updateActiveProjectChatMessages(
-                (prev) => [
-                  ...prev,
-                  {
-                    id: `stop_${Date.now()}`,
-                    role: "assistant",
-                    text: "⏹ জেনারেশন থামানো হয়েছে।",
-                    timestamp: Date.now()
-                  }
-                ],
-                targetProjectId
-              );
+              updateActiveProjectChatMessages((prev) => [
+                ...prev,
+                {
+                  id: `stop_${Date.now()}`,
+                  role: "assistant",
+                  text: "⏹ জেনারেশন থামানো হয়েছে।",
+                  timestamp: Date.now()
+                }
+              ]);
             } else {
-              updateActiveProjectChatMessages(
-                (prev) => [
-                  ...prev,
-                  {
-                    id: `err_${Date.now()}`,
-                    role: "assistant",
-                    text: `⚠️ ত্রুটি: ${err?.message || "উত্তর তৈরি করা সম্ভব হয়নি।"}`,
-                    timestamp: Date.now()
-                  }
-                ],
-                targetProjectId
-              );
+              updateActiveProjectChatMessages((prev) => [
+                ...prev,
+                {
+                  id: `err_${Date.now()}`,
+                  role: "assistant",
+                  text: `⚠️ ত্রুটি: ${err?.message || "উত্তর তৈরি করা সম্ভব হয়নি।"}`,
+                  timestamp: Date.now()
+                }
+              ]);
             }
           } finally {
             setIsGenerating(false);
@@ -2980,12 +2875,13 @@ jobs:
           setActiveProjectId(created.id);
           setSelectedFilePath(created.files[0]?.path || "");
 
-          const freshWelcome = buildInitialProjectWelcomeMessages(created);
+          // Initialize & auto-save isolated chat & AI settings for the newly created project
+          const freshChat = createInitialProjectChatMessages(created.name);
           const freshSettings = { ...DEFAULT_AI_SETTINGS, preferredModel: activeModelId };
           const uid = currentUser?.uid;
 
           setProjectChatMap((prev) => {
-            const nextMap = { ...prev, [created.id]: freshWelcome };
+            const nextMap = { ...prev, [created.id]: freshChat };
             try {
               localStorage.setItem(
                 getUserScopedProjectChatsStorageName(uid),
@@ -3008,7 +2904,7 @@ jobs:
 
           if (uid && window.DroidDB) {
             window.DroidDB.ref(`users/${uid}/projectChats/${created.id}`)
-              .set(freshWelcome)
+              .set(freshChat)
               .catch(() => {});
             window.DroidDB.ref(`users/${uid}/projectAiSettings/${created.id}`)
               .set(freshSettings)
@@ -3593,16 +3489,14 @@ jobs:
                     📜 হিস্ট্রি ({activeProjectHistory.length})
                   </button>
 
-                  {activeProject && (
-                    <button
-                      type="button"
-                      onClick={() => setIsDeleteProjectModalOpen(true)}
-                      title="বর্তমান প্রজেক্ট ডিলিট করুন"
-                      className="rounded-xl border border-rose-500/40 bg-rose-950/60 px-2.5 py-1 text-xs font-bold text-rose-300 transition hover:bg-rose-900/80"
-                    >
-                      🗑️ ডিলিট
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteProjectModalOpen(true)}
+                    title="বর্তমান প্রজেক্ট ডিলিট করুন"
+                    className="rounded-xl border border-rose-500/40 bg-rose-950/60 px-2.5 py-1 text-xs font-bold text-rose-300 transition hover:bg-rose-900/70"
+                  >
+                    🗑️ ডিলিট
+                  </button>
                 </div>
 
                 {/* Right Actions: Build APK/AAB + GitHub + User Account */}
@@ -3647,7 +3541,10 @@ jobs:
               <div className="mx-auto mt-2.5 grid max-w-5xl grid-cols-3 gap-1.5 rounded-2xl border border-slate-800 bg-[#070b14] p-1">
                 <button
                   type="button"
-                  onClick={() => setActiveTab("chat")}
+                  onClick={() => {
+                    setActiveTab("chat");
+                    scrollToChatBottom(true);
+                  }}
                   className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition ${
                     activeTab === "chat"
                       ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-950/60"
@@ -3690,253 +3587,289 @@ jobs:
             {/* TAB 1: GEMINI AI STUDIO CHAT & MANUAL ACCEPT CODE WORKSPACE         */}
             {/* =================================================================== */}
             {activeTab === "chat" && (
-              <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-3 pt-2.5 pb-3">
-                {/* BYOK API Key & Model Strip */}
-                <section className="rounded-2xl border border-slate-800 bg-[#0d1424] p-3 shadow-lg">
+              <main className="mx-auto flex h-[calc(100dvh-112px)] min-h-[420px] w-full max-w-5xl flex-col overflow-hidden px-3 pt-2.5 pb-3">
+                {/* Collapsible BYOK API Key, Model & Quick Analysis Strip */}
+                <section className="shrink-0 rounded-2xl border border-slate-800 bg-[#0d1424] p-2.5 shadow-lg">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                       <span className="text-xs font-extrabold text-purple-300">
                         Gemini AI Studio
                       </span>
-                      <span className="rounded-full border border-purple-500/40 bg-purple-950/90 px-2 py-0.5 text-[10px] font-bold text-purple-200">
-                        {availableModels.length > 0
-                          ? `${availableModels.length} মডেল`
-                          : "BYOK মোড"}
+                      <span className="max-w-[135px] truncate rounded-full border border-purple-500/40 bg-purple-950/90 px-2 py-0.5 font-mono text-[10px] font-bold text-purple-200">
+                        {activeModelId}
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                          geminiApiKey
+                            ? "border-emerald-500/40 bg-emerald-950/70 text-emerald-300"
+                            : "border-amber-500/40 bg-amber-950/70 text-amber-300"
+                        }`}
+                      >
+                        {geminiApiKey ? "✅ সংযুক্ত" : "⚠️ API Key দিন"}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      <a
-                        href="https://aistudio.google.com/apikey"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-sky-300 hover:bg-slate-800"
-                      >
-                        AI Studio ↗
-                      </a>
                       <button
                         type="button"
-                        onClick={() => setIsAiSettingsOpen((v) => !v)}
-                        className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-800"
+                        onClick={() => setIsApiPanelExpanded((v) => !v)}
+                        aria-expanded={isApiPanelExpanded}
+                        className={`rounded-xl border px-2.5 py-1 text-[11px] font-bold transition ${
+                          isApiPanelExpanded
+                            ? "border-purple-500/50 bg-purple-950/80 text-purple-200 hover:bg-purple-900"
+                            : "border-emerald-500/40 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900"
+                        }`}
                       >
-                        ⚙ সেটিংস
+                        {isApiPanelExpanded ? "▲ ভাঁজ করুন" : "▼ API ও বিশ্লেষণ খুলুন"}
                       </button>
                     </div>
                   </div>
 
-                  {/* Per-User API Key Input + Test + Clear */}
-                  <div className="mt-2.5 flex items-center gap-1.5">
-                    <input
-                      type="password"
-                      value={geminiApiKey}
-                      onChange={(e) => setGeminiApiKey(e.target.value)}
-                      placeholder="আপনার নিজস্ব Gemini API Key (AIza...) বসান"
-                      className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-purple-500 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      disabled={isTestingApi}
-                      onClick={() => handleSaveAndTestApiKey()}
-                      className="shrink-0 rounded-xl bg-purple-600 px-3 py-2 text-xs font-bold text-white shadow hover:bg-purple-500 disabled:opacity-50"
-                    >
-                      {isTestingApi ? "যাচাই..." : "API টেস্ট"}
-                    </button>
-                    {geminiApiKey && (
-                      <button
-                        type="button"
-                        onClick={handleClearUserApiKey}
-                        title="সংরক্ষিত API Key মুছে ফেলুন"
-                        className="shrink-0 rounded-xl border border-rose-500/40 bg-rose-950/60 px-2.5 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-900"
-                      >
-                        কী মুছুন
-                      </button>
-                    )}
-                  </div>
-
-                  {/* BYOK Isolation Notice & Active Model Selector */}
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                    <span className="text-amber-300/90">
-                      🔒 নিজস্ব API Key (BYOK) — শুধুমাত্র{" "}
-                      <strong className="font-semibold text-white">
-                        {currentUser?.email || "আপনার অ্যাকাউন্ট"}
-                      </strong>
-                      -এর জন্য সংরক্ষিত
-                    </span>
-
-                    <select
-                      value={activeModelId}
-                      onChange={(e) => {
-                        setActiveModelId(e.target.value);
-                        updateActiveProjectAiSettings((s) => ({
-                          ...s,
-                          preferredModel: e.target.value
-                        }));
-                      }}
-                      className="max-w-[190px] truncate rounded-lg border border-slate-700 bg-slate-950 px-2 py-0.5 font-mono text-[11px] text-emerald-300"
-                    >
-                      {(availableModels.length > 0
-                        ? availableModels
-                        : PREFERRED_MODEL_ORDER.map((id) => ({ id, displayName: id }))
-                      ).map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.id}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {apiStatusBanner && (
-                    <div
-                      className={`mt-2 rounded-xl border px-3 py-2 text-xs ${
-                        apiStatusBanner.type === "success"
-                          ? "border-emerald-500/40 bg-emerald-950/60 text-emerald-200"
-                          : apiStatusBanner.type === "error"
-                          ? "border-rose-500/40 bg-rose-950/60 text-rose-200"
-                          : "border-sky-500/40 bg-sky-950/60 text-sky-200"
-                      }`}
-                    >
-                      {apiStatusBanner.text}
-                    </div>
-                  )}
-
-                  {/* Collapsible AI Studio Settings Drawer (Per-Project Auto-Saved) */}
-                  {isAiSettingsOpen && (
-                    <div className="mt-3 space-y-2.5 rounded-xl border border-slate-800 bg-slate-950/90 p-3 text-xs">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-[11px]">
-                        <span className="font-bold text-purple-300">
-                          📁 প্রজেক্ট সেটিংস: {activeProject?.name}
+                  {isApiPanelExpanded && (
+                    <div className="mt-2.5 border-t border-slate-800/80 pt-2.5">
+                      <div className="flex items-center justify-between gap-2 pb-2">
+                        <span className="text-[11px] font-semibold text-slate-400">
+                          {availableModels.length > 0
+                            ? `${availableModels.length}টি সক্রিয় মডেল লোড হয়েছে`
+                            : "BYOK API ও প্রজেক্ট বিশ্লেষণ কন্ট্রোল"}
                         </span>
-                        <span className="text-[10px] text-emerald-400">✅ অটো-সেভ সক্রিয়</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="mb-1 block text-[11px] text-slate-400">
-                            Temperature ({aiSettings.temperature})
-                          </label>
-                          <input
-                            type="range"
-                            min="0"
-                            max="1.2"
-                            step="0.05"
-                            value={aiSettings.temperature}
-                            onChange={(e) =>
-                              updateActiveProjectAiSettings((s) => ({
-                                ...s,
-                                temperature: parseFloat(e.target.value)
-                              }))
-                            }
-                            className="w-full accent-purple-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-[11px] text-slate-400">
-                            Max Output Tokens
-                          </label>
-                          <select
-                            value={aiSettings.maxOutputTokens}
-                            onChange={(e) =>
-                              updateActiveProjectAiSettings((s) => ({
-                                ...s,
-                                maxOutputTokens: Number(e.target.value)
-                              }))
-                            }
-                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href="https://aistudio.google.com/apikey"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-sky-300 hover:bg-slate-800"
                           >
-                            <option value={2048}>2048 Tokens (Fast)</option>
-                            <option value={4096}>4096 Tokens (Balanced)</option>
-                            <option value={8192}>8192 Tokens (Full App)</option>
-                          </select>
+                            AI Studio ↗
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => setIsAiSettingsOpen((v) => !v)}
+                            className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-800"
+                          >
+                            ⚙ সেটিংস
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/70 px-2.5 py-2">
-                        <span className="text-[11px] text-slate-300">
-                          কোড আপডেট মোড: <strong>Manual Accept (প্রস্তাবিত)</strong>
-                        </span>
+                      {/* Per-User API Key Input + Test + Clear */}
+                      <div className="flex items-center gap-1.5">
                         <input
-                          type="checkbox"
-                          checked={!aiSettings.autoApplyCodeUpdates}
-                          onChange={(e) =>
-                            updateActiveProjectAiSettings((s) => ({
-                              ...s,
-                              autoApplyCodeUpdates: !e.target.checked
-                            }))
-                          }
-                          className="h-4 w-4 accent-emerald-500"
+                          type="password"
+                          value={geminiApiKey}
+                          onChange={(e) => setGeminiApiKey(e.target.value)}
+                          placeholder="আপনার নিজস্ব Gemini API Key (AIza...) বসান"
+                          className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-purple-500 focus:outline-none"
                         />
+                        <button
+                          type="button"
+                          disabled={isTestingApi}
+                          onClick={() => handleSaveAndTestApiKey()}
+                          className="shrink-0 rounded-xl bg-purple-600 px-3 py-2 text-xs font-bold text-white shadow hover:bg-purple-500 disabled:opacity-50"
+                        >
+                          {isTestingApi ? "যাচাই..." : "API টেস্ট"}
+                        </button>
+                        {geminiApiKey && (
+                          <button
+                            type="button"
+                            onClick={handleClearUserApiKey}
+                            title="সংরক্ষিত API Key মুছে ফেলুন"
+                            className="shrink-0 rounded-xl border border-rose-500/40 bg-rose-950/60 px-2.5 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-900"
+                          >
+                            কী মুছুন
+                          </button>
+                        )}
                       </div>
 
-                      <div>
-                        <label className="mb-1 block text-[11px] text-slate-400">
-                          System Instruction (এই প্রজেক্টের জন্য বাংলা ও Android IDE)
-                        </label>
-                        <textarea
-                          rows={2}
-                          value={aiSettings.systemPersona}
-                          onChange={(e) =>
+                      {/* BYOK Isolation Notice & Active Model Selector */}
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                        <span className="text-amber-300/90">
+                          🔒 নিজস্ব API Key (BYOK) — শুধুমাত্র{" "}
+                          <strong className="font-semibold text-white">
+                            {currentUser?.email || "আপনার অ্যাকাউন্ট"}
+                          </strong>
+                          -এর জন্য সংরক্ষিত
+                        </span>
+
+                        <select
+                          value={activeModelId}
+                          onChange={(e) => {
+                            setActiveModelId(e.target.value);
                             updateActiveProjectAiSettings((s) => ({
                               ...s,
-                              systemPersona: e.target.value
-                            }))
+                              preferredModel: e.target.value
+                            }));
+                          }}
+                          className="max-w-[190px] truncate rounded-lg border border-slate-700 bg-slate-950 px-2 py-0.5 font-mono text-[11px] text-emerald-300"
+                        >
+                          {(availableModels.length > 0
+                            ? availableModels
+                            : PREFERRED_MODEL_ORDER.map((id) => ({ id, displayName: id }))
+                          ).map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.id}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {apiStatusBanner && (
+                        <div
+                          className={`mt-2 rounded-xl border px-3 py-2 text-xs ${
+                            apiStatusBanner.type === "success"
+                              ? "border-emerald-500/40 bg-emerald-950/60 text-emerald-200"
+                              : apiStatusBanner.type === "error"
+                              ? "border-rose-500/40 bg-rose-950/60 text-rose-200"
+                              : "border-sky-500/40 bg-sky-950/60 text-sky-200"
+                          }`}
+                        >
+                          {apiStatusBanner.text}
+                        </div>
+                      )}
+
+                      {/* Collapsible AI Studio Settings Drawer (Per-Project Auto-Saved) */}
+                      {isAiSettingsOpen && (
+                        <div className="mt-3 space-y-2.5 rounded-xl border border-slate-800 bg-slate-950/90 p-3 text-xs">
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-[11px]">
+                            <span className="font-bold text-purple-300">
+                              📁 প্রজেক্ট সেটিংস: {activeProject?.name}
+                            </span>
+                            <span className="text-[10px] text-emerald-400">✅ অটো-সেভ সক্রিয়</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="mb-1 block text-[11px] text-slate-400">
+                                Temperature ({aiSettings.temperature})
+                              </label>
+                              <input
+                                type="range"
+                                min="0"
+                                max="1.2"
+                                step="0.05"
+                                value={aiSettings.temperature}
+                                onChange={(e) =>
+                                  updateActiveProjectAiSettings((s) => ({
+                                    ...s,
+                                    temperature: parseFloat(e.target.value)
+                                  }))
+                                }
+                                className="w-full accent-purple-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-[11px] text-slate-400">
+                                Max Output Tokens
+                              </label>
+                              <select
+                                value={aiSettings.maxOutputTokens}
+                                onChange={(e) =>
+                                  updateActiveProjectAiSettings((s) => ({
+                                    ...s,
+                                    maxOutputTokens: Number(e.target.value)
+                                  }))
+                                }
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
+                              >
+                                <option value={2048}>2048 Tokens (Fast)</option>
+                                <option value={4096}>4096 Tokens (Balanced)</option>
+                                <option value={8192}>8192 Tokens (Full App)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/70 px-2.5 py-2">
+                            <span className="text-[11px] text-slate-300">
+                              কোড আপডেট মোড: <strong>Manual Accept (প্রস্তাবিত)</strong>
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={!aiSettings.autoApplyCodeUpdates}
+                              onChange={(e) =>
+                                updateActiveProjectAiSettings((s) => ({
+                                  ...s,
+                                  autoApplyCodeUpdates: !e.target.checked
+                                }))
+                              }
+                              className="h-4 w-4 accent-emerald-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-[11px] text-slate-400">
+                              System Instruction (এই প্রজেক্টের জন্য বাংলা ও Android IDE)
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={aiSettings.systemPersona}
+                              onChange={(e) =>
+                                updateActiveProjectAiSettings((s) => ({
+                                  ...s,
+                                  systemPersona: e.target.value
+                                }))
+                              }
+                              className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-xs text-slate-200"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Quick Prompt Chips */}
+                      <div className="no-scrollbar mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "analyze" }));
+                            handleSendMessage(
+                              `পুরো প্রজেক্টের (${activeProject?.name}) সব ফাইল, লেআউট ও লজিক গভীরভাবে বিশ্লেষণ করে বর্তমান অবস্থা, সম্ভাব্য সমস্যা এবং উন্নতির ধাপে ধাপে পরিকল্পনা দাও।`
+                            );
+                          }}
+                          className="shrink-0 rounded-full border border-amber-500/40 bg-amber-950/60 px-3 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-900"
+                        >
+                          🧠 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা দাও
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleSendMessage(
+                              `বর্তমান ফাইল (${activeFile?.path || "MainActivity"}) পরীক্ষা করে কোনো বাগ থাকলে ফিক্স করো।`
+                            )
                           }
-                          className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-xs text-slate-200"
-                        />
+                          className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-950/60 px-3 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-900"
+                        >
+                          বর্তমান ফাইল ফিক্স করো
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleSendMessage(
+                              "এই অ্যাপে একটি সুন্দর বাটন, ইনপুট ফিল্ড এবং ক্লিক করলে Toast মেসেজ দেখানোর ফিচার যোগ করো।"
+                            )
+                          }
+                          className="shrink-0 rounded-full border border-purple-500/40 bg-purple-950/60 px-3 py-1 text-[11px] font-semibold text-purple-200 hover:bg-purple-900"
+                        >
+                          নতুন ফিচার যোগ করো
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleSendMessage(
+                              `বর্তমান প্রজেক্ট (${activeProject?.name}) কী কাজ করছে সংক্ষেপে বাংলায় বুঝিয়ে বলো।`
+                            )
+                          }
+                          className="shrink-0 rounded-full border border-sky-500/40 bg-sky-950/60 px-3 py-1 text-[11px] font-semibold text-sky-200 hover:bg-sky-900"
+                        >
+                          কোড বুঝিয়ে দাও
+                        </button>
                       </div>
                     </div>
                   )}
-
-                  {/* Quick Prompt Chips */}
-                  <div className="no-scrollbar mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "analyze" }));
-                        handleSendMessage(
-                          `পুরো প্রজেক্টের (${activeProject?.name}) সব ফাইল, লেআউট ও লজিক গভীরভাবে বিশ্লেষণ করে বর্তমান অবস্থা, সম্ভাব্য সমস্যা এবং উন্নতির ধাপে ধাপে পরিকল্পনা দাও।`
-                        );
-                      }}
-                      className="shrink-0 rounded-full border border-amber-500/40 bg-amber-950/60 px-3 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-900"
-                    >
-                      🧠 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা দাও
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleSendMessage(
-                          `বর্তমান ফাইল (${activeFile?.path || "MainActivity"}) পরীক্ষা করে কোনো বাগ থাকলে ফিক্স করো।`
-                        )
-                      }
-                      className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-950/60 px-3 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-900"
-                    >
-                      বর্তমান ফাইল ফিক্স করো
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleSendMessage(
-                          "এই অ্যাপে একটি সুন্দর বাটন, ইনপুট ফিল্ড এবং ক্লিক করলে Toast মেসেজ দেখানোর ফিচার যোগ করো।"
-                        )
-                      }
-                      className="shrink-0 rounded-full border border-purple-500/40 bg-purple-950/60 px-3 py-1 text-[11px] font-semibold text-purple-200 hover:bg-purple-900"
-                    >
-                      নতুন ফিচার যোগ করো
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleSendMessage(
-                          `বর্তমান প্রজেক্ট (${activeProject?.name}) কী কাজ করছে সংক্ষেপে বাংলায় বুঝিয়ে বলো।`
-                        )
-                      }
-                      className="shrink-0 rounded-full border border-sky-500/40 bg-sky-950/60 px-3 py-1 text-[11px] font-semibold text-sky-200 hover:bg-sky-900"
-                    >
-                      কোড বুঝিয়ে দাও
-                    </button>
-                  </div>
                 </section>
 
-                {/* CHAT MESSAGES STREAM */}
-                <section className="custom-scrollbar my-2.5 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-slate-800/80 bg-[#0a101d] p-3">
+                {/* CHAT MESSAGES STREAM (INDEPENDENT SCROLL CONTAINER) */}
+                <section
+                  ref={chatContainerRef}
+                  className="custom-scrollbar my-2 min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-slate-800/80 bg-[#0a101d] p-3"
+                >
                   {chatMessages.map((msg) => (
                     <div
                       key={msg.id}
@@ -3952,24 +3885,23 @@ jobs:
                         }`}
                       >
                         {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
-                          <div className="mb-2 flex flex-wrap gap-2">
-                            {msg.attachments.map((att) =>
-                              att.dataUrl ? (
+                          <div className="mb-2 flex flex-wrap gap-1.5">
+                            {msg.attachments.map((att) => (
+                              <a
+                                key={att.id}
+                                href={att.dataUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={att.name}
+                                className="block overflow-hidden rounded-xl border border-white/20 bg-black/30"
+                              >
                                 <img
-                                  key={att.id}
                                   src={att.dataUrl}
-                                  alt={att.name || "Shared Screenshot"}
-                                  className="max-h-44 max-w-full rounded-xl border border-white/20 object-contain shadow-md"
+                                  alt={att.name || "Shared screenshot"}
+                                  className="max-h-36 max-w-[200px] object-contain"
                                 />
-                              ) : (
-                                <span
-                                  key={att.id}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-white/20 bg-black/25 px-2 py-1 text-[11px]"
-                                >
-                                  🖼️ {att.name || "Screenshot"}
-                                </span>
-                              )
-                            )}
+                              </a>
+                            ))}
                           </div>
                         )}
                         <div className="whitespace-pre-wrap break-words">{msg.text}</div>
@@ -3988,22 +3920,18 @@ jobs:
                               )}
                             </div>
 
-                            <ul className="mt-2 space-y-1.5 font-mono text-[11px] text-slate-300">
+                            <ul className="mt-2 space-y-1.5 font-mono text-[11px] text-slate-200">
                               {msg.stagedUpdates.map((u) => (
                                 <li
                                   key={u.path}
-                                  className="flex flex-col gap-1 rounded-lg border border-slate-800/90 bg-slate-900/95 px-2.5 py-1.5"
+                                  className="flex flex-col gap-1 rounded-lg border border-slate-800/90 bg-slate-900 px-2.5 py-1.5"
                                 >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-[10px] font-bold text-emerald-400">
-                                      {u.isNew ? "🆕 নতুন ফাইল" : "✏️ ফাইল আপডেট"}
-                                    </span>
-                                    <span className="text-[10px] text-slate-400">
-                                      {u.lineCount} লাইন
-                                    </span>
+                                  <div className="break-all font-semibold text-sky-300">
+                                    📄 {u.path}
                                   </div>
-                                  <div className="break-all text-[11px] font-semibold text-sky-300">
-                                    {u.path}
+                                  <div className="flex items-center justify-between text-[10px] text-emerald-400">
+                                    <span>{u.isNew ? "🆕 নতুন ফাইল" : "✏️ ফাইল আপডেট"}</span>
+                                    <span>{u.lineCount} লাইন</span>
                                   </div>
                                 </li>
                               ))}
@@ -4074,7 +4002,7 @@ jobs:
                 </section>
 
                 {/* BOTTOM CHAT COMPOSER WITH MODE PILLS & IMAGE/SCREENSHOT SHARING */}
-                <section className="rounded-2xl border border-slate-800 bg-[#0d1424] p-2.5">
+                <section className="shrink-0 rounded-2xl border border-slate-800 bg-[#0d1424] p-2.5">
                   <div className="no-scrollbar mb-2 flex items-center gap-1.5 overflow-x-auto text-[11px]">
                     <span className="shrink-0 text-slate-400">মোড:</span>
                     {[
@@ -4091,9 +4019,7 @@ jobs:
                         }
                         className={`shrink-0 rounded-full px-2.5 py-0.5 font-bold transition ${
                           aiSettings.chatMode === m.id
-                            ? m.id === "analyze"
-                              ? "bg-amber-600 text-white"
-                              : "bg-emerald-600 text-white"
+                            ? "bg-emerald-600 text-white"
                             : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                         }`}
                       >
@@ -4102,29 +4028,32 @@ jobs:
                     ))}
                   </div>
 
-                  {/* Pre-Send Image & Screenshot Thumbnails */}
+                  {/* Selected Screenshot / Image Preview Strip */}
                   {chatAttachments.length > 0 && (
-                    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/90 p-2">
+                    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-purple-500/30 bg-slate-950/90 p-2">
                       {chatAttachments.map((att) => (
-                        <div key={att.id} className="group relative">
+                        <div
+                          key={att.id}
+                          className="relative flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 p-1 pr-6"
+                        >
                           <img
                             src={att.dataUrl}
                             alt={att.name}
-                            className="h-14 w-14 rounded-lg border border-purple-500/40 object-cover"
+                            className="h-10 w-10 rounded object-cover"
                           />
+                          <span className="max-w-[90px] truncate text-[10px] text-slate-300">
+                            {att.name}
+                          </span>
                           <button
                             type="button"
                             onClick={() => handleRemoveChatAttachment(att.id)}
                             title="ছবি সরান"
-                            className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold text-white shadow hover:bg-rose-500"
+                            className="absolute top-0.5 right-1 rounded bg-rose-600/80 px-1 text-[10px] font-bold text-white hover:bg-rose-500"
                           >
                             ✕
                           </button>
                         </div>
                       ))}
-                      <span className="text-[11px] text-slate-400">
-                        {chatAttachments.length}টি ছবি/স্ক্রিনশট যুক্ত হয়েছে
-                      </span>
                     </div>
                   )}
 
@@ -4133,21 +4062,22 @@ jobs:
                       e.preventDefault();
                       handleSendMessage();
                     }}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-1.5"
                   >
                     <input
                       ref={chatImageInputRef}
                       type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      accept="image/*"
                       multiple
-                      onChange={handleChatFileSelect}
+                      onChange={handleChatImageFileChange}
                       className="hidden"
                     />
                     <button
                       type="button"
+                      disabled={isGenerating}
                       onClick={() => chatImageInputRef.current?.click()}
-                      title="ছবি বা স্ক্রিনশট শেয়ার করুন"
-                      className="shrink-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs font-bold text-sky-300 hover:bg-slate-800"
+                      title="ছবি বা স্ক্রিনশট যুক্ত করুন"
+                      className="shrink-0 rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2.5 text-xs font-bold text-purple-300 transition hover:border-purple-500 hover:bg-slate-800 disabled:opacity-50"
                     >
                       🖼️
                     </button>
@@ -4155,6 +4085,8 @@ jobs:
                       type="text"
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
+                      onFocus={() => scrollToChatBottom(true)}
+                      onClick={() => scrollToChatBottom(true)}
                       onPaste={handleChatInputPaste}
                       placeholder="বাংলায় চ্যাট করুন, স্ক্রিনশট পেস্ট করুন বা কোড/ফিক্স লিখুন..."
                       className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
@@ -4365,8 +4297,8 @@ jobs:
                 {/* Android Hardware Emulator Frame */}
                 <div
                   style={
-                    livePreviewData.customRootBg
-                      ? { backgroundColor: livePreviewData.customRootBg }
+                    livePreviewData.resolvedRootBg
+                      ? { backgroundColor: livePreviewData.resolvedRootBg }
                       : undefined
                   }
                   className={`relative flex min-h-[550px] w-full max-w-[365px] flex-col overflow-hidden rounded-[2.3rem] border-[6px] border-slate-800 shadow-2xl transition-colors ${
@@ -4428,15 +4360,16 @@ jobs:
                   {livePreviewData.isCenteredSingleTextLayout ? (
                     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
                       <p
-                        style={{
-                          color: livePreviewData.widgets[0]?.textColor || undefined,
-                          fontSize: livePreviewData.widgets[0]?.textSizeSp
-                            ? `${livePreviewData.widgets[0].textSizeSp}px`
+                        style={
+                          livePreviewData.widgets[0]?.textColor
+                            ? { color: livePreviewData.widgets[0].textColor }
                             : undefined
-                        }}
-                        className="select-none text-xl font-bold tracking-wide"
+                        }
+                        className="select-none text-lg font-semibold tracking-wide"
                       >
-                        {livePreviewData.widgets[0]?.text || "Hello World!"}
+                        {emuDynamicOutputs[livePreviewData.widgets[0]?.id] ??
+                          livePreviewData.widgets[0]?.text ??
+                          "Hello World!"}
                       </p>
                     </div>
                   ) : (
@@ -4451,13 +4384,10 @@ jobs:
                           return (
                             <div
                               key={`${w.id}_${idx}`}
-                              style={{
-                                color: w.textColor || undefined,
-                                fontSize: w.textSizeSp ? `${w.textSizeSp}px` : undefined
-                              }}
+                              style={w.textColor ? { color: w.textColor } : undefined}
                               className={`text-xs leading-relaxed ${
                                 idx === 0
-                                  ? "font-medium opacity-90"
+                                  ? "font-medium opacity-80"
                                   : "rounded-xl border border-slate-800/70 bg-slate-900/50 px-3 py-2 font-semibold text-emerald-300"
                               }`}
                             >
@@ -5038,6 +4968,52 @@ jobs:
             )}
 
             {/* =================================================================== */}
+            {/* MODAL 2B: CONFIRM DELETE PROJECT                                    */}
+            {/* =================================================================== */}
+            {isDeleteProjectModalOpen && activeProject && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm">
+                <div className="w-full max-w-sm rounded-2xl border border-rose-500/40 bg-[#0d1424] p-4 shadow-2xl">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-sm font-extrabold text-rose-300">
+                      🗑️ প্রজেক্ট ডিলিট নিশ্চিত করুন
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsDeleteProjectModalOpen(false)}
+                      className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-300"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <p className="text-xs leading-relaxed text-slate-300">
+                    আপনি কি নিশ্চিত যে{" "}
+                    <strong className="font-bold text-white">"{activeProject.name}"</strong> (
+                    <span className="font-mono text-[11px] text-emerald-300">
+                      {activeProject.packageName}
+                    </span>
+                    ) প্রজেক্টটি এবং এর চ্যাট হিস্ট্রি স্থায়ীভাবে ডিলিট করতে চান?
+                  </p>
+                  <div className="mt-4 flex justify-end gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setIsDeleteProjectModalOpen(false)}
+                      className="rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2 font-semibold text-slate-300 hover:bg-slate-700"
+                    >
+                      বাতিল
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteActiveProject}
+                      className="rounded-xl bg-rose-600 px-4 py-2 font-extrabold text-white shadow hover:bg-rose-500"
+                    >
+                      হ্যাঁ, ডিলিট করুন
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* =================================================================== */}
             {/* MODAL 3: ADD NEW FILE                                               */}
             {/* =================================================================== */}
             {isNewFileModalOpen && (
@@ -5540,59 +5516,6 @@ jobs:
                       </div>
                     </form>
                   )}
-                </div>
-              </div>
-            )}
-
-            {/* =================================================================== */}
-            {/* MODAL 6: DELETE ACTIVE PROJECT CONFIRMATION                         */}
-            {/* =================================================================== */}
-            {isDeleteProjectModalOpen && activeProject && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm">
-                <div className="w-full max-w-sm rounded-2xl border border-rose-500/40 bg-[#0d1424] p-4 shadow-2xl">
-                  <div className="mb-2.5 flex items-center justify-between">
-                    <h2 className="text-sm font-extrabold text-rose-300">
-                      🗑️ প্রজেক্ট স্থায়ীভাবে ডিলিট করুন
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => setIsDeleteProjectModalOpen(false)}
-                      className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-300"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <p className="text-xs leading-relaxed text-slate-300">
-                    আপনি কি নিশ্চিত যে নিচের প্রজেক্টটি এবং এর সব ফাইল, চ্যাট হিস্ট্রি ও স্ন্যাপশট স্থায়ীভাবে মুছে ফেলতে চান?
-                  </p>
-
-                  <div className="my-3 rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs">
-                    <div className="font-bold text-white">{activeProject.name}</div>
-                    <div className="mt-0.5 font-mono text-[11px] text-emerald-400">
-                      {activeProject.packageName}
-                    </div>
-                    <div className="mt-1 text-[10px] text-slate-400">
-                      মোট ফাইল: {activeProject.files?.length || 0}টি • এটি আর ফিরিয়ে আনা যাবে না
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsDeleteProjectModalOpen(false)}
-                      className="rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700"
-                    >
-                      বাতিল
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmDeleteActiveProject}
-                      className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-extrabold text-white shadow hover:bg-rose-500"
-                    >
-                      হ্যাঁ, ডিলিট করুন
-                    </button>
-                  </div>
                 </div>
               </div>
             )}
