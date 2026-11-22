@@ -173,13 +173,6 @@
         ];
       }
 
-      function sanitizeEmailKey(email) {
-        return String(email || "")
-          .trim()
-          .toLowerCase()
-          .replace(/[.#$\[\]]/g, "_");
-      }
-
       function sanitizeAppPackageSuffix(rawText) {
         const cleaned = String(rawText || "")
           .toLowerCase()
@@ -407,7 +400,6 @@
                 const transient = isTransientGeminiError(res.status, errMsg);
                 lastError = new Error(errMsg);
 
-                // If invalid API key or permission denied, do not retry endlessly
                 if (res.status === 400 || res.status === 401 || res.status === 403) {
                   throw lastError;
                 }
@@ -417,7 +409,6 @@
                   await sleepWithAbort(backoffMs, signal);
                   continue;
                 }
-                // Move to next fallback model
                 break;
               }
 
@@ -1143,14 +1134,17 @@ jobs:
         // --- Splash Screen State ---
         const [showSplash, setShowSplash] = useState(true);
 
-        // --- Firebase Auth State ---
+        // --- Firebase Auth State (Mandatory Login Gate) ---
+        const [authInitialized, setAuthInitialized] = useState(false);
         const [currentUser, setCurrentUser] = useState(null);
         const [authLoading, setAuthLoading] = useState(false);
-        const [authMode, setAuthMode] = useState("login");
+        const [authMode, setAuthMode] = useState("login"); // "login" | "signup"
         const [authEmail, setAuthEmail] = useState("");
         const [authPassword, setAuthPassword] = useState("");
         const [authError, setAuthError] = useState("");
-        const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+        const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+
+        const isAuthenticated = Boolean(currentUser && currentUser.uid);
 
         // --- Strictly User-Scoped Gemini API Key & Model State ---
         const [userGeminiKey, setUserGeminiKey] = useState("");
@@ -1163,7 +1157,6 @@ jobs:
 
         // --- Per-Project AI Settings ---
         const [projectAiSettingsMap, setProjectAiSettingsMap] = useState({});
-        const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
 
         // --- Projects & Active Editor State ---
         const [projects, setProjects] = useState([]);
@@ -1183,7 +1176,7 @@ jobs:
 
         // --- Voice Input (SpeechRecognition) State ---
         const [isVoiceListening, setIsVoiceListening] = useState(false);
-        const [voiceLang, setVoiceLang] = useState("bn-BD");
+        const [voiceLang] = useState("bn-BD");
         const recognitionRef = useRef(null);
 
         // --- Project History / Version Snapshots ---
@@ -1320,6 +1313,7 @@ jobs:
 
         const setActiveChatMessages = useCallback(
           (updaterOrArray) => {
+            if (!isAuthenticated) return;
             if (isUnconfirmedNewDraft) {
               setNewAppDraftChat((prev) =>
                 typeof updaterOrArray === "function" ? updaterOrArray(prev) : updaterOrArray
@@ -1348,7 +1342,7 @@ jobs:
               return updatedMap;
             });
           },
-          [isUnconfirmedNewDraft, activeProject, currentUser]
+          [isAuthenticated, isUnconfirmedNewDraft, activeProject, currentUser]
         );
 
         const activeProjectHistory = useMemo(() => {
@@ -1364,35 +1358,33 @@ jobs:
         // =====================================================================
         // 10. PERSISTENCE HELPERS (LOCALSTORAGE + FIREBASE RTDB)
         // =====================================================================
-        const persistProjectsForUser = useCallback(
-          async (nextProjects, userObj) => {
-            const uid = userObj?.uid;
-            try {
-              localStorage.setItem(
-                getUserScopedProjectsStorageName(uid),
-                JSON.stringify(nextProjects)
-              );
-            } catch (e) {
-              console.warn("Local projects save error:", e);
-            }
+        const persistProjectsForUser = useCallback(async (nextProjects, userObj) => {
+          const uid = userObj?.uid;
+          if (!uid) return;
+          try {
+            localStorage.setItem(
+              getUserScopedProjectsStorageName(uid),
+              JSON.stringify(nextProjects)
+            );
+          } catch (e) {
+            console.warn("Local projects save error:", e);
+          }
 
-            if (window.DroidFirebaseReady && window.DroidDB && uid && !userObj?.isGuest) {
-              try {
-                setRtdbSyncStatus("syncing");
-                await window.DroidDB.ref(`users/${uid}/projects`).set(nextProjects);
-                setRtdbSyncStatus("synced");
-              } catch (err) {
-                console.warn("RTDB projects sync warning:", err);
-                setRtdbSyncStatus("offline");
-              }
+          if (window.DroidFirebaseReady && window.DroidDB && uid) {
+            try {
+              setRtdbSyncStatus("syncing");
+              await window.DroidDB.ref(`users/${uid}/projects`).set(nextProjects);
+              setRtdbSyncStatus("synced");
+            } catch (err) {
+              console.warn("RTDB projects sync warning:", err);
+              setRtdbSyncStatus("offline");
             }
-          },
-          []
-        );
+          }
+        }, []);
 
         const recordProjectSnapshot = useCallback(
           (projectObj, note, tag = "Auto") => {
-            if (!projectObj) return;
+            if (!projectObj || !currentUser?.uid) return;
             const snap = {
               id: `snap_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
               timestamp: Date.now(),
@@ -1408,7 +1400,7 @@ jobs:
               };
               try {
                 localStorage.setItem(
-                  getUserScopedHistoryStorageName(currentUser?.uid),
+                  getUserScopedHistoryStorageName(currentUser.uid),
                   JSON.stringify(nextMap)
                 );
               } catch (e) {}
@@ -1421,9 +1413,38 @@ jobs:
         // =====================================================================
         // 11. LOAD USER WORKSPACE & VERIFY GEMINI KEY ON AUTH CHANGE
         // =====================================================================
+        const clearWorkspaceStateOnSignOut = useCallback(() => {
+          setCurrentUser(null);
+          setUserGeminiKey("");
+          setKeyInputDraft("");
+          setAvailableModels([]);
+          setProjects([]);
+          setActiveProjectId("");
+          setActiveFilePath("");
+          setProjectChatsMap({});
+          setProjectHistoryMap({});
+          setProjectAiSettingsMap({});
+          setLockedSessionType("none");
+          setDraftNewAppProject(null);
+          setPendingCodeProposals({});
+          setIsAccountModalOpen(false);
+          setIsNewProjectModalOpen(false);
+          setIsRebuildPickerOpen(false);
+          setIsHistoryModalOpen(false);
+          setIsDeleteProjectModalOpen(false);
+          setIsNewFileModalOpen(false);
+          setIsGithubModalOpen(false);
+          setRtdbSyncStatus("offline");
+        }, []);
+
         const loadUserWorkspace = useCallback(async (userObj) => {
           const uid = userObj?.uid;
-          // 1. Load saved Gemini API key strictly for this user
+          if (!uid) {
+            clearWorkspaceStateOnSignOut();
+            return;
+          }
+
+          // 1. Load saved Gemini API key strictly for this authenticated user
           const savedKey = localStorage.getItem(getUserScopedKeyStorageName(uid)) || "";
           setUserGeminiKey(savedKey);
           setKeyInputDraft(savedKey);
@@ -1448,12 +1469,7 @@ jobs:
             if (rawProjs) loadedProjects = JSON.parse(rawProjs) || [];
           } catch (e) {}
 
-          if (
-            window.DroidFirebaseReady &&
-            window.DroidDB &&
-            uid &&
-            !userObj?.isGuest
-          ) {
+          if (window.DroidFirebaseReady && window.DroidDB && uid) {
             try {
               setRtdbSyncStatus("syncing");
               const snap = await window.DroidDB.ref(`users/${uid}/projects`).once("value");
@@ -1482,9 +1498,7 @@ jobs:
 
           // 3. Load chats, history & AI settings
           try {
-            const rawChats = localStorage.getItem(
-              getUserScopedProjectChatsStorageName(uid)
-            );
+            const rawChats = localStorage.getItem(getUserScopedProjectChatsStorageName(uid));
             if (rawChats) setProjectChatsMap(JSON.parse(rawChats) || {});
           } catch (e) {}
 
@@ -1499,100 +1513,86 @@ jobs:
             );
             if (rawAiCfg) setProjectAiSettingsMap(JSON.parse(rawAiCfg) || {});
           } catch (e) {}
-        }, []);
+        }, [clearWorkspaceStateOnSignOut]);
 
         useEffect(() => {
           if (!window.DroidFirebaseReady || !window.DroidAuth) {
-            const guestUser = {
-              uid: "guest_local",
-              email: "guest@droid.studio",
-              isGuest: true
-            };
-            setCurrentUser(guestUser);
-            loadUserWorkspace(guestUser);
+            setAuthInitialized(true);
+            clearWorkspaceStateOnSignOut();
             return;
           }
 
           const unsubscribe = window.DroidAuth.onAuthStateChanged((fbUser) => {
-            if (fbUser) {
+            setAuthInitialized(true);
+            if (fbUser && fbUser.uid) {
               setCurrentUser(fbUser);
-              setIsAuthModalOpen(false);
+              setAuthError("");
               loadUserWorkspace(fbUser);
             } else {
-              const guestUser = {
-                uid: "guest_local",
-                email: "guest@droid.studio",
-                isGuest: true
-              };
-              setCurrentUser(guestUser);
-              loadUserWorkspace(guestUser);
+              clearWorkspaceStateOnSignOut();
             }
           });
           return () => unsubscribe();
-        }, [loadUserWorkspace]);
+        }, [loadUserWorkspace, clearWorkspaceStateOnSignOut]);
 
         // =====================================================================
-        // 12. AUTH HANDLERS (EMAIL, GOOGLE, GUEST DEMO, LOGOUT)
+        // 12. MANDATORY AUTH HANDLERS (EMAIL/PASSWORD CREATE & LOGIN + GMAIL SIGN-IN)
         // =====================================================================
         const handleEmailAuthSubmit = async (e) => {
           e.preventDefault();
-          if (!window.DroidAuth) return;
+          if (!window.DroidAuth) {
+            setAuthError("Firebase Authentication প্রস্তুত নয়। পেজ রিফ্রেশ করুন।");
+            return;
+          }
+          const cleanEmail = String(authEmail || "").trim();
+          const cleanPass = String(authPassword || "");
+          if (!cleanEmail || cleanPass.length < 6) {
+            setAuthError("সঠিক ইমেইল এবং অন্তত ৬ অক্ষরের পাসওয়ার্ড দিন।");
+            return;
+          }
           setAuthLoading(true);
           setAuthError("");
           try {
             if (authMode === "signup") {
-              await window.DroidAuth.createUserWithEmailAndPassword(
-                authEmail.trim(),
-                authPassword
-              );
+              await window.DroidAuth.createUserWithEmailAndPassword(cleanEmail, cleanPass);
             } else {
-              await window.DroidAuth.signInWithEmailAndPassword(
-                authEmail.trim(),
-                authPassword
-              );
+              await window.DroidAuth.signInWithEmailAndPassword(cleanEmail, cleanPass);
             }
+            setAuthPassword("");
           } catch (err) {
-            setAuthError(err?.message || "অথেনটিকেশন ব্যর্থ হয়েছে।");
+            setAuthError(err?.message || "ইমেইল/পাসওয়ার্ড যাচাই ব্যর্থ হয়েছে।");
           } finally {
             setAuthLoading(false);
           }
         };
 
         const handleGoogleSignIn = async () => {
-          if (!window.DroidAuth) return;
+          if (!window.DroidAuth) {
+            setAuthError("Firebase Authentication প্রস্তুত নয়। পেজ রিফ্রেশ করুন।");
+            return;
+          }
           setAuthLoading(true);
           setAuthError("");
           try {
             const provider = new firebase.auth.GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: "select_account" });
             await window.DroidAuth.signInWithPopup(provider);
           } catch (err) {
-            setAuthError(err?.message || "Google Sign-In ব্যর্থ হয়েছে।");
+            setAuthError(err?.message || "Gmail / Google Sign-In ব্যর্থ হয়েছে।");
           } finally {
             setAuthLoading(false);
           }
         };
 
-        const handleGuestDemoLogin = () => {
-          const guestUser = {
-            uid: "guest_demo_user",
-            email: "guest@droid.studio",
-            isGuest: true
-          };
-          setCurrentUser(guestUser);
-          setIsAuthModalOpen(false);
-          loadUserWorkspace(guestUser);
-        };
-
         const handleLogout = async () => {
           try {
-            if (window.DroidAuth && currentUser && !currentUser.isGuest) {
+            if (window.DroidAuth && currentUser) {
               await window.DroidAuth.signOut();
             }
-          } catch (e) {}
-          setUserGeminiKey("");
-          setKeyInputDraft("");
-          setAvailableModels([]);
-          setIsAuthModalOpen(false);
+          } catch (e) {
+            console.warn("Sign out error:", e);
+          }
+          clearWorkspaceStateOnSignOut();
         };
 
         // =====================================================================
@@ -1600,6 +1600,10 @@ jobs:
         // =====================================================================
         const handleVerifyAndSaveApiKey = async (e) => {
           if (e) e.preventDefault();
+          if (!isAuthenticated) {
+            setIsAccountModalOpen(true);
+            return;
+          }
           const clean = String(keyInputDraft || "").trim();
           if (!clean) {
             setKeyStatusBanner({
@@ -1639,6 +1643,10 @@ jobs:
         // 14. LOCKED SESSION WORKFLOWS: NEW APP BUILDER, REBUILD & EXIT PROJECT
         // =====================================================================
         const handleStartConversationalNewAppSession = () => {
+          if (!isAuthenticated) {
+            setIsAccountModalOpen(true);
+            return;
+          }
           setLockedSessionType("new-app");
           setActiveProjectId("");
           setActiveFilePath("");
@@ -1649,6 +1657,10 @@ jobs:
         };
 
         const handleOpenRebuildWorkflow = () => {
+          if (!isAuthenticated) {
+            setIsAccountModalOpen(true);
+            return;
+          }
           if (projects.length === 0) {
             handleStartConversationalNewAppSession();
             return;
@@ -1657,6 +1669,10 @@ jobs:
         };
 
         const handleSelectProjectForRebuild = (proj) => {
+          if (!isAuthenticated) {
+            setIsAccountModalOpen(true);
+            return;
+          }
           setIsRebuildPickerOpen(false);
           setLockedSessionType("rebuild");
           setDraftNewAppProject(null);
@@ -1698,6 +1714,10 @@ jobs:
         // 15. VOICE INPUT (SPEECH RECOGNITION) & IMAGE ATTACHMENT
         // =====================================================================
         const toggleVoiceInput = () => {
+          if (!isAuthenticated) {
+            setIsAccountModalOpen(true);
+            return;
+          }
           const SpeechRecognition =
             window.SpeechRecognition || window.webkitSpeechRecognition;
           if (!SpeechRecognition) {
@@ -1739,6 +1759,11 @@ jobs:
         };
 
         const handleImageUpload = (e) => {
+          if (!isAuthenticated) {
+            setIsAccountModalOpen(true);
+            e.target.value = "";
+            return;
+          }
           const file = e.target.files?.[0];
           if (!file) return;
           const reader = new FileReader();
@@ -1769,6 +1794,10 @@ jobs:
         };
 
         const handleAcceptAiCodeProposal = (msgId, fileUpdates) => {
+          if (!isAuthenticated) {
+            setIsAccountModalOpen(true);
+            return;
+          }
           if (isUnconfirmedNewDraft) {
             if (!draftNewAppProject) return;
             const finalizedProject = {
@@ -1855,6 +1884,10 @@ jobs:
 
         const handleSendChatMessage = async (e, overridePromptText) => {
           if (e) e.preventDefault();
+          if (!isAuthenticated) {
+            setIsAccountModalOpen(true);
+            return;
+          }
           const promptText = String(overridePromptText ?? chatInput).trim();
           if (!promptText && !attachedImage) return;
 
@@ -2116,6 +2149,11 @@ ${existingFilesContext}`;
 
         const handleCreateNewProject = (e) => {
           e.preventDefault();
+          if (!isAuthenticated) {
+            setIsNewProjectModalOpen(false);
+            setIsAccountModalOpen(true);
+            return;
+          }
           const created = generateAuthenticAndroidProject({
             name: newProjName || "New Raw App",
             packageSuffix: newProjPkgSuffix,
@@ -2145,7 +2183,7 @@ ${existingFilesContext}`;
         };
 
         const handleDeleteActiveProject = () => {
-          if (!activeProject) return;
+          if (!isAuthenticated || !activeProject) return;
           const remaining = projects.filter((p) => p.id !== activeProject.id);
           setProjects(remaining);
           persistProjectsForUser(remaining, currentUser);
@@ -2162,6 +2200,11 @@ ${existingFilesContext}`;
 
         const handleAddNewFile = (e) => {
           e.preventDefault();
+          if (!isAuthenticated) {
+            setIsNewFileModalOpen(false);
+            setIsAccountModalOpen(true);
+            return;
+          }
           const cleanPath = String(newFilePathInput || "").trim().replace(/^\/+/, "");
           if (!cleanPath || !activeProject) return;
           if (activeProject.files.some((f) => f.path === cleanPath)) {
@@ -2187,7 +2230,7 @@ ${existingFilesContext}`;
         };
 
         const handleEditorCodeChange = (newCodeText) => {
-          if (!activeFile) return;
+          if (!isAuthenticated || !activeFile) return;
           if (isUnconfirmedNewDraft && draftNewAppProject) {
             setDraftNewAppProject({
               ...draftNewAppProject,
@@ -2214,7 +2257,7 @@ ${existingFilesContext}`;
         };
 
         const handleRestoreSnapshot = (snap) => {
-          if (!activeProject || !snap) return;
+          if (!isAuthenticated || !activeProject || !snap) return;
           const restoredProj = {
             ...activeProject,
             files: JSON.parse(JSON.stringify(snap.files || [])),
@@ -2250,7 +2293,9 @@ ${existingFilesContext}`;
                     ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate) *
                     (1 + monthlyRate)
                   : p * months;
-              setEmuResultText(`৳ ${futureVal.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+              setEmuResultText(
+                `৳ ${futureVal.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+              );
             } else if (previewModel.formulaType === "emi") {
               const monthlyRate = r / 12 / 100;
               const months = t * 12;
@@ -2259,10 +2304,14 @@ ${existingFilesContext}`;
                   ? (p * monthlyRate * Math.pow(1 + monthlyRate, months)) /
                     (Math.pow(1 + monthlyRate, months) - 1)
                   : p / Math.max(months, 1);
-              setEmuResultText(`৳ ${emi.toLocaleString("en-US", { maximumFractionDigits: 2 })} / মাস`);
+              setEmuResultText(
+                `৳ ${emi.toLocaleString("en-US", { maximumFractionDigits: 2 })} / মাস`
+              );
             } else {
               const sum = numericValues.reduce((acc, cur) => acc + cur, 0);
-              setEmuResultText(`৳ ${sum.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+              setEmuResultText(
+                `৳ ${sum.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+              );
             }
           }
 
@@ -2274,7 +2323,7 @@ ${existingFilesContext}`;
         // 19. ZIP EXPORT, GITHUB PUSH & CLOUD APK / AAB BUILD
         // =====================================================================
         const handleExportProjectZip = async () => {
-          if (!activeProject || !window.JSZip) return;
+          if (!isAuthenticated || !activeProject || !window.JSZip) return;
           setIsZipExporting(true);
           setZipExportStatus(null);
           try {
@@ -2311,7 +2360,7 @@ ${existingFilesContext}`;
 
         const handlePushToGitHub = async (e) => {
           e.preventDefault();
-          if (!activeProject) return;
+          if (!isAuthenticated || !activeProject) return;
           setIsPushingGh(true);
           setGhPushStatus(null);
           try {
@@ -2340,7 +2389,7 @@ ${existingFilesContext}`;
 
         const handleStartCloudApkAabBuild = async (e) => {
           e.preventDefault();
-          if (!activeProject) return;
+          if (!isAuthenticated || !activeProject) return;
           setIsCloudBuilding(true);
           setCloudBuildError("");
           setCloudBuildArtifacts([]);
@@ -2372,7 +2421,9 @@ ${existingFilesContext}`;
               message: "Configure Droid AI Studio Cloud Gradle Build"
             });
 
-            setCloudBuildStep("৩/৩: GitHub Actions বিল্ড ট্রিগার সম্পন্ন হয়েছে। রান স্ট্যাটাস চেক হচ্ছে...");
+            setCloudBuildStep(
+              "৩/৩: GitHub Actions বিল্ড ট্রিগার সম্পন্ন হয়েছে। রান স্ট্যাটাস চেক হচ্ছে..."
+            );
             const runsRes = await fetch(
               `https://api.github.com/repos/${encodeURIComponent(
                 ghOwner.trim()
@@ -2435,7 +2486,133 @@ ${existingFilesContext}`;
         }
 
         // =====================================================================
-        // 21. MAIN STUDIO WORKSPACE RENDER
+        // 21. MANDATORY LOGIN GATE (EMAIL/PASSWORD CREATE & LOGIN + GMAIL SIGN-IN)
+        // =====================================================================
+        if (authInitialized && !isAuthenticated) {
+          return (
+            <div className="flex min-h-screen flex-col items-center justify-center bg-[#070b14] px-4 py-8">
+              <div className="w-full max-w-md rounded-3xl border border-slate-800 bg-[#0c1322] p-5 shadow-2xl sm:p-6">
+                <div className="flex flex-col items-center text-center">
+                  <DroidRobotLogo size={64} />
+                  <h1 className="mt-3 text-xl font-black tracking-tight text-white">
+                    Droid AI Studio
+                  </h1>
+                  <p className="mt-1 text-xs font-semibold text-emerald-300">
+                    ড্রয়েড এআই স্টুডিও — পূর্ণাঙ্গ ফিচার ব্যবহার করতে লগইন বাধ্যতামূলক
+                  </p>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+                    ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট তৈরি বা লগইন করুন অথবা Gmail (Google) দিয়ে সাইন-ইন করে প্রজেক্ট, AI কোডিং, লাইভ প্রিভিউ ও APK/GitHub ফিচার আনলক করুন।
+                  </p>
+                </div>
+
+                {/* Gmail / Google Sign-In Primary Button */}
+                <button
+                  type="button"
+                  disabled={authLoading}
+                  onClick={handleGoogleSignIn}
+                  className="mt-5 flex w-full items-center justify-center gap-2.5 rounded-2xl border border-sky-400/40 bg-gradient-to-r from-sky-600 to-blue-600 px-4 py-3 text-xs font-extrabold text-white shadow-lg transition hover:from-sky-500 hover:to-blue-500 disabled:opacity-50"
+                >
+                  <span>🌐</span>
+                  <span>{authLoading ? "যাচাই হচ্ছে..." : "Gmail / Google দিয়ে সাইন-ইন করুন"}</span>
+                </button>
+
+                <div className="my-4 flex items-center gap-3 text-[11px] text-slate-500">
+                  <div className="h-px flex-1 bg-slate-800" />
+                  <span>অথবা ইমেইল ও পাসওয়ার্ড</span>
+                  <div className="h-px flex-1 bg-slate-800" />
+                </div>
+
+                {/* Email Login vs Account Creation Switcher */}
+                <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-slate-800 bg-slate-950 p-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthError("");
+                      setAuthMode("login");
+                    }}
+                    className={`rounded-lg py-2 font-extrabold transition ${
+                      authMode === "login"
+                        ? "bg-purple-600 text-white shadow"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    ইমেইল লগইন
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthError("");
+                      setAuthMode("signup");
+                    }}
+                    className={`rounded-lg py-2 font-extrabold transition ${
+                      authMode === "signup"
+                        ? "bg-emerald-600 text-white shadow"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    নতুন অ্যাকাউন্ট তৈরি
+                  </button>
+                </div>
+
+                {authError && (
+                  <div className="mb-3 rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-xs text-rose-200">
+                    {authError}
+                  </div>
+                )}
+
+                <form onSubmit={handleEmailAuthSubmit} className="space-y-3 text-xs">
+                  <div>
+                    <label className="mb-1 block font-bold text-slate-300">
+                      ইমেইল ঠিকানা
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      placeholder="name@example.com"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-slate-100 focus:border-purple-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block font-bold text-slate-300">
+                      পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-slate-100 focus:border-purple-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className={`w-full rounded-xl py-3 text-xs font-extrabold text-white shadow-lg transition disabled:opacity-50 ${
+                      authMode === "signup"
+                        ? "bg-emerald-600 hover:bg-emerald-500"
+                        : "bg-purple-600 hover:bg-purple-500"
+                    }`}
+                  >
+                    {authLoading
+                      ? "অপেক্ষা করুন..."
+                      : authMode === "signup"
+                      ? "✅ ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট তৈরি করুন"
+                      : "🔐 ইমেইল ও পাসওয়ার্ড দিয়ে লগইন করুন"}
+                  </button>
+                </form>
+              </div>
+            </div>
+          );
+        }
+
+        // =====================================================================
+        // 22. MAIN AUTHENTICATED STUDIO WORKSPACE RENDER
         // =====================================================================
         return (
           <div className="flex min-h-screen flex-col bg-[#070b14] text-slate-100">
@@ -2559,10 +2736,10 @@ ${existingFilesContext}`;
 
                   <button
                     type="button"
-                    onClick={() => setIsAuthModalOpen(true)}
+                    onClick={() => setIsAccountModalOpen(true)}
                     className="ml-auto rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-2.5 py-1.5 font-bold text-emerald-300 hover:bg-emerald-900"
                   >
-                    👤 {currentUser?.email ? currentUser.email.split("@")[0] : "sebatel24.com"}
+                    👤 {currentUser?.email ? currentUser.email.split("@")[0] : "অ্যাকাউন্ট"}
                   </button>
                 </div>
 
@@ -3735,140 +3912,44 @@ ${existingFilesContext}`;
             )}
 
             {/* ================================================================= */}
-            {/* MODAL 4: FIREBASE EMAIL, GOOGLE SIGN-IN & GUEST DEMO AUTH MODAL   */}
+            {/* MODAL 4: ACCOUNT PROFILE & LOGOUT MODAL                           */}
             {/* ================================================================= */}
-            {isAuthModalOpen && (
+            {isAccountModalOpen && currentUser && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 backdrop-blur-md">
                 <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-[#0d1424] p-4 shadow-2xl">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-sm font-extrabold text-white">
-                      🔐 ড্রয়েড এআই স্টুডিও — অ্যাকাউন্ট লগইন
+                      👤 অ্যাকাউন্ট তথ্য ও সেশন
                     </h2>
-                    {currentUser && (
-                      <button
-                        type="button"
-                        onClick={() => setIsAuthModalOpen(false)}
-                        className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-300"
-                      >
-                        ✕
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsAccountModalOpen(false)}
+                      className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-300"
+                    >
+                      ✕
+                    </button>
                   </div>
 
-                  {currentUser ? (
-                    <div className="space-y-3 text-xs">
-                      <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3">
-                        <div className="font-bold text-emerald-300">লগইন করা অ্যাকাউন্ট</div>
-                        <div className="mt-1 font-mono text-slate-200">{currentUser.email}</div>
-                        <div className="mt-1 text-[10px] text-slate-400">
-                          UID: {currentUser.uid}
-                        </div>
-                        <p className="mt-2 text-[11px] text-slate-300">
-                          আপনার API Key এবং প্রজেক্টসমূহ শুধুমাত্র আপনার নিজস্ব UID-এর অধীনে সুরক্ষিত আছে।
-                        </p>
+                  <div className="space-y-3 text-xs">
+                    <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3">
+                      <div className="font-bold text-emerald-300">লগইন করা অ্যাকাউন্ট</div>
+                      <div className="mt-1 font-mono text-slate-200">{currentUser.email}</div>
+                      <div className="mt-1 text-[10px] text-slate-400">
+                        UID: {currentUser.uid}
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="w-full rounded-xl bg-rose-600 py-2 font-bold text-white hover:bg-rose-500"
-                      >
-                        লগআউট করুন (কী মেমোরি থেকে মুছবে)
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 text-xs">
-                      <p className="text-[11px] leading-relaxed text-slate-300">
-                        আপনার নিজস্ব প্রজেক্ট ও API Key সুরক্ষিত রাখতে সাইন-ইন করুন অথবা Guest Demo হিসেবে প্রবেশ করুন:
+                      <p className="mt-2 text-[11px] text-slate-300">
+                        আপনার প্রজেক্ট ও API Key আপনার নিজস্ব অ্যাকাউন্টের অধীনে সুরক্ষিত রয়েছে।
                       </p>
-
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          disabled={authLoading}
-                          onClick={handleGoogleSignIn}
-                          className="rounded-xl border border-sky-500/40 bg-sky-950/70 py-2 font-bold text-sky-200 hover:bg-sky-900 disabled:opacity-50"
-                        >
-                          🌐 Google Sign-In
-                        </button>
-                        <button
-                          type="button"
-                          disabled={authLoading}
-                          onClick={handleGuestDemoLogin}
-                          className="rounded-xl border border-amber-500/40 bg-amber-950/70 py-2 font-bold text-amber-200 hover:bg-amber-900 disabled:opacity-50"
-                        >
-                          👤 Guest Demo
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-950 p-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAuthError("");
-                            setAuthMode("login");
-                          }}
-                          className={`rounded-lg py-1.5 font-bold ${
-                            authMode === "login"
-                              ? "bg-purple-600 text-white"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          ইমেইল লগইন
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAuthError("");
-                            setAuthMode("signup");
-                          }}
-                          className={`rounded-lg py-1.5 font-bold ${
-                            authMode === "signup"
-                              ? "bg-purple-600 text-white"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          নতুন অ্যাকাউন্ট
-                        </button>
-                      </div>
-
-                      {authError && (
-                        <div className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-[11px] text-rose-200">
-                          {authError}
-                        </div>
-                      )}
-
-                      <form onSubmit={handleEmailAuthSubmit} className="space-y-2.5">
-                        <input
-                          type="email"
-                          required
-                          value={authEmail}
-                          onChange={(e) => setAuthEmail(e.target.value)}
-                          placeholder="আপনার ইমেইল ঠিকানা লিখুন"
-                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-slate-100 focus:border-purple-500 focus:outline-none"
-                        />
-                        <input
-                          type="password"
-                          required
-                          value={authPassword}
-                          onChange={(e) => setAuthPassword(e.target.value)}
-                          placeholder="পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)"
-                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-slate-100 focus:border-purple-500 focus:outline-none"
-                        />
-                        <button
-                          type="submit"
-                          disabled={authLoading}
-                          className="w-full rounded-xl bg-emerald-600 py-2.5 font-extrabold text-white shadow-lg hover:bg-emerald-500 disabled:opacity-50"
-                        >
-                          {authLoading
-                            ? "অপেক্ষা করুন..."
-                            : authMode === "signup"
-                            ? "ইমেইল দিয়ে সাইন-আপ করুন"
-                            : "ইমেইল দিয়ে লগইন করুন"}
-                        </button>
-                      </form>
                     </div>
-                  )}
+
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="w-full rounded-xl bg-rose-600 py-2.5 font-bold text-white hover:bg-rose-500"
+                    >
+                      🚪 লগআউট করুন
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
