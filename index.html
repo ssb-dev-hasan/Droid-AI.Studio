@@ -127,6 +127,7 @@
       // 1. STRICT PER-USER BYOK STORAGE HELPERS & LOCKED PACKAGE PREFIX
       // =========================================================================
       const LOCKED_PACKAGE_PREFIX = "com.droid.";
+      const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
       function getUserScopedKeyStorageName(uid) {
         return uid ? `droid_studio_gemini_key_${uid}` : "droid_studio_gemini_key_guest";
@@ -188,7 +189,7 @@
       }
 
       // =========================================================================
-      // 2. GEMINI REST API (v1beta) MODEL DISCOVERY, RETRY & MULTI-MODEL FALLBACK
+      // 2. NATIVE GEMINI REST API (v1beta) MODEL DISCOVERY, RETRY & FALLBACK
       // =========================================================================
       const PREFERRED_MODEL_ORDER = [
         "gemini-2.5-flash",
@@ -243,13 +244,14 @@
       }
 
       function sortModelsByPriority(modelsList) {
-        return [...modelsList].sort((a, b) => {
+        const safeList = Array.isArray(modelsList) ? modelsList : [];
+        return [...safeList].sort((a, b) => {
           const idxA = PREFERRED_MODEL_ORDER.indexOf(a.id);
           const idxB = PREFERRED_MODEL_ORDER.indexOf(b.id);
           if (idxA !== -1 && idxB !== -1) return idxA - idxB;
           if (idxA !== -1) return -1;
           if (idxB !== -1) return 1;
-          return a.id.localeCompare(b.id);
+          return String(a.id || "").localeCompare(String(b.id || ""));
         });
       }
 
@@ -283,7 +285,9 @@
           msg.includes("rate limit") ||
           msg.includes("quota") ||
           msg.includes("temporarily") ||
-          msg.includes("timeout")
+          msg.includes("timeout") ||
+          msg.includes("failed to fetch") ||
+          msg.includes("networkerror")
         ) {
           return true;
         }
@@ -297,21 +301,17 @@
         }
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 18000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         if (externalSignal) {
           externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
         }
 
         try {
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(
-              cleanKey
-            )}`,
-            {
-              method: "GET",
-              signal: controller.signal
-            }
-          );
+          const endpoint = `${GEMINI_API_BASE}/models?key=${encodeURIComponent(cleanKey)}`;
+          const res = await fetch(endpoint, {
+            method: "GET",
+            signal: controller.signal
+          });
 
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
@@ -337,10 +337,20 @@
             return PREFERRED_MODEL_ORDER.map((id) => ({
               id,
               displayName: id,
-              description: "Default fallback text/code model"
+              description: "Native Gemini text/code model"
             }));
           }
           return sorted;
+        } catch (err) {
+          if (err?.name === "AbortError") {
+            throw new Error("Gemini API সংযোগের সময়সীমা শেষ হয়েছে। পুনরায় চেষ্টা করুন।");
+          }
+          if (String(err?.message || "").toLowerCase().includes("failed to fetch")) {
+            throw new Error(
+              "Native Gemini API-এ সংযোগ করা যায়নি (Failed to fetch)। নেটওয়ার্ক/VPN/Ad-blocker পরীক্ষা করুন।"
+            );
+          }
+          throw err;
         } finally {
           clearTimeout(timeoutId);
         }
@@ -355,12 +365,20 @@
         onStatusUpdate
       }) {
         const cleanKey = String(apiKey || "").trim();
-        const discoveredIds = Array.isArray(availableModels)
-          ? availableModels.map((m) => m.id)
-          : [];
+        if (!cleanKey) {
+          throw new Error("Gemini API Key পাওয়া যায়নি। অনুগ্রহ করে API Key সেভ করুন।");
+        }
+
+        const safeAvailable = Array.isArray(availableModels) ? availableModels : [];
+        const discoveredIds = safeAvailable
+          .map((m) => (m && typeof m === "object" ? m.id : String(m || "")))
+          .filter(Boolean);
+
         const candidateModels = Array.from(
           new Set(
-            [primaryModel, ...discoveredIds, ...FALLBACK_MODELS_CHAIN].filter(Boolean)
+            [primaryModel, ...discoveredIds, ...FALLBACK_MODELS_CHAIN]
+              .map((x) => String(x || "").trim())
+              .filter(Boolean)
           )
         );
 
@@ -378,21 +396,20 @@
             try {
               if (mIdx > 0 || attempt > 1) {
                 onStatusUpdate?.(
-                  `সার্ভারে চাপ থাকায় বিকল্প মডেল (${modelId}) দিয়ে পুনরায় সংযোগ করা হচ্ছে (চেষ্টা ${attempt})...`
+                  `Native Gemini মডেল (${modelId}) দিয়ে পুনরায় সংযোগ করা হচ্ছে (চেষ্টা ${attempt})...`
                 );
               }
 
-              const res = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-                  modelId
-                )}:generateContent?key=${encodeURIComponent(cleanKey)}`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  signal,
-                  body: JSON.stringify(requestBody)
-                }
-              );
+              const endpoint = `${GEMINI_API_BASE}/models/${encodeURIComponent(
+                modelId
+              )}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+
+              const res = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                signal,
+                body: JSON.stringify(requestBody)
+              });
 
               const data = await res.json().catch(() => ({}));
               if (!res.ok) {
@@ -405,21 +422,23 @@
                 }
 
                 if (transient && attempt < maxAttemptsForModel) {
-                  const backoffMs = 900 * Math.pow(2, attempt - 1);
+                  const backoffMs = 850 * Math.pow(2, attempt - 1);
                   await sleepWithAbort(backoffMs, signal);
                   continue;
                 }
                 break;
               }
 
-              const parts = data?.candidates?.[0]?.content?.parts || [];
+              const rawParts = data?.candidates?.[0]?.content?.parts;
+              const parts = Array.isArray(rawParts) ? rawParts : [];
               const rawReply = parts
-                .map((p) => p.text || "")
+                .map((p) => (p && typeof p.text === "string" ? p.text : ""))
+                .filter(Boolean)
                 .join("\n")
                 .trim();
 
               if (!rawReply) {
-                lastError = new Error("AI থেকে কোনো উত্তর পাওয়া যায়নি।");
+                lastError = new Error("Gemini থেকে কোনো টেক্সট উত্তর পাওয়া যায়নি।");
                 break;
               }
 
@@ -432,13 +451,16 @@
                 throw err;
               }
               if (attempt < maxAttemptsForModel) {
-                await sleepWithAbort(900 * attempt, signal);
+                await sleepWithAbort(850 * attempt, signal);
               }
             }
           }
         }
 
-        throw lastError || new Error("Gemini API-এর সাথে সংযোগ করা সম্ভব হয়নি।");
+        throw (
+          lastError ||
+          new Error("Native Google Gemini API-এর সাথে সংযোগ করা সম্ভব হয়নি।")
+        );
       }
 
       // =========================================================================
@@ -632,11 +654,12 @@
 
       function applyFileUpdatesToProject(project, fileUpdates) {
         if (!project || !Array.isArray(fileUpdates) || fileUpdates.length === 0) {
-          return project?.files || [];
+          return Array.isArray(project?.files) ? [...project.files] : [];
         }
-        const nextFiles = [...project.files];
+        const nextFiles = Array.isArray(project.files) ? [...project.files] : [];
         fileUpdates.forEach((upd) => {
-          const cleanUpdPath = upd.path.replace(/^\/+/, "");
+          const cleanUpdPath = String(upd.path || "").replace(/^\/+/, "");
+          if (!cleanUpdPath) return;
           const exactIdx = nextFiles.findIndex(
             (f) => f.path.toLowerCase() === cleanUpdPath.toLowerCase()
           );
@@ -1254,9 +1277,11 @@ jobs:
         }, []);
 
         // --- Derived Active Project, Preview Target, Active File, AI Settings & Chat ---
+        const safeProjects = Array.isArray(projects) ? projects : [];
+
         const activeProject = useMemo(() => {
-          return projects.find((p) => p.id === activeProjectId) || null;
-        }, [projects, activeProjectId]);
+          return safeProjects.find((p) => p.id === activeProjectId) || null;
+        }, [safeProjects, activeProjectId]);
 
         const isUnconfirmedNewDraft = lockedSessionType === "new-app" && !activeProjectId;
 
@@ -1286,9 +1311,9 @@ jobs:
 
         const currentFilesList = useMemo(() => {
           if (isUnconfirmedNewDraft) {
-            return draftNewAppProject?.files || [];
+            return Array.isArray(draftNewAppProject?.files) ? draftNewAppProject.files : [];
           }
-          return activeProject?.files || [];
+          return Array.isArray(activeProject?.files) ? activeProject.files : [];
         }, [isUnconfirmedNewDraft, draftNewAppProject, activeProject]);
 
         const activeFile = useMemo(() => {
@@ -1300,37 +1325,42 @@ jobs:
 
         const activeChatMessages = useMemo(() => {
           if (isUnconfirmedNewDraft) {
-            return newAppDraftChat;
+            return Array.isArray(newAppDraftChat) ? newAppDraftChat : [];
           }
           if (!activeProject) {
             return createInitialProjectChatMessages("");
           }
-          return (
-            projectChatsMap[activeProject.id] ||
-            createInitialProjectChatMessages(activeProject.name)
-          );
+          const list = projectChatsMap[activeProject.id];
+          return Array.isArray(list)
+            ? list
+            : createInitialProjectChatMessages(activeProject.name);
         }, [isUnconfirmedNewDraft, newAppDraftChat, activeProject, projectChatsMap]);
 
         const setActiveChatMessages = useCallback(
           (updaterOrArray) => {
             if (!isAuthenticated) return;
             if (isUnconfirmedNewDraft) {
-              setNewAppDraftChat((prev) =>
-                typeof updaterOrArray === "function" ? updaterOrArray(prev) : updaterOrArray
-              );
+              setNewAppDraftChat((prev) => {
+                const safePrev = Array.isArray(prev) ? prev : [];
+                return typeof updaterOrArray === "function"
+                  ? updaterOrArray(safePrev)
+                  : updaterOrArray;
+              });
               return;
             }
             if (!activeProject) return;
             const projId = activeProject.id;
             const projName = activeProject.name;
             setProjectChatsMap((prev) => {
-              const currentList =
-                prev[projId] || createInitialProjectChatMessages(projName);
+              const safePrevMap = prev && typeof prev === "object" ? prev : {};
+              const currentList = Array.isArray(safePrevMap[projId])
+                ? safePrevMap[projId]
+                : createInitialProjectChatMessages(projName);
               const nextList =
                 typeof updaterOrArray === "function"
                   ? updaterOrArray(currentList)
                   : updaterOrArray;
-              const updatedMap = { ...prev, [projId]: nextList };
+              const updatedMap = { ...safePrevMap, [projId]: nextList };
               try {
                 localStorage.setItem(
                   getUserScopedProjectChatsStorageName(currentUser?.uid),
@@ -1347,7 +1377,8 @@ jobs:
 
         const activeProjectHistory = useMemo(() => {
           if (!activeProject) return [];
-          return projectHistoryMap[activeProject.id] || [];
+          const list = projectHistoryMap[activeProject.id];
+          return Array.isArray(list) ? list : [];
         }, [activeProject, projectHistoryMap]);
 
         // Scroll chat to bottom smoothly
@@ -1360,11 +1391,12 @@ jobs:
         // =====================================================================
         const persistProjectsForUser = useCallback(async (nextProjects, userObj) => {
           const uid = userObj?.uid;
+          const safeNext = Array.isArray(nextProjects) ? nextProjects : [];
           if (!uid) return;
           try {
             localStorage.setItem(
               getUserScopedProjectsStorageName(uid),
-              JSON.stringify(nextProjects)
+              JSON.stringify(safeNext)
             );
           } catch (e) {
             console.warn("Local projects save error:", e);
@@ -1373,7 +1405,7 @@ jobs:
           if (window.DroidFirebaseReady && window.DroidDB && uid) {
             try {
               setRtdbSyncStatus("syncing");
-              await window.DroidDB.ref(`users/${uid}/projects`).set(nextProjects);
+              await window.DroidDB.ref(`users/${uid}/projects`).set(safeNext);
               setRtdbSyncStatus("synced");
             } catch (err) {
               console.warn("RTDB projects sync warning:", err);
@@ -1390,12 +1422,17 @@ jobs:
               timestamp: Date.now(),
               note,
               tag,
-              files: JSON.parse(JSON.stringify(projectObj.files || []))
+              files: JSON.parse(
+                JSON.stringify(Array.isArray(projectObj.files) ? projectObj.files : [])
+              )
             };
             setProjectHistoryMap((prev) => {
-              const existing = prev[projectObj.id] || [];
+              const safePrevMap = prev && typeof prev === "object" ? prev : {};
+              const existing = Array.isArray(safePrevMap[projectObj.id])
+                ? safePrevMap[projectObj.id]
+                : [];
               const nextMap = {
-                ...prev,
+                ...safePrevMap,
                 [projectObj.id]: [snap, ...existing].slice(0, 25)
               };
               try {
@@ -1437,83 +1474,104 @@ jobs:
           setRtdbSyncStatus("offline");
         }, []);
 
-        const loadUserWorkspace = useCallback(async (userObj) => {
-          const uid = userObj?.uid;
-          if (!uid) {
-            clearWorkspaceStateOnSignOut();
-            return;
-          }
-
-          // 1. Load saved Gemini API key strictly for this authenticated user
-          const savedKey = localStorage.getItem(getUserScopedKeyStorageName(uid)) || "";
-          setUserGeminiKey(savedKey);
-          setKeyInputDraft(savedKey);
-          if (!savedKey) {
-            setIsApiPanelExpanded(true);
-          } else {
-            setIsApiPanelExpanded(false);
-            discoverEligibleGeminiModels(savedKey)
-              .then((models) => {
-                setAvailableModels(models);
-                setSelectedModel((prev) =>
-                  models.some((m) => m.id === prev) ? prev : models[0]?.id || "gemini-2.5-flash"
-                );
-              })
-              .catch(() => {});
-          }
-
-          // 2. Load saved projects
-          let loadedProjects = [];
-          try {
-            const rawProjs = localStorage.getItem(getUserScopedProjectsStorageName(uid));
-            if (rawProjs) loadedProjects = JSON.parse(rawProjs) || [];
-          } catch (e) {}
-
-          if (window.DroidFirebaseReady && window.DroidDB && uid) {
-            try {
-              setRtdbSyncStatus("syncing");
-              const snap = await window.DroidDB.ref(`users/${uid}/projects`).once("value");
-              const remoteVal = snap.val();
-              if (Array.isArray(remoteVal) && remoteVal.length > 0) {
-                loadedProjects = remoteVal;
-                localStorage.setItem(
-                  getUserScopedProjectsStorageName(uid),
-                  JSON.stringify(loadedProjects)
-                );
-              }
-              setRtdbSyncStatus("synced");
-            } catch (err) {
-              setRtdbSyncStatus("offline");
+        const loadUserWorkspace = useCallback(
+          async (userObj) => {
+            const uid = userObj?.uid;
+            if (!uid) {
+              clearWorkspaceStateOnSignOut();
+              return;
             }
-          }
 
-          setProjects(loadedProjects);
-          if (loadedProjects.length > 0) {
-            setActiveProjectId(loadedProjects[0].id);
-            setActiveFilePath(loadedProjects[0].files?.[0]?.path || "");
-          } else {
-            setActiveProjectId("");
-            setActiveFilePath("");
-          }
+            const savedKey = localStorage.getItem(getUserScopedKeyStorageName(uid)) || "";
+            setUserGeminiKey(savedKey);
+            setKeyInputDraft(savedKey);
+            if (!savedKey) {
+              setIsApiPanelExpanded(true);
+            } else {
+              setIsApiPanelExpanded(false);
+              discoverEligibleGeminiModels(savedKey)
+                .then((models) => {
+                  const safeModels = Array.isArray(models) ? models : [];
+                  setAvailableModels(safeModels);
+                  setSelectedModel((prev) =>
+                    safeModels.some((m) => m.id === prev)
+                      ? prev
+                      : safeModels[0]?.id || "gemini-2.5-flash"
+                  );
+                })
+                .catch(() => {});
+            }
 
-          // 3. Load chats, history & AI settings
-          try {
-            const rawChats = localStorage.getItem(getUserScopedProjectChatsStorageName(uid));
-            if (rawChats) setProjectChatsMap(JSON.parse(rawChats) || {});
-          } catch (e) {}
+            let loadedProjects = [];
+            try {
+              const rawProjs = localStorage.getItem(getUserScopedProjectsStorageName(uid));
+              if (rawProjs) {
+                const parsed = JSON.parse(rawProjs);
+                if (Array.isArray(parsed)) loadedProjects = parsed;
+              }
+            } catch (e) {}
 
-          try {
-            const rawHist = localStorage.getItem(getUserScopedHistoryStorageName(uid));
-            if (rawHist) setProjectHistoryMap(JSON.parse(rawHist) || {});
-          } catch (e) {}
+            if (window.DroidFirebaseReady && window.DroidDB && uid) {
+              try {
+                setRtdbSyncStatus("syncing");
+                const snap = await window.DroidDB.ref(`users/${uid}/projects`).once("value");
+                const remoteVal = snap.val();
+                if (Array.isArray(remoteVal) && remoteVal.length > 0) {
+                  loadedProjects = remoteVal;
+                  localStorage.setItem(
+                    getUserScopedProjectsStorageName(uid),
+                    JSON.stringify(loadedProjects)
+                  );
+                }
+                setRtdbSyncStatus("synced");
+              } catch (err) {
+                setRtdbSyncStatus("offline");
+              }
+            }
 
-          try {
-            const rawAiCfg = localStorage.getItem(
-              getUserScopedProjectAiSettingsStorageName(uid)
-            );
-            if (rawAiCfg) setProjectAiSettingsMap(JSON.parse(rawAiCfg) || {});
-          } catch (e) {}
-        }, [clearWorkspaceStateOnSignOut]);
+            setProjects(loadedProjects);
+            if (loadedProjects.length > 0) {
+              setActiveProjectId(loadedProjects[0].id);
+              setActiveFilePath(loadedProjects[0].files?.[0]?.path || "");
+            } else {
+              setActiveProjectId("");
+              setActiveFilePath("");
+            }
+
+            try {
+              const rawChats = localStorage.getItem(getUserScopedProjectChatsStorageName(uid));
+              if (rawChats) {
+                const parsedChats = JSON.parse(rawChats);
+                if (parsedChats && typeof parsedChats === "object") {
+                  setProjectChatsMap(parsedChats);
+                }
+              }
+            } catch (e) {}
+
+            try {
+              const rawHist = localStorage.getItem(getUserScopedHistoryStorageName(uid));
+              if (rawHist) {
+                const parsedHist = JSON.parse(rawHist);
+                if (parsedHist && typeof parsedHist === "object") {
+                  setProjectHistoryMap(parsedHist);
+                }
+              }
+            } catch (e) {}
+
+            try {
+              const rawAiCfg = localStorage.getItem(
+                getUserScopedProjectAiSettingsStorageName(uid)
+              );
+              if (rawAiCfg) {
+                const parsedAiCfg = JSON.parse(rawAiCfg);
+                if (parsedAiCfg && typeof parsedAiCfg === "object") {
+                  setProjectAiSettingsMap(parsedAiCfg);
+                }
+              }
+            } catch (e) {}
+          },
+          [clearWorkspaceStateOnSignOut]
+        );
 
         useEffect(() => {
           if (!window.DroidFirebaseReady || !window.DroidAuth) {
@@ -1596,7 +1654,7 @@ jobs:
         };
 
         // =====================================================================
-        // 13. GEMINI API KEY VERIFY & SAVE
+        // 13. NATIVE GEMINI API KEY VERIFY & SAVE
         // =====================================================================
         const handleVerifyAndSaveApiKey = async (e) => {
           if (e) e.preventDefault();
@@ -1616,23 +1674,24 @@ jobs:
           setKeyStatusBanner(null);
           try {
             const models = await discoverEligibleGeminiModels(clean);
-            setAvailableModels(models);
-            const bestModel = models[0]?.id || "gemini-2.5-flash";
-            setSelectedModel(bestModel);
+            const safeModels = Array.isArray(models) ? models : [];
+            setAvailableModels(safeModels);
+            const preferredStillExists = safeModels.some((m) => m.id === selectedModel);
+            const chosenModel = preferredStillExists
+              ? selectedModel
+              : safeModels[0]?.id || "gemini-2.5-flash";
+            setSelectedModel(chosenModel);
             setUserGeminiKey(clean);
-            localStorage.setItem(
-              getUserScopedKeyStorageName(currentUser?.uid),
-              clean
-            );
+            localStorage.setItem(getUserScopedKeyStorageName(currentUser?.uid), clean);
             setKeyStatusBanner({
               ok: true,
-              msg: `✅ সফলভাবে যাচাই ও সেভ হয়েছে! (${models.length}টি মডেল যুক্ত)`
+              msg: `✅ সফলভাবে যাচাই ও সেভ হয়েছে! (${safeModels.length}টি মডেল যুক্ত • ${chosenModel})`
             });
             setIsApiPanelExpanded(false);
           } catch (err) {
             setKeyStatusBanner({
               ok: false,
-              msg: `⚠️ ${err.message}`
+              msg: `⚠️ ${err?.message || "API যাচাই ব্যর্থ হয়েছে।"}`
             });
           } finally {
             setIsVerifyingKey(false);
@@ -1661,7 +1720,7 @@ jobs:
             setIsAccountModalOpen(true);
             return;
           }
-          if (projects.length === 0) {
+          if (safeProjects.length === 0) {
             handleStartConversationalNewAppSession();
             return;
           }
@@ -1669,7 +1728,7 @@ jobs:
         };
 
         const handleSelectProjectForRebuild = (proj) => {
-          if (!isAuthenticated) {
+          if (!isAuthenticated || !proj) {
             setIsAccountModalOpen(true);
             return;
           }
@@ -1680,16 +1739,20 @@ jobs:
           setActiveFilePath(proj.files?.[0]?.path || "");
           setActiveTab("chat");
           setProjectChatsMap((prev) => {
-            const existing =
-              prev[proj.id] || createInitialProjectChatMessages(proj.name);
+            const safePrev = prev && typeof prev === "object" ? prev : {};
+            const existing = Array.isArray(safePrev[proj.id])
+              ? safePrev[proj.id]
+              : createInitialProjectChatMessages(proj.name);
             const noticeMsg = {
               id: `rebuild_lock_${Date.now()}`,
               role: "assistant",
-              text: `🔄 "${proj.name}" প্রজেক্টটি রিবিল্ড ও আপডেট সেশনে লক করা হয়েছে (${proj.files?.length || 0}টি ফাইল)। আপনি 🚪 Exit Project না করা পর্যন্ত AI কেবল এই প্রজেক্টেই কাজ করবে। নিচে 🔍 প্রজেক্ট বিশ্লেষণ করুন, 🛠️ এরর ফিক্স করুন অথবা কথা বলে/লিখে কী পরিবর্তন চান তা বলুন।`,
+              text: `🔄 "${proj.name}" প্রজেক্টটি রিবিল্ড ও আপডেট সেশনে লক করা হয়েছে (${
+                proj.files?.length || 0
+              }টি ফাইল)। আপনি 🚪 Exit Project না করা পর্যন্ত AI কেবল এই প্রজেক্টেই কাজ করবে। নিচে 🔍 প্রজেক্ট বিশ্লেষণ করুন, 🛠️ এরর ফিক্স করুন অথবা কথা বলে/লিখে কী পরিবর্তন চান তা বলুন।`,
               timestamp: Date.now()
             };
             const nextList = [...existing, noticeMsg];
-            const nextMap = { ...prev, [proj.id]: nextList };
+            const nextMap = { ...safePrev, [proj.id]: nextList };
             try {
               localStorage.setItem(
                 getUserScopedProjectChatsStorageName(currentUser?.uid),
@@ -1704,9 +1767,9 @@ jobs:
           setLockedSessionType("none");
           setDraftNewAppProject(null);
           setPendingCodeProposals({});
-          if (!activeProjectId && projects.length > 0) {
-            setActiveProjectId(projects[0].id);
-            setActiveFilePath(projects[0].files?.[0]?.path || "");
+          if (!activeProjectId && safeProjects.length > 0) {
+            setActiveProjectId(safeProjects[0].id);
+            setActiveFilePath(safeProjects[0].files?.[0]?.path || "");
           }
         };
 
@@ -1782,7 +1845,7 @@ jobs:
         };
 
         // =====================================================================
-        // 16. SEND MESSAGE TO GEMINI API (CLEAN-SLATE UI/UX + LOGIC + AUTO-PREVIEW)
+        // 16. SEND MESSAGE TO NATIVE GEMINI API (CLEAN-SLATE UI/UX + LOGIC + AUTO-PREVIEW)
         // =====================================================================
         const handleStopAiGeneration = () => {
           if (aiAbortControllerRef.current) {
@@ -1798,14 +1861,23 @@ jobs:
             setIsAccountModalOpen(true);
             return;
           }
+          const safeUpdates = Array.isArray(fileUpdates) ? fileUpdates : [];
+
           if (isUnconfirmedNewDraft) {
             if (!draftNewAppProject) return;
+            const finalizedFiles =
+              safeUpdates.length > 0
+                ? applyFileUpdatesToProject(draftNewAppProject, safeUpdates)
+                : Array.isArray(draftNewAppProject.files)
+                ? draftNewAppProject.files
+                : [];
             const finalizedProject = {
               ...draftNewAppProject,
+              files: finalizedFiles,
               id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
               updatedAt: Date.now()
             };
-            const nextProjects = [finalizedProject, ...projects];
+            const nextProjects = [finalizedProject, ...safeProjects];
             setProjects(nextProjects);
             persistProjectsForUser(nextProjects, currentUser);
             recordProjectSnapshot(
@@ -1814,11 +1886,12 @@ jobs:
               "AI"
             );
 
-            const confirmedChatHistory = newAppDraftChat.map((m) =>
-              m.id === msgId ? { ...m, proposalAccepted: true } : m
+            const confirmedChatHistory = (Array.isArray(newAppDraftChat) ? newAppDraftChat : []).map(
+              (m) => (m.id === msgId ? { ...m, proposalAccepted: true } : m)
             );
             setProjectChatsMap((prev) => {
-              const nextMap = { ...prev, [finalizedProject.id]: confirmedChatHistory };
+              const safePrev = prev && typeof prev === "object" ? prev : {};
+              const nextMap = { ...safePrev, [finalizedProject.id]: confirmedChatHistory };
               try {
                 localStorage.setItem(
                   getUserScopedProjectChatsStorageName(currentUser?.uid),
@@ -1840,23 +1913,23 @@ jobs:
             return;
           }
 
-          if (!activeProject || !Array.isArray(fileUpdates) || fileUpdates.length === 0) return;
+          if (!activeProject || safeUpdates.length === 0) return;
 
-          const updatedFiles = applyFileUpdatesToProject(activeProject, fileUpdates);
+          const updatedFiles = applyFileUpdatesToProject(activeProject, safeUpdates);
           const updatedProj = {
             ...activeProject,
             files: updatedFiles,
             updatedAt: Date.now()
           };
 
-          const nextProjects = projects.map((p) =>
+          const nextProjects = safeProjects.map((p) =>
             p.id === activeProject.id ? updatedProj : p
           );
           setProjects(nextProjects);
           persistProjectsForUser(nextProjects, currentUser);
           recordProjectSnapshot(
             updatedProj,
-            `AI কোড আপডেট (${fileUpdates.length}টি ফাইল)`,
+            `AI কোড আপডেট (${safeUpdates.length}টি ফাইল)`,
             "AI"
           );
 
@@ -1865,15 +1938,14 @@ jobs:
           }
 
           setPendingCodeProposals((prev) => {
-            const copy = { ...prev };
+            const safePrev = prev && typeof prev === "object" ? prev : {};
+            const copy = { ...safePrev };
             delete copy[msgId];
             return copy;
           });
 
           setActiveChatMessages((prev) =>
-            prev.map((m) =>
-              m.id === msgId ? { ...m, proposalAccepted: true } : m
-            )
+            prev.map((m) => (m.id === msgId ? { ...m, proposalAccepted: true } : m))
           );
 
           const parsedDone = parseProjectForLivePreview(updatedProj);
@@ -1891,7 +1963,8 @@ jobs:
           const promptText = String(overridePromptText ?? chatInput).trim();
           if (!promptText && !attachedImage) return;
 
-          if (!userGeminiKey) {
+          const effectiveKey = String(userGeminiKey || keyInputDraft || "").trim();
+          if (!effectiveKey) {
             setIsApiPanelExpanded(true);
             setActiveChatMessages((prev) => [
               ...prev,
@@ -1903,6 +1976,11 @@ jobs:
               }
             ]);
             return;
+          }
+
+          if (!userGeminiKey && effectiveKey) {
+            setUserGeminiKey(effectiveKey);
+            localStorage.setItem(getUserScopedKeyStorageName(currentUser?.uid), effectiveKey);
           }
 
           if (!isUnconfirmedNewDraft && !activeProject) {
@@ -1918,12 +1996,13 @@ jobs:
             timestamp: Date.now()
           };
 
+          const baseHistory = Array.isArray(activeChatMessages) ? activeChatMessages : [];
           setActiveChatMessages((prev) => [...prev, userMsg]);
           if (!overridePromptText) setChatInput("");
           setAttachedImage(null);
           setIsAiGenerating(true);
           setAiProgressNote(
-            "AI সম্পূর্ণ UI/UX ডিজাইন ও কার্যকর লজিক তৈরি করছে (সম্পন্ন হলেই প্রিভিউ দেখাবে)..."
+            "Native Gemini API দিয়ে সম্পূর্ণ UI/UX ডিজাইন ও কার্যকর লজিক তৈরি হচ্ছে (সম্পন্ন হলেই প্রিভিউ দেখাবে)..."
           );
 
           const controller = new AbortController();
@@ -1931,9 +2010,10 @@ jobs:
 
           try {
             const targetProj = isUnconfirmedNewDraft ? draftNewAppProject : activeProject;
+            const projFiles = Array.isArray(targetProj?.files) ? targetProj.files : [];
             const existingFilesContext =
-              targetProj && Array.isArray(targetProj.files) && targetProj.files.length > 0
-                ? targetProj.files
+              projFiles.length > 0
+                ? projFiles
                     .filter((f) => !f.assetDataUrl)
                     .map((f) => `--- FILE: ${f.path} ---\n${f.content}`)
                     .join("\n\n")
@@ -1973,12 +2053,12 @@ ${
 বর্তমান প্রজেক্টের ফাইলসমূহ:
 ${existingFilesContext}`;
 
-            const recentTurns = activeChatMessages.slice(-6).map((m) => ({
+            const recentTurns = baseHistory.slice(-6).map((m) => ({
               role: m.role === "user" ? "user" : "model",
-              parts: [{ text: m.rawText || m.text }]
+              parts: [{ text: String(m.rawText || m.text || "") }]
             }));
 
-            const currentUserParts = [{ text: promptText }];
+            const currentUserParts = [{ text: promptText || "এই ডিজাইন অনুযায়ী অ্যাপ তৈরি করো" }];
             if (currentImage?.base64) {
               currentUserParts.push({
                 inlineData: {
@@ -2006,7 +2086,7 @@ ${existingFilesContext}`;
             };
 
             const { rawReply } = await generateGeminiWithResilientFallback({
-              apiKey: userGeminiKey,
+              apiKey: effectiveKey,
               primaryModel: selectedModel,
               availableModels,
               requestBody,
@@ -2026,7 +2106,7 @@ ${existingFilesContext}`;
                 draftNewAppProject
               );
               setDraftNewAppProject(draftProject);
-              if (draftProject.files.length > 0) {
+              if (Array.isArray(draftProject.files) && draftProject.files.length > 0) {
                 setActiveFilePath(draftProject.files[0].path);
               }
               const parsedDraft = parseProjectForLivePreview(draftProject);
@@ -2045,7 +2125,7 @@ ${existingFilesContext}`;
                 parsedUpdated.hasCodeFiles && parsedUpdated.hasCompleteUiAndLogic;
 
               if (completedPreviewReady || activeAiSettings.autoApplyCodeUpdates) {
-                const nextProjects = projects.map((p) =>
+                const nextProjects = safeProjects.map((p) =>
                   p.id === activeProject.id ? updatedProj : p
                 );
                 setProjects(nextProjects);
@@ -2080,7 +2160,7 @@ ${existingFilesContext}`;
               (fileUpdates.length > 0 || draftNewAppProject)
             ) {
               setPendingCodeProposals((prev) => ({
-                ...prev,
+                ...(prev && typeof prev === "object" ? prev : {}),
                 [assistantMsgId]: fileUpdates
               }));
             } else if (
@@ -2090,7 +2170,7 @@ ${existingFilesContext}`;
               !activeAiSettings.autoApplyCodeUpdates
             ) {
               setPendingCodeProposals((prev) => ({
-                ...prev,
+                ...(prev && typeof prev === "object" ? prev : {}),
                 [assistantMsgId]: fileUpdates
               }));
             }
@@ -2108,7 +2188,9 @@ ${existingFilesContext}`;
                 {
                   id: `err_${Date.now()}`,
                   role: "assistant",
-                  text: `⚠️ ত্রুটি: ${err?.message || "AI সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।"}`,
+                  text: `⚠️ ত্রুটি: ${
+                    err?.message || "AI সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।"
+                  }`,
                   timestamp: Date.now()
                 }
               ]);
@@ -2166,7 +2248,7 @@ ${existingFilesContext}`;
             customLogoName: newProjLogoName
           });
 
-          const nextProjects = [created, ...projects];
+          const nextProjects = [created, ...safeProjects];
           setProjects(nextProjects);
           persistProjectsForUser(nextProjects, currentUser);
           setLockedSessionType("none");
@@ -2184,7 +2266,7 @@ ${existingFilesContext}`;
 
         const handleDeleteActiveProject = () => {
           if (!isAuthenticated || !activeProject) return;
-          const remaining = projects.filter((p) => p.id !== activeProject.id);
+          const remaining = safeProjects.filter((p) => p.id !== activeProject.id);
           setProjects(remaining);
           persistProjectsForUser(remaining, currentUser);
           setIsDeleteProjectModalOpen(false);
@@ -2207,19 +2289,20 @@ ${existingFilesContext}`;
           }
           const cleanPath = String(newFilePathInput || "").trim().replace(/^\/+/, "");
           if (!cleanPath || !activeProject) return;
-          if (activeProject.files.some((f) => f.path === cleanPath)) {
+          const existingFiles = Array.isArray(activeProject.files) ? activeProject.files : [];
+          if (existingFiles.some((f) => f.path === cleanPath)) {
             setActiveFilePath(cleanPath);
             setIsNewFileModalOpen(false);
             setNewFilePathInput("");
             return;
           }
-          const updatedFiles = [...activeProject.files, { path: cleanPath, content: "" }];
+          const updatedFiles = [...existingFiles, { path: cleanPath, content: "" }];
           const updatedProj = {
             ...activeProject,
             files: updatedFiles,
             updatedAt: Date.now()
           };
-          const nextProjects = projects.map((p) =>
+          const nextProjects = safeProjects.map((p) =>
             p.id === activeProject.id ? updatedProj : p
           );
           setProjects(nextProjects);
@@ -2232,16 +2315,20 @@ ${existingFilesContext}`;
         const handleEditorCodeChange = (newCodeText) => {
           if (!isAuthenticated || !activeFile) return;
           if (isUnconfirmedNewDraft && draftNewAppProject) {
+            const draftFiles = Array.isArray(draftNewAppProject.files)
+              ? draftNewAppProject.files
+              : [];
             setDraftNewAppProject({
               ...draftNewAppProject,
-              files: draftNewAppProject.files.map((f) =>
+              files: draftFiles.map((f) =>
                 f.path === activeFile.path ? { ...f, content: newCodeText } : f
               )
             });
             return;
           }
           if (!activeProject) return;
-          const updatedFiles = activeProject.files.map((f) =>
+          const projFiles = Array.isArray(activeProject.files) ? activeProject.files : [];
+          const updatedFiles = projFiles.map((f) =>
             f.path === activeFile.path ? { ...f, content: newCodeText } : f
           );
           const updatedProj = {
@@ -2249,7 +2336,7 @@ ${existingFilesContext}`;
             files: updatedFiles,
             updatedAt: Date.now()
           };
-          const nextProjects = projects.map((p) =>
+          const nextProjects = safeProjects.map((p) =>
             p.id === activeProject.id ? updatedProj : p
           );
           setProjects(nextProjects);
@@ -2260,10 +2347,10 @@ ${existingFilesContext}`;
           if (!isAuthenticated || !activeProject || !snap) return;
           const restoredProj = {
             ...activeProject,
-            files: JSON.parse(JSON.stringify(snap.files || [])),
+            files: JSON.parse(JSON.stringify(Array.isArray(snap.files) ? snap.files : [])),
             updatedAt: Date.now()
           };
-          const nextProjects = projects.map((p) =>
+          const nextProjects = safeProjects.map((p) =>
             p.id === activeProject.id ? restoredProj : p
           );
           setProjects(nextProjects);
@@ -2328,7 +2415,8 @@ ${existingFilesContext}`;
           setZipExportStatus(null);
           try {
             const zip = new window.JSZip();
-            activeProject.files.forEach((f) => {
+            const projFiles = Array.isArray(activeProject.files) ? activeProject.files : [];
+            projFiles.forEach((f) => {
               if (f.assetDataUrl) {
                 zip.file(f.path, dataUrlToPureBase64(f.assetDataUrl), { base64: true });
               } else {
@@ -2346,7 +2434,7 @@ ${existingFilesContext}`;
             URL.revokeObjectURL(url);
             setZipExportStatus({
               ok: true,
-              msg: `✅ ${activeProject.files.length}টি ফাইলসহ .zip ডাউনলোড সম্পন্ন হয়েছে!`
+              msg: `✅ ${projFiles.length}টি ফাইলসহ .zip ডাউনলোড সম্পন্ন হয়েছে!`
             });
           } catch (err) {
             setZipExportStatus({
@@ -2364,7 +2452,8 @@ ${existingFilesContext}`;
           setIsPushingGh(true);
           setGhPushStatus(null);
           try {
-            for (const f of activeProject.files) {
+            const projFiles = Array.isArray(activeProject.files) ? activeProject.files : [];
+            for (const f of projFiles) {
               await pushSingleFileToGitHub({
                 token: ghToken.trim(),
                 owner: ghOwner.trim(),
@@ -2378,7 +2467,7 @@ ${existingFilesContext}`;
             }
             setGhPushStatus({
               ok: true,
-              msg: `✅ সফলভাবে ${activeProject.files.length}টি ফাইল ${ghOwner}/${ghRepo}-তে পুশ হয়েছে!`
+              msg: `✅ সফলভাবে ${projFiles.length}টি ফাইল ${ghOwner}/${ghRepo}-তে পুশ হয়েছে!`
             });
           } catch (err) {
             setGhPushStatus({ ok: false, msg: `⚠️ ${err.message}` });
@@ -2396,7 +2485,8 @@ ${existingFilesContext}`;
           setCloudBuildRun(null);
           try {
             setCloudBuildStep("১/৩: GitHub রিপোজিটরিতে প্রজেক্ট ফাইল আপলোড হচ্ছে...");
-            for (const f of activeProject.files) {
+            const projFiles = Array.isArray(activeProject.files) ? activeProject.files : [];
+            for (const f of projFiles) {
               await pushSingleFileToGitHub({
                 token: ghToken.trim(),
                 owner: ghOwner.trim(),
@@ -2436,7 +2526,9 @@ ${existingFilesContext}`;
               }
             );
             const runsData = await runsRes.json().catch(() => ({}));
-            const latestRun = runsData?.workflow_runs?.[0] || null;
+            const latestRun = Array.isArray(runsData?.workflow_runs)
+              ? runsData.workflow_runs[0] || null
+              : null;
             if (latestRun) {
               setCloudBuildRun(latestRun);
             }
@@ -2501,7 +2593,7 @@ ${existingFilesContext}`;
                     ড্রয়েড এআই স্টুডিও — পূর্ণাঙ্গ ফিচার ব্যবহার করতে লগইন বাধ্যতামূলক
                   </p>
                   <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
-                    ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট তৈরি বা লগইন করুন অথবা Gmail (Google) দিয়ে সাইন-ইন করে প্রজেক্ট, AI কোডিং, লাইভ প্রিভিউ ও APK/GitHub ফিচার আনলক করুন।
+                    ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট তৈরি বা লগইন করুন অথবা Gmail (Google) দিয়ে সাইন-ইন করে প্রজেক্ট, Native Gemini AI কোডিং, লাইভ প্রিভিউ ও APK/GitHub ফিচার আনলক করুন।
                   </p>
                 </div>
 
@@ -2649,7 +2741,7 @@ ${existingFilesContext}`;
                         setLockedSessionType("none");
                         setDraftNewAppProject(null);
                         setActiveProjectId(chosenId);
-                        const found = projects.find((p) => p.id === chosenId);
+                        const found = safeProjects.find((p) => p.id === chosenId);
                         setActiveFilePath(found?.files?.[0]?.path || "");
                       }}
                       className="w-full rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs font-bold text-slate-100 focus:border-purple-500 focus:outline-none"
@@ -2657,10 +2749,10 @@ ${existingFilesContext}`;
                       {isUnconfirmedNewDraft && (
                         <option value="">-- নতুন ড্রাফট (অসংরক্ষিত) --</option>
                       )}
-                      {projects.length === 0 ? (
+                      {safeProjects.length === 0 ? (
                         <option value="">-- কোনো প্রজেক্ট সিলেক্ট নেই --</option>
                       ) : (
-                        projects.map((p) => (
+                        safeProjects.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name}
                           </option>
@@ -2757,19 +2849,20 @@ ${existingFilesContext}`;
                         placeholder="আপনার Gemini API Key (AIza...) বসান"
                         className="min-w-[180px] flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-slate-100 focus:border-purple-500 focus:outline-none"
                       />
-                      {availableModels.length > 0 && (
-                        <select
-                          value={selectedModel}
-                          onChange={(e) => setSelectedModel(e.target.value)}
-                          className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1.5 font-mono text-[11px] text-emerald-300"
-                        >
-                          {availableModels.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.id}
-                            </option>
-                          ))}
-                        </select>
-                      )}
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1.5 font-mono text-[11px] text-emerald-300"
+                      >
+                        {(availableModels.length > 0
+                          ? availableModels
+                          : FALLBACK_MODELS_CHAIN.map((id) => ({ id }))
+                        ).map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.id}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="submit"
                         disabled={isVerifyingKey}
@@ -3724,7 +3817,7 @@ ${existingFilesContext}`;
                   </div>
 
                   <div className="custom-scrollbar max-h-72 space-y-2 overflow-y-auto">
-                    {projects.map((proj) => (
+                    {safeProjects.map((proj) => (
                       <button
                         key={proj.id}
                         type="button"
