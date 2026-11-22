@@ -140,6 +140,29 @@
         return uid ? `droid_studio_history_${uid}` : "droid_studio_history_guest";
       }
 
+      function getUserScopedProjectChatsStorageName(uid) {
+        return uid ? `droid_studio_project_chats_${uid}` : "droid_studio_project_chats_guest";
+      }
+
+      function getUserScopedProjectAiSettingsStorageName(uid) {
+        return uid
+          ? `droid_studio_project_ai_settings_${uid}`
+          : "droid_studio_project_ai_settings_guest";
+      }
+
+      function buildInitialProjectWelcomeMessages(projectObj) {
+        const pName = projectObj?.name || "Android Project";
+        const pPkg = projectObj?.packageName || "com.droid.app";
+        return [
+          {
+            id: `welcome_${projectObj?.id || "default"}`,
+            role: "assistant",
+            text: `স্বাগতম Droid AI Studio-তে! বর্তমানে "${pName}" (${pPkg}) প্রজেক্টটি সক্রিয় আছে। এই প্রজেক্টের জন্য আলাদা চ্যাট হিস্ট্রি ও সেটিংস স্বয়ংক্রিয়ভাবে সংরক্ষিত থাকবে। বাংলায় চ্যাট করুন, ছবি বা স্ক্রিনশট শেয়ার করুন অথবা কোড তৈরি/ফিক্স করুন—কোড জেনারেট হলে রিভিউ করে ✅ Accept বাটনে চাপ দিলেই সরাসরি প্রজেক্ট ফাইল ও ইমুলেটর আপডেট হয়ে যাবে।`,
+            timestamp: Date.now()
+          }
+        ];
+      }
+
       function sanitizeEmailKey(email) {
         return String(email || "")
           .trim()
@@ -283,7 +306,7 @@
           id: "empty-views",
           label: "Empty Views Activity",
           badge: "Core",
-          desc: "পিওর ব্ল্যাক (#000000) স্ক্রিন, অ্যাপ লোগো, অ্যাপের নাম ও Hello World!"
+          desc: "হুবহু Android Studio-এর ConstraintLayout, enableEdgeToEdge() ও মাঝখানে Hello World!"
         },
         {
           id: "bottom-nav",
@@ -367,6 +390,7 @@
         const colorHex = accentHex || "#10B981";
         const hasLogo = Boolean(customLogoDataUrl);
         const now = Date.now();
+        const themeStyleName = `Theme.${cleanName.replace(/[^A-Za-z0-9]/g, "") || "DroidApp"}`;
 
         const templatePresets = {
           "empty-views": {
@@ -483,24 +507,25 @@
                 content: `package ${lockedPkg};
 
 import android.os.Bundle;
-import android.widget.ImageView;
-import android.widget.TextView;
+
+import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
-
-        ImageView ivLogo = findViewById(R.id.ivAppLogo);
-        TextView tvTitle = findViewById(R.id.tvAppTitle);
-        TextView tvHello = findViewById(R.id.tvHelloWorld);
-
-        ivLogo.setImageResource(${hasLogo ? "R.drawable.app_logo_custom" : "R.mipmap.ic_launcher"});
-        tvTitle.setText("${cleanName}");
-        tvHello.setText("Hello World!");
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return insets;
+        });
     }
 }`
               }
@@ -549,23 +574,21 @@ public class MainActivity extends AppCompatActivity {
               content: `package ${lockedPkg}
 
 import android.os.Bundle
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import ${lockedPkg}.databinding.ActivityMainBinding
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : AppCompatActivity() {
-
-    private lateinit var binding: ActivityMainBinding
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        binding.ivAppLogo.setImageResource(${
-          hasLogo ? "R.drawable.app_logo_custom" : "R.mipmap.ic_launcher"
-        })
-        binding.tvAppTitle.text = "${cleanName}"
-        binding.tvHelloWorld.text = "Hello World!"
+        enableEdgeToEdge()
+        setContentView(R.layout.activity_main)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
+        }
     }
 }`
             }
@@ -654,57 +677,25 @@ ${preset.items
             ? {
                 path: "app/src/main/res/layout/activity_main.xml",
                 content: `<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="#000000"
-    android:padding="16dp">
+    tools:context=".MainActivity">
 
-    <LinearLayout
-        android:layout_width="match_parent"
+    <TextView
+        android:id="@+id/tvHelloWorld"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingBottom="12dp">
+        android:text="Hello World!"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
-        <ImageView
-            android:id="@+id/ivAppLogo"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:src="${hasLogo ? "@drawable/app_logo_custom" : "@mipmap/ic_launcher"}"
-            android:contentDescription="@string/app_name" />
-
-        <TextView
-            android:id="@+id/tvAppTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="10dp"
-            android:text="@string/app_name"
-            android:textColor="#FFFFFF"
-            android:textSize="19sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="center"
-        android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/tvHelloWorld"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Hello World!"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-</LinearLayout>`
+</androidx.constraintlayout.widget.ConstraintLayout>`
               }
             : {
                 path: "app/src/main/res/layout/activity_main.xml",
@@ -772,6 +763,7 @@ ${preset.items
             path: "app/src/main/AndroidManifest.xml",
             content: `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="${lockedPkg}">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -782,7 +774,7 @@ ${preset.items
         android:label="@string/app_name"
         android:roundIcon="${hasLogo ? "@drawable/app_logo_custom" : "@mipmap/ic_launcher_round"}"
         android:supportsRtl="true"
-        android:theme="@style/Theme.DroidApp">
+        android:theme="@style/${isCleanEmpty ? themeStyleName : "Theme.DroidApp"}">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -799,7 +791,6 @@ ${preset.items
             content: isCleanEmpty
               ? `<resources>
     <string name="app_name">${cleanName}</string>
-    <string name="hello_world">Hello World!</string>
 </resources>`
               : `<resources>
     <string name="app_name">${cleanName}</string>
@@ -809,16 +800,32 @@ ${preset.items
           },
           {
             path: "app/src/main/res/values/colors.xml",
-            content: `<resources>
+            content: isCleanEmpty
+              ? `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="ic_launcher_background">${colorHex}</color>
+</resources>`
+              : `<resources>
     <color name="primary_accent">${colorHex}</color>
     <color name="ic_launcher_background">${colorHex}</color>
-    <color name="bg_dark">${isCleanEmpty ? "#000000" : "#0F172A"}</color>
+    <color name="bg_dark">#0F172A</color>
     <color name="surface_dark">#1E293B</color>
 </resources>`
           },
           {
             path: "app/src/main/res/values/themes.xml",
-            content: `<resources xmlns:tools="http://schemas.android.com/tools">
+            content: isCleanEmpty
+              ? `<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.${themeStyleName}" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Customize your light theme here. -->
+    </style>
+
+    <style name="${themeStyleName}" parent="Base.${themeStyleName}" />
+</resources>`
+              : `<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.DroidApp" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/primary_accent</item>
         <item name="android:statusBarColor">@color/bg_dark</item>
@@ -869,6 +876,8 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     ${m3Enabled ? "implementation 'com.google.android.material:material:1.12.0'" : ""}
+    implementation 'androidx.activity:activity:1.9.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
 }`
               }
@@ -905,6 +914,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     ${m3Enabled ? 'implementation("com.google.android.material:material:1.12.0")' : ""}
+    implementation("androidx.activity:activity:1.9.1")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 }`
               },
@@ -972,6 +983,52 @@ ${customLogoDataUrl}`
       // =========================================================================
       // 4. ROBUST MULTI-FORMAT AI CODE EXTRACTION PARSER
       // =========================================================================
+      function resolveMatchedProjectFilePath(rawPath, existingFiles = []) {
+        const normalized = String(rawPath || "")
+          .trim()
+          .replace(/^['"`]+|['"`]+$/g, "")
+          .replace(/\\/g, "/")
+          .replace(/^\.?\//, "");
+        if (!normalized) return "";
+
+        const exactMatch = existingFiles.find((f) => f.path === normalized);
+        if (exactMatch) return exactMatch.path;
+
+        const suffixMatch = existingFiles.find(
+          (f) =>
+            f.path.endsWith(`/${normalized}`) || normalized.endsWith(`/${f.path}`)
+        );
+        if (suffixMatch) return suffixMatch.path;
+
+        const baseName = normalized.split("/").pop();
+        const keyBasenames = new Set([
+          "MainActivity.kt",
+          "MainActivity.java",
+          "activity_main.xml",
+          "strings.xml",
+          "colors.xml",
+          "themes.xml",
+          "AndroidManifest.xml",
+          "build.gradle.kts",
+          "build.gradle",
+          "settings.gradle.kts",
+          "settings.gradle",
+          "gradle.properties"
+        ]);
+        if (baseName && keyBasenames.has(baseName)) {
+          const baseMatch = existingFiles.find((f) => f.path.split("/").pop() === baseName);
+          if (baseMatch) return baseMatch.path;
+        }
+
+        return normalized;
+      }
+
+      function stripAccidentalOuterCodeFences(rawCode) {
+        const trimmed = String(rawCode || "").replace(/\n$/, "");
+        const fenceWrapped = trimmed.match(/^```[a-zA-Z0-9_-]*\r?\n([\s\S]*?)\r?\n```$/);
+        return fenceWrapped ? fenceWrapped[1] : trimmed;
+      }
+
       function extractFileUpdatesFromAiResponse(rawResponseText, existingFiles = []) {
         const text = String(rawResponseText || "");
         const extractedMap = new Map();
@@ -980,10 +1037,10 @@ ${customLogoDataUrl}`
         const explicitRegex = /<<<FILE:\s*([^\r\n>]+?)\s*>>>\s*\n([\s\S]*?)<<<END_FILE>>>/g;
         let match;
         while ((match = explicitRegex.exec(text)) !== null) {
-          const cleanPath = match[1].trim().replace(/^['"`]+|['"`]+$/g, "");
-          const codeBody = match[2].replace(/\n$/, "");
-          if (cleanPath && codeBody.trim()) {
-            extractedMap.set(cleanPath, codeBody);
+          const resolvedPath = resolveMatchedProjectFilePath(match[1], existingFiles);
+          const codeBody = stripAccidentalOuterCodeFences(match[2]);
+          if (resolvedPath && codeBody.trim()) {
+            extractedMap.set(resolvedPath, codeBody);
           }
         }
 
@@ -1008,14 +1065,10 @@ ${customLogoDataUrl}`
             }
 
             if (candidatePath) {
-              const matchedExisting = existingFiles.find(
-                (f) =>
-                  f.path === candidatePath ||
-                  f.path.endsWith(`/${candidatePath}`) ||
-                  candidatePath.endsWith(`/${f.path}`)
-              );
-              const finalPath = matchedExisting ? matchedExisting.path : candidatePath;
-              extractedMap.set(finalPath, body);
+              const finalPath = resolveMatchedProjectFilePath(candidatePath, existingFiles);
+              if (finalPath) {
+                extractedMap.set(finalPath, body);
+              }
             }
           }
         }
@@ -1091,17 +1144,34 @@ ${customLogoDataUrl}`
           return val;
         };
 
+        // Parse programmatic text & color overrides from Kotlin / Java code so edits reflect live
+        const codeTextOverrides = {};
+        const ktTextRegex =
+          /(?:binding\.|findViewById<[^>]+>\(R\.id\.)?([A-Za-z0-9_]+)\)?\.(?:setText\s*\(|text\s*=\s*)"([^"]*)"/g;
+        let ktm;
+        while ((ktm = ktTextRegex.exec(combinedCode)) !== null) {
+          codeTextOverrides[ktm[1]] = ktm[2];
+        }
+        const varIdMap = {};
+        const findIdVarRegex =
+          /(?:val|var|TextView|Button|EditText)\s+([A-Za-z0-9_]+)\s*(?::\s*[A-Za-z0-9_<>]+)?\s*=\s*findViewById(?:<[^>]+>)?\(R\.id\.([A-Za-z0-9_]+)\)/g;
+        let fvm;
+        while ((fvm = findIdVarRegex.exec(combinedCode)) !== null) {
+          varIdMap[fvm[1]] = fvm[2];
+        }
+        Object.entries(varIdMap).forEach(([varName, viewId]) => {
+          if (codeTextOverrides[varName] !== undefined) {
+            codeTextOverrides[viewId] = codeTextOverrides[varName];
+          }
+        });
+
         const rootBgMatch = layoutXml.match(
           /android:background="(#[0-9A-Fa-f]{6,8}|@color\/[^"]+)"/
         );
         const resolvedRootBg = rootBgMatch ? resolveXmlAttr(rootBgMatch[1]) : "";
-        const isPureBlackScreen =
-          resolvedRootBg.toLowerCase() === "#000000" ||
-          resolvedRootBg.toLowerCase() === "#000" ||
-          (project?.templateId === "empty-views" &&
-            !layoutXml.includes("Button") &&
-            !layoutXml.includes("EditText") &&
-            !layoutXml.includes("RecyclerView"));
+        const isConstraintRoot = /<(?:androidx\.constraintlayout\.widget\.)?ConstraintLayout\b/.test(
+          layoutXml
+        );
 
         const hexInLayout = layoutXml.match(/android:backgroundTint="(#[0-9A-Fa-f]{6,8})"/);
         const accentColor =
@@ -1123,12 +1193,21 @@ ${customLogoDataUrl}`
           const idMatch = attrs.match(/android:id="@\+id\/([^"]+)"/);
           const id = idMatch ? idMatch[1] : `widget_${autoIdx}`;
           const textMatch = attrs.match(/android:text="([^"]+)"/);
+          const textColorMatch = attrs.match(/android:textColor="([^"]+)"/);
+          const textSizeMatch = attrs.match(/android:textSize="([^"]+)"/);
           const hintMatch = attrs.match(/android:(?:hint|queryHint)="([^"]+)"/);
           const inputTypeMatch = attrs.match(/android:inputType="([^"]+)"/);
           const checkedMatch = attrs.match(/android:checked="(true|false)"/);
           const tintMatch = attrs.match(/android:backgroundTint="([^"]+)"/);
+          const isCenteredConstraint =
+            attrs.includes("layout_constraintBottom_toBottomOf=\"parent\"") &&
+            attrs.includes("layout_constraintTop_toTopOf=\"parent\"");
 
-          const text = textMatch ? resolveXmlAttr(textMatch[1]) : "";
+          const xmlResolvedText = textMatch ? resolveXmlAttr(textMatch[1]) : "";
+          const text =
+            codeTextOverrides[id] !== undefined ? codeTextOverrides[id] : xmlResolvedText;
+          const textColor = textColorMatch ? resolveXmlAttr(textColorMatch[1]) : "";
+          const textSize = textSizeMatch ? textSizeMatch[1] : "";
           const hint = hintMatch ? resolveXmlAttr(hintMatch[1]) : "";
           const inputType = inputTypeMatch ? inputTypeMatch[1] : "text";
           const checked = checkedMatch ? checkedMatch[1] === "true" : false;
@@ -1164,10 +1243,13 @@ ${customLogoDataUrl}`
             rawTag,
             kind,
             text,
+            textColor,
+            textSize,
             hint,
             inputType,
             checked,
-            bgTint
+            bgTint,
+            isCenteredConstraint
           });
         }
 
@@ -1197,12 +1279,18 @@ ${customLogoDataUrl}`
           appTitleWidget?.text || stringMap.app_name || project?.name || "Android App";
 
         const bodyWidgets = widgets.filter((w) => w.id !== "tvAppTitle");
+        const isCenteredSingleGreeting =
+          isConstraintRoot &&
+          bodyWidgets.length === 1 &&
+          bodyWidgets[0].kind === "text" &&
+          bodyWidgets[0].isCenteredConstraint;
 
         return {
           appTitle,
           accentColor,
           logoDataUrl,
-          isPureBlackScreen,
+          resolvedRootBg,
+          isCenteredSingleGreeting,
           templateId: project?.templateId || "empty-views",
           minSdk: project?.minSdk || 24,
           targetSdk: project?.targetSdk || 35,
@@ -1416,19 +1504,13 @@ jobs:
         const [isTestingApi, setIsTestingApi] = useState(false);
         const [apiStatusBanner, setApiStatusBanner] = useState(null);
         const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
-        const [aiSettings, setAiSettings] = useState(() => {
-          try {
-            const saved = localStorage.getItem("droid_studio_ai_settings_v2");
-            return saved ? { ...DEFAULT_AI_SETTINGS, ...JSON.parse(saved) } : DEFAULT_AI_SETTINGS;
-          } catch {
-            return DEFAULT_AI_SETTINGS;
-          }
-        });
 
-        // --- Projects & History Snapshots State ---
+        // --- Projects, Per-Project Chat History & Per-Project AI Settings State ---
         const [projects, setProjects] = useState([]);
         const [activeProjectId, setActiveProjectId] = useState("");
         const [projectHistoryMap, setProjectHistoryMap] = useState({});
+        const [projectChatMap, setProjectChatMap] = useState({});
+        const [projectAiSettingsMap, setProjectAiSettingsMap] = useState({});
         const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
         // --- New Project Wizard State (Android Studio Authentic + Locked com.droid.) ---
@@ -1455,19 +1537,13 @@ jobs:
         const [newFilePathInput, setNewFilePathInput] = useState("");
         const [codeSavedToast, setCodeSavedToast] = useState(false);
 
-        // --- Chat & Manual Accept/Reject Staging State ---
-        const [chatMessages, setChatMessages] = useState([
-          {
-            id: "welcome_msg",
-            role: "assistant",
-            text: "স্বাগতম Droid AI Studio-তে! আপনার নিজস্ব Gemini API Key যুক্ত করে বাংলায় চ্যাট করুন অথবা Android প্রজেক্টের নতুন ফিচার ও বাগ ফিক্স তৈরি করুন। কোড জেনারেট হলে রিভিউ করে ✅ Accept বাটনে চাপ দিলেই সরাসরি প্রজেক্ট ফাইল ও ইমুলেটর আপডেট হয়ে যাবে।",
-            timestamp: Date.now()
-          }
-        ]);
+        // --- Chat Input, Image/Screenshot Attachments & Generation State ---
         const [chatInput, setChatInput] = useState("");
+        const [chatAttachments, setChatAttachments] = useState([]);
         const [isGenerating, setIsGenerating] = useState(false);
         const abortControllerRef = useRef(null);
         const chatEndRef = useRef(null);
+        const chatImageInputRef = useRef(null);
 
         // --- Full Interactive Android Emulator State ---
         const [previewRefreshTick, setPreviewRefreshTick] = useState(0);
@@ -1509,12 +1585,126 @@ jobs:
         const [zipExportStatus, setZipExportStatus] = useState(null);
         const cloudPollRef = useRef(null);
 
-        // Persist AI Settings
+        // Active project & active file derived references
+        const activeProject = useMemo(
+          () => projects.find((p) => p.id === activeProjectId) || projects[0] || null,
+          [projects, activeProjectId]
+        );
+
+        // Per-Project Isolated AI Settings (Automatically loaded & persisted per project)
+        const aiSettings = useMemo(() => {
+          const pid = activeProject?.id;
+          if (pid && projectAiSettingsMap[pid]) {
+            return { ...DEFAULT_AI_SETTINGS, ...projectAiSettingsMap[pid] };
+          }
+          return DEFAULT_AI_SETTINGS;
+        }, [activeProject?.id, projectAiSettingsMap]);
+
+        const updateActiveProjectAiSettings = useCallback(
+          (updaterOrPartial) => {
+            const pid = activeProject?.id;
+            if (!pid) return;
+            const uid = currentUser?.uid;
+
+            setProjectAiSettingsMap((prevMap) => {
+              const currentForProj = { ...DEFAULT_AI_SETTINGS, ...(prevMap[pid] || {}) };
+              const nextForProj =
+                typeof updaterOrPartial === "function"
+                  ? updaterOrPartial(currentForProj)
+                  : { ...currentForProj, ...updaterOrPartial };
+
+              const nextMap = { ...prevMap, [pid]: nextForProj };
+              try {
+                localStorage.setItem(
+                  getUserScopedProjectAiSettingsStorageName(uid),
+                  JSON.stringify(nextMap)
+                );
+              } catch {}
+
+              if (uid && window.DroidDB) {
+                window.DroidDB.ref(`users/${uid}/projectAiSettings/${pid}`)
+                  .set(nextForProj)
+                  .catch(() => {});
+              }
+              return nextMap;
+            });
+          },
+          [activeProject?.id, currentUser?.uid]
+        );
+
+        // Per-Project Isolated Chat History (Automatically loaded & persisted per project)
+        const chatMessages = useMemo(() => {
+          const pid = activeProject?.id;
+          if (!pid) return buildInitialProjectWelcomeMessages(null);
+          const list = projectChatMap[pid];
+          if (Array.isArray(list) && list.length > 0) {
+            return list;
+          }
+          return buildInitialProjectWelcomeMessages(activeProject);
+        }, [activeProject, projectChatMap]);
+
+        const updateActiveProjectChatMessages = useCallback(
+          (updaterFn, targetProjectOverride = null) => {
+            const targetProj = targetProjectOverride || activeProject;
+            const pid = targetProj?.id;
+            if (!pid) return;
+            const uid = currentUser?.uid;
+
+            setProjectChatMap((prevMap) => {
+              const currentList =
+                Array.isArray(prevMap[pid]) && prevMap[pid].length > 0
+                  ? prevMap[pid]
+                  : buildInitialProjectWelcomeMessages(targetProj);
+              const nextList = updaterFn(currentList);
+              const nextMap = { ...prevMap, [pid]: nextList };
+
+              try {
+                localStorage.setItem(
+                  getUserScopedProjectChatsStorageName(uid),
+                  JSON.stringify(nextMap)
+                );
+              } catch {}
+
+              if (uid && window.DroidDB) {
+                const sanitizedForRtdb = nextList.slice(-40).map((msg) => {
+                  const cleanMsg = { ...msg };
+                  if (Array.isArray(cleanMsg.attachments)) {
+                    cleanMsg.attachments = cleanMsg.attachments.map((att) => ({
+                      id: att.id,
+                      name: att.name,
+                      mimeType: att.mimeType,
+                      dataUrl:
+                        att.dataUrl && att.dataUrl.length <= 250000 ? att.dataUrl : ""
+                    }));
+                  }
+                  return cleanMsg;
+                });
+                window.DroidDB.ref(`users/${uid}/projectChats/${pid}`)
+                  .set(sanitizedForRtdb)
+                  .catch(() => {});
+              }
+
+              return nextMap;
+            });
+          },
+          [activeProject, currentUser?.uid]
+        );
+
+        // Sync activeModelId automatically whenever the user switches to a different project
         useEffect(() => {
-          try {
-            localStorage.setItem("droid_studio_ai_settings_v2", JSON.stringify(aiSettings));
-          } catch {}
-        }, [aiSettings]);
+          if (!activeProject?.id) return;
+          const projSavedModel = projectAiSettingsMap[activeProject.id]?.preferredModel;
+          if (projSavedModel) {
+            if (availableModels.length === 0 || availableModels.some((m) => m.id === projSavedModel)) {
+              setActiveModelId(projSavedModel);
+            } else if (availableModels[0]?.id) {
+              setActiveModelId(availableModels[0].id);
+            }
+          } else if (availableModels[0]?.id) {
+            setActiveModelId(availableModels[0].id);
+          }
+          setChatAttachments([]);
+        }, [activeProject?.id, projectAiSettingsMap, availableModels]);
 
         // Auto-scroll chat
         useEffect(() => {
@@ -1581,6 +1771,10 @@ jobs:
               setActiveProjectId(guestDefault.id);
               setSelectedFilePath(guestDefault.files[0].path);
               setProjectHistoryMap({});
+              setProjectChatMap({
+                [guestDefault.id]: buildInitialProjectWelcomeMessages(guestDefault)
+              });
+              setProjectAiSettingsMap({});
               setAuthChecked(true);
               return;
             }
@@ -1609,14 +1803,12 @@ jobs:
               discoverEligibleGeminiModels(loadedKey)
                 .then((models) => {
                   setAvailableModels(models);
-                  const preferred =
-                    models.find((m) => m.id === aiSettings.preferredModel)?.id || models[0]?.id;
-                  if (preferred) setActiveModelId(preferred);
+                  if (models[0]?.id) setActiveModelId(models[0].id);
                 })
                 .catch(() => {});
             }
 
-            // 2. Load user's isolated projects & history
+            // 2. Load user's isolated projects, history, per-project chats & per-project AI settings
             let userProjects = [];
             try {
               const localRaw = localStorage.getItem(getUserScopedProjectsStorageName(uid));
@@ -1637,9 +1829,28 @@ jobs:
               setProjectHistoryMap({});
             }
 
+            let loadedChatMap = {};
+            try {
+              const chatRaw = localStorage.getItem(getUserScopedProjectChatsStorageName(uid));
+              if (chatRaw) loadedChatMap = JSON.parse(chatRaw) || {};
+            } catch {}
+
+            let loadedAiSettingsMap = {};
+            try {
+              const aiSetRaw = localStorage.getItem(
+                getUserScopedProjectAiSettingsStorageName(uid)
+              );
+              if (aiSetRaw) loadedAiSettingsMap = JSON.parse(aiSetRaw) || {};
+            } catch {}
+
             if (db) {
               try {
-                const projSnap = await db.ref(`users/${uid}/projects`).once("value");
+                const [projSnap, chatsSnap, aiSettingsSnap] = await Promise.all([
+                  db.ref(`users/${uid}/projects`).once("value"),
+                  db.ref(`users/${uid}/projectChats`).once("value"),
+                  db.ref(`users/${uid}/projectAiSettings`).once("value")
+                ]);
+
                 const cloudObj = projSnap.val();
                 if (cloudObj && typeof cloudObj === "object") {
                   const cloudList = Object.values(cloudObj).filter(
@@ -1654,9 +1865,28 @@ jobs:
                     );
                   }
                 }
+
+                const cloudChats = chatsSnap.val();
+                if (cloudChats && typeof cloudChats === "object") {
+                  loadedChatMap = { ...loadedChatMap, ...cloudChats };
+                  localStorage.setItem(
+                    getUserScopedProjectChatsStorageName(uid),
+                    JSON.stringify(loadedChatMap)
+                  );
+                }
+
+                const cloudAiSettings = aiSettingsSnap.val();
+                if (cloudAiSettings && typeof cloudAiSettings === "object") {
+                  loadedAiSettingsMap = { ...loadedAiSettingsMap, ...cloudAiSettings };
+                  localStorage.setItem(
+                    getUserScopedProjectAiSettingsStorageName(uid),
+                    JSON.stringify(loadedAiSettingsMap)
+                  );
+                }
+
                 setRtdbSynced(true);
               } catch (err) {
-                console.warn("RTDB projects fetch warning:", err);
+                console.warn("RTDB projects/chats fetch warning:", err);
               }
             }
 
@@ -1686,20 +1916,21 @@ jobs:
               }
             }
 
+            const firstProj = userProjects[0];
+            if (!Array.isArray(loadedChatMap[firstProj.id]) || loadedChatMap[firstProj.id].length === 0) {
+              loadedChatMap[firstProj.id] = buildInitialProjectWelcomeMessages(firstProj);
+            }
+
+            setProjectChatMap(loadedChatMap);
+            setProjectAiSettingsMap(loadedAiSettingsMap);
             setProjects(userProjects);
-            setActiveProjectId(userProjects[0].id);
-            setSelectedFilePath(userProjects[0].files[0]?.path || "");
+            setActiveProjectId(firstProj.id);
+            setSelectedFilePath(firstProj.files[0]?.path || "");
             setAuthChecked(true);
           });
 
           return () => unsubscribe();
         }, []);
-
-        // Active project & active file derived references
-        const activeProject = useMemo(
-          () => projects.find((p) => p.id === activeProjectId) || projects[0] || null,
-          [projects, activeProjectId]
-        );
 
         useEffect(() => {
           if (activeProject) {
@@ -1989,7 +2220,7 @@ jobs:
           if (!keyToTest) {
             setApiStatusBanner({
               type: "error",
-              text: "অনুগ্রহ করে আপনার নিজস্ব Google AI Studio Gemini API Key লিখুন।"
+              text: "অনুগ্রহ করে প্রথমে আপনার নিজস্ব Google AI Studio Gemini API Key লিখুন।"
             });
             return;
           }
@@ -2097,40 +2328,92 @@ jobs:
         // MANUAL ACCEPT / REJECT & APPLY FILE UPDATES
         // =========================================================================
         const applyFileUpdatesToActiveProject = useCallback(
-          (updates, sourceLabel = "AI কোড আপডেট") => {
-            if (!activeProject || !Array.isArray(updates) || updates.length === 0) return false;
+          (updates, sourceLabel = "AI কোড আপডেট", explicitTargetProjectId = null) => {
+            const targetProjId = explicitTargetProjectId || activeProject?.id;
+            if (!targetProjId || !Array.isArray(updates) || updates.length === 0) return false;
 
-            recordProjectSnapshot(activeProject, `${sourceLabel}-এর আগের অবস্থা`, "Pre-Update");
+            let didApply = false;
+            let resolvedFocusPath = "";
+            let updatedLayoutPath = "";
 
-            const nextFiles = [...activeProject.files];
-            updates.forEach((upd) => {
-              const idx = nextFiles.findIndex((f) => f.path === upd.path);
-              if (idx !== -1) {
-                nextFiles[idx] = { ...nextFiles[idx], content: upd.content };
-              } else {
-                nextFiles.push({ path: upd.path, content: upd.content });
+            setProjects((prevProjects) => {
+              const targetProj = prevProjects.find((p) => p.id === targetProjId);
+              if (!targetProj) return prevProjects;
+
+              recordProjectSnapshot(targetProj, `${sourceLabel}-এর আগের অবস্থা`, "Pre-Update");
+
+              const nextFiles = [...(targetProj.files || [])];
+              const normalizedAppliedPaths = [];
+
+              updates.forEach((upd) => {
+                const matchedPath = resolveMatchedProjectFilePath(upd.path, nextFiles);
+                if (!matchedPath) return;
+                normalizedAppliedPaths.push(matchedPath);
+
+                const idx = nextFiles.findIndex((f) => f.path === matchedPath);
+                if (idx !== -1) {
+                  nextFiles[idx] = { ...nextFiles[idx], content: upd.content };
+                } else {
+                  nextFiles.push({ path: matchedPath, content: upd.content });
+                }
+
+                if (
+                  matchedPath.includes("/res/layout/") &&
+                  matchedPath.endsWith(".xml") &&
+                  !matchedPath.split("/").pop().startsWith("item_")
+                ) {
+                  updatedLayoutPath = matchedPath;
+                }
+              });
+
+              if (normalizedAppliedPaths.length === 0) return prevProjects;
+
+              const updatedProject = {
+                ...targetProj,
+                updatedAt: Date.now(),
+                files: nextFiles
+              };
+
+              const updatedList = prevProjects.map((p) =>
+                p.id === updatedProject.id ? updatedProject : p
+              );
+
+              const uid = currentUser?.uid;
+              try {
+                localStorage.setItem(
+                  getUserScopedProjectsStorageName(uid),
+                  JSON.stringify(updatedList)
+                );
+              } catch {}
+
+              if (uid && window.DroidDB) {
+                setRtdbSynced(false);
+                window.DroidDB.ref(`users/${uid}/projects/${updatedProject.id}`)
+                  .set(updatedProject)
+                  .then(() => setRtdbSynced(true))
+                  .catch((err) => console.warn("RTDB project sync error:", err));
               }
+
+              resolvedFocusPath =
+                normalizedAppliedPaths.find((p) => p.endsWith(".kt") || p.endsWith(".java")) ||
+                normalizedAppliedPaths.find((p) => p.endsWith(".xml")) ||
+                normalizedAppliedPaths[0];
+              didApply = true;
+              return updatedList;
             });
 
-            const updatedProject = {
-              ...activeProject,
-              updatedAt: Date.now(),
-              files: nextFiles
-            };
-
-            const updatedList = projects.map((p) =>
-              p.id === updatedProject.id ? updatedProject : p
-            );
-            persistProjectList(updatedList, updatedProject);
-
-            const preferredFocus =
-              updates.find((u) => u.path.endsWith(".kt") || u.path.endsWith(".java"))?.path ||
-              updates[0].path;
-            setSelectedFilePath(preferredFocus);
-            setPreviewRefreshTick((t) => t + 1);
-            return true;
+            if (didApply) {
+              if (resolvedFocusPath) {
+                setSelectedFilePath(resolvedFocusPath);
+              }
+              if (updatedLayoutPath) {
+                setPreviewLayoutPath(updatedLayoutPath);
+              }
+              setPreviewRefreshTick((t) => t + 1);
+            }
+            return didApply;
           },
-          [activeProject, projects, persistProjectList, recordProjectSnapshot]
+          [activeProject, currentUser, recordProjectSnapshot]
         );
 
         const handleAcceptStagedUpdate = (messageId) => {
@@ -2139,19 +2422,82 @@ jobs:
 
           const ok = applyFileUpdatesToActiveProject(
             targetMsg.stagedUpdates,
-            `AI আপডেট (${targetMsg.stagedUpdates.length} ফাইল)`
+            `AI আপডেট (${targetMsg.stagedUpdates.length} ফাইল)`,
+            targetMsg.projectId || activeProject?.id
           );
           if (ok) {
-            setChatMessages((prev) =>
+            updateActiveProjectChatMessages((prev) =>
               prev.map((m) => (m.id === messageId ? { ...m, reviewStatus: "accepted" } : m))
             );
           }
         };
 
         const handleRejectStagedUpdate = (messageId) => {
-          setChatMessages((prev) =>
+          updateActiveProjectChatMessages((prev) =>
             prev.map((m) => (m.id === messageId ? { ...m, reviewStatus: "rejected" } : m))
           );
+        };
+
+        // =========================================================================
+        // CHAT IMAGE / SCREENSHOT ATTACHMENT HANDLERS
+        // =========================================================================
+        const processChatImageFiles = useCallback((fileList) => {
+          const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
+          if (files.length === 0) return;
+
+          files.slice(0, 4).forEach((file) => {
+            if (file.size > 4 * 1024 * 1024) {
+              setApiStatusBanner({
+                type: "error",
+                text: "⚠️ ছবির আকার ৪ MB-এর নিচে রাখুন।"
+              });
+              return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataUrl = String(reader.result || "");
+              const base64Data = dataUrl.includes(",") ? dataUrl.split(",")[1] : "";
+              if (!base64Data) return;
+              setChatAttachments((prev) =>
+                [
+                  ...prev,
+                  {
+                    id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    name: file.name || "screenshot.png",
+                    mimeType: file.type || "image/png",
+                    dataUrl,
+                    base64Data
+                  }
+                ].slice(0, 4)
+              );
+            };
+            reader.readAsDataURL(file);
+          });
+        }, []);
+
+        const handleChatImageFileChange = (e) => {
+          processChatImageFiles(e.target.files);
+          e.target.value = "";
+        };
+
+        const handleChatInputPaste = (e) => {
+          const items = e.clipboardData?.items;
+          if (!items) return;
+          const imageFiles = [];
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type && items[i].type.startsWith("image/")) {
+              const blob = items[i].getAsFile();
+              if (blob) imageFiles.push(blob);
+            }
+          }
+          if (imageFiles.length > 0) {
+            e.preventDefault();
+            processChatImageFiles(imageFiles);
+          }
+        };
+
+        const handleRemoveChatAttachment = (attId) => {
+          setChatAttachments((prev) => prev.filter((a) => a.id !== attId));
         };
 
         // =========================================================================
@@ -2166,10 +2512,16 @@ jobs:
         };
 
         const handleSendMessage = async (overridePromptText) => {
-          const promptText = String(
+          const rawText = String(
             overridePromptText !== undefined ? overridePromptText : chatInput
           ).trim();
-          if (!promptText || isGenerating) return;
+          const currentAttachments =
+            overridePromptText === undefined ? [...chatAttachments] : [];
+
+          if ((!rawText && currentAttachments.length === 0) || isGenerating) return;
+
+          const promptText =
+            rawText || "এই ছবি বা স্ক্রিনশটটি বিশ্লেষণ করে আমার অ্যান্ড্রয়েড অ্যাপের জন্য সমাধান দাও।";
 
           const cleanKey = geminiApiKey.trim();
           if (!cleanKey) {
@@ -2180,14 +2532,24 @@ jobs:
             return;
           }
 
+          const targetProjectAtSend = activeProject;
           const userMsg = {
             id: `usr_${Date.now()}`,
             role: "user",
             text: promptText,
+            attachments: currentAttachments.map((a) => ({
+              id: a.id,
+              name: a.name,
+              mimeType: a.mimeType,
+              dataUrl: a.dataUrl
+            })),
             timestamp: Date.now()
           };
-          setChatMessages((prev) => [...prev, userMsg]);
-          if (overridePromptText === undefined) setChatInput("");
+          updateActiveProjectChatMessages((prev) => [...prev, userMsg], targetProjectAtSend);
+          if (overridePromptText === undefined) {
+            setChatInput("");
+            setChatAttachments([]);
+          }
           setIsGenerating(true);
 
           const masterController = new AbortController();
@@ -2210,29 +2572,30 @@ jobs:
 
             const mode = aiSettings.chatMode || "auto";
             const isFastChatOnly =
-              mode === "fast-chat" ||
-              (mode === "auto" &&
-                promptText.length < 70 &&
-                !/কোড|ফাইল|ফিক্স|বাগ|তৈরি|বাটন|স্ক্রিন|লগইন|add|fix|code|create|activity|xml|kotlin|java/i.test(
-                  promptText
-                ));
+              currentAttachments.length === 0 &&
+              (mode === "fast-chat" ||
+                (mode === "auto" &&
+                  promptText.length < 70 &&
+                  !/কোড|ফাইল|ফিক্স|বাগ|তৈরি|বাটন|স্ক্রিন|লগইন|add|fix|code|create|activity|xml|kotlin|java/i.test(
+                    promptText
+                  )));
 
             let systemInstructionText = aiSettings.systemPersona;
             let composedUserPrompt = promptText;
 
-            if (!isFastChatOnly && activeProject) {
-              const projectSummaryFiles = activeProject.files
+            if (!isFastChatOnly && targetProjectAtSend) {
+              const projectSummaryFiles = targetProjectAtSend.files
                 .filter((f) => !f.assetDataUrl)
                 .slice(0, 8)
                 .map((f) => `--- FILE: ${f.path} ---\n${f.content}`)
                 .join("\n\n");
 
               systemInstructionText += `\n\nবর্তমান Android প্রজেক্টের তথ্য:
-- App Name: ${activeProject.name}
-- Package Name: ${activeProject.packageName}
-- Language: ${activeProject.language}
-- Min SDK: API ${activeProject.minSdk}, Target SDK: API ${activeProject.targetSdk}
-- Template: ${activeProject.templateId}
+- App Name: ${targetProjectAtSend.name}
+- Package Name: ${targetProjectAtSend.packageName}
+- Language: ${targetProjectAtSend.language}
+- Min SDK: API ${targetProjectAtSend.minSdk}, Target SDK: API ${targetProjectAtSend.targetSdk}
+- Template: ${targetProjectAtSend.templateId}
 
 যখনই তুমি কোনো ফাইল তৈরি বা আপডেট করবে, অবশ্যই নিচের ফরম্যাটে সম্পূর্ণ ফাইল দেবে যাতে ইউজার Accept বাটনে ক্লিক করলেই সরাসরি ফাইল আপডেট হয়:
 <<<FILE:app/src/main/path/FileName.ext>>>
@@ -2250,9 +2613,21 @@ jobs:
                 parts: [{ text: String(m.text || "").slice(0, 2000) }]
               }));
 
+            const currentUserParts = [{ text: composedUserPrompt }];
+            currentAttachments.forEach((att) => {
+              if (att.base64Data) {
+                currentUserParts.push({
+                  inline_data: {
+                    mime_type: att.mimeType || "image/png",
+                    data: att.base64Data
+                  }
+                });
+              }
+            });
+
             const contentsPayload = [
               ...recentHistory,
-              { role: "user", parts: [{ text: composedUserPrompt }] }
+              { role: "user", parts: currentUserParts }
             ];
 
             let finalResponseText = "";
@@ -2317,6 +2692,7 @@ jobs:
                 finalResponseText = textCandidate;
                 succeededModel = modelId;
                 setActiveModelId(modelId);
+                updateActiveProjectAiSettings({ preferredModel: modelId });
                 break;
               } catch (attemptErr) {
                 if (masterController.signal.aborted) {
@@ -2338,7 +2714,7 @@ jobs:
 
             const extractedUpdates = extractFileUpdatesFromAiResponse(
               finalResponseText,
-              activeProject?.files || []
+              targetProjectAtSend?.files || []
             );
 
             let reviewStatus = "none";
@@ -2346,7 +2722,8 @@ jobs:
               if (aiSettings.autoApplyCodeUpdates) {
                 applyFileUpdatesToActiveProject(
                   extractedUpdates,
-                  `Auto-Update (${succeededModel})`
+                  `Auto-Update (${succeededModel})`,
+                  targetProjectAtSend?.id
                 );
                 reviewStatus = "accepted";
               } else {
@@ -2357,6 +2734,7 @@ jobs:
             const assistantMsg = {
               id: `ai_${Date.now()}`,
               role: "assistant",
+              projectId: targetProjectAtSend?.id,
               text: finalResponseText,
               modelUsed: succeededModel,
               stagedUpdates: extractedUpdates,
@@ -2364,28 +2742,34 @@ jobs:
               timestamp: Date.now()
             };
 
-            setChatMessages((prev) => [...prev, assistantMsg]);
+            updateActiveProjectChatMessages((prev) => [...prev, assistantMsg], targetProjectAtSend);
           } catch (err) {
             if (err?.name === "AbortError") {
-              setChatMessages((prev) => [
-                ...prev,
-                {
-                  id: `stop_${Date.now()}`,
-                  role: "assistant",
-                  text: "⏹ জেনারেশন থামানো হয়েছে।",
-                  timestamp: Date.now()
-                }
-              ]);
+              updateActiveProjectChatMessages(
+                (prev) => [
+                  ...prev,
+                  {
+                    id: `stop_${Date.now()}`,
+                    role: "assistant",
+                    text: "⏹ জেনারেশন থামানো হয়েছে।",
+                    timestamp: Date.now()
+                  }
+                ],
+                targetProjectAtSend
+              );
             } else {
-              setChatMessages((prev) => [
-                ...prev,
-                {
-                  id: `err_${Date.now()}`,
-                  role: "assistant",
-                  text: `⚠️ ত্রুটি: ${err?.message || "উত্তর তৈরি করা সম্ভব হয়নি।"}`,
-                  timestamp: Date.now()
-                }
-              ]);
+              updateActiveProjectChatMessages(
+                (prev) => [
+                  ...prev,
+                  {
+                    id: `err_${Date.now()}`,
+                    role: "assistant",
+                    text: `⚠️ ত্রুটি: ${err?.message || "উত্তর তৈরি করা সম্ভব হয়নি।"}`,
+                    timestamp: Date.now()
+                  }
+                ],
+                targetProjectAtSend
+              );
             }
           } finally {
             setIsGenerating(false);
@@ -2435,6 +2819,44 @@ jobs:
           setActiveProjectId(created.id);
           setSelectedFilePath(created.files[0]?.path || "");
           recordProjectSnapshot(created, "নতুন প্রজেক্ট তৈরি", "Created");
+
+          // Automatically initialize & save isolated chat history and AI settings for the new project
+          const uid = currentUser?.uid;
+          const initialMsgs = buildInitialProjectWelcomeMessages(created);
+          const initialAiSet = {
+            ...DEFAULT_AI_SETTINGS,
+            preferredModel: activeModelId || DEFAULT_AI_SETTINGS.preferredModel
+          };
+
+          setProjectChatMap((prev) => {
+            const next = { ...prev, [created.id]: initialMsgs };
+            try {
+              localStorage.setItem(getUserScopedProjectChatsStorageName(uid), JSON.stringify(next));
+            } catch {}
+            if (uid && window.DroidDB) {
+              window.DroidDB.ref(`users/${uid}/projectChats/${created.id}`)
+                .set(initialMsgs)
+                .catch(() => {});
+            }
+            return next;
+          });
+
+          setProjectAiSettingsMap((prev) => {
+            const next = { ...prev, [created.id]: initialAiSet };
+            try {
+              localStorage.setItem(
+                getUserScopedProjectAiSettingsStorageName(uid),
+                JSON.stringify(next)
+              );
+            } catch {}
+            if (uid && window.DroidDB) {
+              window.DroidDB.ref(`users/${uid}/projectAiSettings/${created.id}`)
+                .set(initialAiSet)
+                .catch(() => {});
+            }
+            return next;
+          });
+
           setPreviewRefreshTick((t) => t + 1);
           setIsNewProjectModalOpen(false);
           setNewProjName("");
@@ -3102,7 +3524,7 @@ jobs:
                 {/* BYOK API Key & Model Strip */}
                 <section className="rounded-2xl border border-slate-800 bg-[#0d1424] p-3 shadow-lg">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-xs font-extrabold text-purple-300">
                         Gemini AI Studio
                       </span>
@@ -3111,6 +3533,11 @@ jobs:
                           ? `${availableModels.length} মডেল`
                           : "BYOK মোড"}
                       </span>
+                      {activeProject && (
+                        <span className="rounded-full border border-emerald-500/40 bg-emerald-950/80 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                          📁 {activeProject.name} • অটো-সেভড সেশন
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5">
@@ -3175,7 +3602,7 @@ jobs:
                       value={activeModelId}
                       onChange={(e) => {
                         setActiveModelId(e.target.value);
-                        setAiSettings((s) => ({ ...s, preferredModel: e.target.value }));
+                        updateActiveProjectAiSettings({ preferredModel: e.target.value });
                       }}
                       className="max-w-[190px] truncate rounded-lg border border-slate-700 bg-slate-950 px-2 py-0.5 font-mono text-[11px] text-emerald-300"
                     >
@@ -3204,9 +3631,15 @@ jobs:
                     </div>
                   )}
 
-                  {/* Collapsible AI Studio Settings Drawer */}
+                  {/* Collapsible Per-Project AI Studio Settings Drawer */}
                   {isAiSettingsOpen && (
                     <div className="mt-3 space-y-2.5 rounded-xl border border-slate-800 bg-slate-950/90 p-3 text-xs">
+                      <div className="flex items-center justify-between border-b border-slate-800/80 pb-1.5 text-[11px]">
+                        <span className="font-bold text-emerald-300">
+                          ⚙ "{activeProject?.name}" প্রজেক্টের নিজস্ব AI সেটিংস
+                        </span>
+                        <span className="text-[10px] text-slate-400">স্বয়ংক্রিয়ভাবে সংরক্ষিত</span>
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="mb-1 block text-[11px] text-slate-400">
@@ -3219,10 +3652,9 @@ jobs:
                             step="0.05"
                             value={aiSettings.temperature}
                             onChange={(e) =>
-                              setAiSettings((s) => ({
-                                ...s,
+                              updateActiveProjectAiSettings({
                                 temperature: parseFloat(e.target.value)
-                              }))
+                              })
                             }
                             className="w-full accent-purple-500"
                           />
@@ -3234,10 +3666,9 @@ jobs:
                           <select
                             value={aiSettings.maxOutputTokens}
                             onChange={(e) =>
-                              setAiSettings((s) => ({
-                                ...s,
+                              updateActiveProjectAiSettings({
                                 maxOutputTokens: Number(e.target.value)
-                              }))
+                              })
                             }
                             className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs"
                           >
@@ -3256,10 +3687,9 @@ jobs:
                           type="checkbox"
                           checked={!aiSettings.autoApplyCodeUpdates}
                           onChange={(e) =>
-                            setAiSettings((s) => ({
-                              ...s,
+                            updateActiveProjectAiSettings({
                               autoApplyCodeUpdates: !e.target.checked
-                            }))
+                            })
                           }
                           className="h-4 w-4 accent-emerald-500"
                         />
@@ -3273,7 +3703,7 @@ jobs:
                           rows={2}
                           value={aiSettings.systemPersona}
                           onChange={(e) =>
-                            setAiSettings((s) => ({ ...s, systemPersona: e.target.value }))
+                            updateActiveProjectAiSettings({ systemPersona: e.target.value })
                           }
                           className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-xs text-slate-200"
                         />
@@ -3335,6 +3765,25 @@ jobs:
                             : "border border-slate-800 bg-[#11192c] text-slate-100"
                         }`}
                       >
+                        {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            {msg.attachments.map((att) => (
+                              <a
+                                key={att.id}
+                                href={att.dataUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block overflow-hidden rounded-xl border border-white/20 bg-black/30"
+                              >
+                                <img
+                                  src={att.dataUrl}
+                                  alt={att.name || "Shared screenshot"}
+                                  className="max-h-44 max-w-[220px] object-contain"
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                         <div className="whitespace-pre-wrap break-words">{msg.text}</div>
 
                         {/* MANUAL ACCEPT / REJECT CODE REVIEW CARD */}
@@ -3441,7 +3890,7 @@ jobs:
                       <button
                         key={m.id}
                         type="button"
-                        onClick={() => setAiSettings((s) => ({ ...s, chatMode: m.id }))}
+                        onClick={() => updateActiveProjectAiSettings({ chatMode: m.id })}
                         className={`rounded-full px-2.5 py-0.5 font-bold transition ${
                           aiSettings.chatMode === m.id
                             ? "bg-emerald-600 text-white"
@@ -3453,6 +3902,31 @@ jobs:
                     ))}
                   </div>
 
+                  {chatAttachments.length > 0 && (
+                    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/90 p-2">
+                      {chatAttachments.map((att) => (
+                        <div
+                          key={att.id}
+                          className="relative overflow-hidden rounded-lg border border-purple-500/40 bg-slate-900"
+                        >
+                          <img
+                            src={att.dataUrl}
+                            alt={att.name}
+                            className="h-14 w-14 object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveChatAttachment(att.id)}
+                            title="ছবি সরান"
+                            className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold text-white shadow"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -3461,10 +3935,27 @@ jobs:
                     className="flex items-center gap-2"
                   >
                     <input
+                      ref={chatImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleChatImageFileChange}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => chatImageInputRef.current?.click()}
+                      title="ছবি বা স্ক্রিনশট যুক্ত করুন"
+                      className="shrink-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs font-bold text-sky-300 transition hover:bg-slate-800"
+                    >
+                      🖼️
+                    </button>
+                    <input
                       type="text"
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
-                      placeholder="বাংলায় চ্যাট করুন বা কোড/ফিক্স লিখুন..."
+                      onPaste={handleChatInputPaste}
+                      placeholder="বাংলায় চ্যাট করুন, স্ক্রিনশট পেস্ট করুন বা কোড/ফিক্স লিখুন..."
                       className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
                     />
                     {isGenerating ? (
@@ -3672,10 +4163,13 @@ jobs:
 
                 {/* Android Hardware Emulator Frame */}
                 <div
+                  style={
+                    livePreviewData.resolvedRootBg
+                      ? { backgroundColor: livePreviewData.resolvedRootBg }
+                      : undefined
+                  }
                   className={`relative flex min-h-[550px] w-full max-w-[365px] flex-col overflow-hidden rounded-[2.3rem] border-[6px] border-slate-800 shadow-2xl transition-colors ${
-                    livePreviewData.isPureBlackScreen
-                      ? "bg-[#000000] text-white"
-                      : previewDarkMode
+                    previewDarkMode
                       ? "bg-[#0F172A] text-slate-100"
                       : "bg-slate-50 text-slate-900"
                   }`}
@@ -3688,13 +4182,7 @@ jobs:
                   </div>
 
                   {/* Top App Bar inside Emulator (Project's Custom Logo + Project App Name) */}
-                  <div
-                    className={`flex items-center justify-between gap-2 px-4 pt-3 pb-2.5 ${
-                      livePreviewData.isPureBlackScreen
-                        ? "border-b border-zinc-900 bg-black"
-                        : "border-b border-slate-800/50"
-                    }`}
-                  >
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-800/50 px-4 pt-3 pb-2.5">
                     <div className="flex min-w-0 items-center gap-2.5">
                       {livePreviewData.logoDataUrl ? (
                         <img
@@ -3712,11 +4200,7 @@ jobs:
                       )}
                       <h2
                         className="truncate text-base font-extrabold"
-                        style={{
-                          color: livePreviewData.isPureBlackScreen
-                            ? "#FFFFFF"
-                            : livePreviewData.accentColor
-                        }}
+                        style={{ color: livePreviewData.accentColor }}
                       >
                         {livePreviewData.appTitle}
                       </h2>
@@ -3728,10 +4212,20 @@ jobs:
                   </div>
 
                   {/* Emulator Screen Canvas */}
-                  {livePreviewData.isPureBlackScreen ? (
-                    <div className="flex flex-1 flex-col items-center justify-center bg-[#000000] px-6 text-center">
-                      <p className="select-none text-xl font-bold tracking-wide text-white">
-                        Hello World!
+                  {livePreviewData.isCenteredSingleGreeting ? (
+                    <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+                      <p
+                        style={{
+                          color: livePreviewData.widgets[0]?.textColor || undefined,
+                          fontSize: livePreviewData.widgets[0]?.textSize
+                            ? livePreviewData.widgets[0].textSize.replace("sp", "px")
+                            : undefined
+                        }}
+                        className="select-none text-lg font-medium tracking-wide"
+                      >
+                        {emuDynamicOutputs[livePreviewData.widgets[0]?.id] ??
+                          livePreviewData.widgets[0]?.text ??
+                          "Hello World!"}
                       </p>
                     </div>
                   ) : (
@@ -3746,9 +4240,13 @@ jobs:
                           return (
                             <div
                               key={`${w.id}_${idx}`}
+                              style={{
+                                color: w.textColor || undefined,
+                                fontSize: w.textSize ? w.textSize.replace("sp", "px") : undefined
+                              }}
                               className={`text-xs leading-relaxed ${
                                 idx === 0
-                                  ? "font-medium opacity-80"
+                                  ? "font-medium opacity-85"
                                   : "rounded-xl border border-slate-800/70 bg-slate-900/50 px-3 py-2 font-semibold text-emerald-300"
                               }`}
                             >
@@ -4842,4 +5340,4 @@ jobs:
       root.render(<DroidAIStudioApp />);
     </script>
   </body>
-</html>
+</html>প
