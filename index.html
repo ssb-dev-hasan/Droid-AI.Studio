@@ -1083,6 +1083,75 @@ ${customLogoDataUrl}`
         return updates;
       }
 
+      function buildDraftProjectFromAiResponse(rawResponseText, fallbackPrompt = "") {
+        const text = String(rawResponseText || "").replace(/\r\n/g, "\n");
+        let meta = {};
+
+        const metaMatch = text.match(/<<<PROJECT_META>>>\s*\n([\s\S]*?)<<<END_PROJECT_META>>>/i);
+        if (metaMatch) {
+          try {
+            const cleanedJson = stripAccidentalOuterCodeFences(metaMatch[1]);
+            meta = JSON.parse(cleanedJson);
+          } catch {}
+        }
+
+        const extractedName = String(
+          meta.appName ||
+            meta.name ||
+            fallbackPrompt.replace(/[^\p{L}\p{N}\s]/gu, "").trim().slice(0, 26) ||
+            "Droid AI App"
+        ).trim();
+
+        const pkgSuffix = sanitizeAppPackageSuffix(
+          meta.packageSuffix || meta.packageName || extractedName
+        );
+        const codeLang = String(meta.language || "").toLowerCase() === "java" ? "java" : "kotlin";
+        const minSdk = Number(meta.minSdk) || 24;
+        const targetSdk = Number(meta.targetSdk) || 35;
+        const accentHex =
+          typeof meta.accentColor === "string" && /^#[0-9A-Fa-f]{6}$/.test(meta.accentColor.trim())
+            ? meta.accentColor.trim()
+            : "#10B981";
+
+        const baseProject = generateAuthenticAndroidProject({
+          name: extractedName,
+          packageSuffix: pkgSuffix,
+          templateId: "empty-views",
+          codeLang,
+          minSdk,
+          targetSdk,
+          buildConfigDsl: "kts",
+          useViewBinding: true,
+          useMaterial3: true,
+          accentHex
+        });
+
+        const aiFileUpdates = extractFileUpdatesFromAiResponse(text, baseProject.files);
+        if (aiFileUpdates.length === 0) {
+          return null;
+        }
+
+        const mergedFiles = [...baseProject.files];
+        aiFileUpdates.forEach((upd) => {
+          const resolvedPath = resolveMatchedProjectFilePath(upd.path, mergedFiles);
+          if (!resolvedPath) return;
+          const idx = mergedFiles.findIndex((f) => f.path === resolvedPath);
+          if (idx !== -1) {
+            mergedFiles[idx] = { ...mergedFiles[idx], content: upd.content };
+          } else {
+            mergedFiles.push({ path: resolvedPath, content: upd.content });
+          }
+        });
+
+        return {
+          ...baseProject,
+          id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+          updatedAt: Date.now(),
+          files: mergedFiles,
+          aiUpdatedCount: aiFileUpdates.length
+        };
+      }
+
       // =========================================================================
       // 5. FULL INTERACTIVE ANDROID EMULATOR & MULTI-LAYOUT PARSER
       // =========================================================================
@@ -1530,7 +1599,10 @@ jobs:
         const [chatInput, setChatInput] = useState("");
         const [chatAttachments, setChatAttachments] = useState([]);
         const [isGenerating, setIsGenerating] = useState(false);
+        const [isVoiceListening, setIsVoiceListening] = useState(false);
+        const [stagedDraftProject, setStagedDraftProject] = useState(null);
         const abortControllerRef = useRef(null);
+        const speechRecRef = useRef(null);
         const chatContainerRef = useRef(null);
         const chatEndRef = useRef(null);
         const chatImageInputRef = useRef(null);
@@ -1682,6 +1754,11 @@ jobs:
         useEffect(() => {
           return () => {
             if (cloudPollRef.current) clearInterval(cloudPollRef.current);
+            if (speechRecRef.current) {
+              try {
+                speechRecRef.current.stop();
+              } catch {}
+            }
           };
         }, []);
 
@@ -1915,10 +1992,12 @@ jobs:
           );
         }, [activeProject, selectedFilePath]);
 
+        const previewTargetProject = stagedDraftProject || activeProject;
+
         const livePreviewData = useMemo(() => {
           void previewRefreshTick;
-          return parseProjectForLivePreview(activeProject, previewLayoutPath);
-        }, [activeProject, previewLayoutPath, previewRefreshTick]);
+          return parseProjectForLivePreview(previewTargetProject, previewLayoutPath);
+        }, [previewTargetProject, previewLayoutPath, previewRefreshTick]);
 
         useEffect(() => {
           setPreviewLayoutPath("");
@@ -1929,6 +2008,7 @@ jobs:
           setPreviewSearchQuery("");
           setPreviewNavIndex(0);
           setChatAttachments([]);
+          setStagedDraftProject(null);
         }, [activeProjectId]);
 
         const appendEmuLog = useCallback((entryText) => {
@@ -2473,6 +2553,137 @@ jobs:
         };
 
         // =========================================================================
+        // CONVERSATIONAL AI PROJECT BUILDER (PREVIEW DRAFT -> ACCEPT TO MAIN)
+        // =========================================================================
+        const handlePreviewDraftProject = (draftProj) => {
+          if (!draftProj) return;
+          setStagedDraftProject(draftProj);
+          setPreviewLayoutPath("");
+          setEmuInputValues({});
+          setEmuToggleValues({});
+          setEmuDynamicOutputs({});
+          setPreviewRefreshTick((t) => t + 1);
+          setActiveTab("preview");
+        };
+
+        const handleAcceptDraftProjectIntoMain = (draftProj, messageId = null) => {
+          if (!draftProj) return;
+          const uid = currentUser?.uid;
+          const finalizedProject = {
+            ...draftProj,
+            updatedAt: Date.now()
+          };
+          delete finalizedProject.aiUpdatedCount;
+
+          const updatedList = [finalizedProject, ...projects];
+          persistProjectList(updatedList, finalizedProject);
+
+          // Copy current conversational session & settings to the newly accepted project
+          const carriedMessages = chatMessages.map((m) =>
+            m.id === messageId || m.draftProject?.id === draftProj.id
+              ? { ...m, draftStatus: "accepted" }
+              : m
+          );
+          const carriedSettings = {
+            ...aiSettings,
+            chatMode: "auto",
+            preferredModel: activeModelId
+          };
+
+          setProjectChatMap((prev) => {
+            const nextMap = { ...prev, [finalizedProject.id]: carriedMessages };
+            try {
+              localStorage.setItem(
+                getUserScopedProjectChatsStorageName(uid),
+                JSON.stringify(nextMap)
+              );
+            } catch {}
+            return nextMap;
+          });
+
+          setProjectAiSettingsMap((prev) => {
+            const nextMap = { ...prev, [finalizedProject.id]: carriedSettings };
+            try {
+              localStorage.setItem(
+                getUserScopedProjectAiSettingsStorageName(uid),
+                JSON.stringify(nextMap)
+              );
+            } catch {}
+            return nextMap;
+          });
+
+          if (uid && window.DroidDB) {
+            window.DroidDB.ref(`users/${uid}/projectChats/${finalizedProject.id}`)
+              .set(carriedMessages)
+              .catch(() => {});
+            window.DroidDB.ref(`users/${uid}/projectAiSettings/${finalizedProject.id}`)
+              .set(carriedSettings)
+              .catch(() => {});
+          }
+
+          setStagedDraftProject(null);
+          setActiveProjectId(finalizedProject.id);
+          setSelectedFilePath(
+            finalizedProject.files.find((f) => f.path.endsWith("activity_main.xml"))?.path ||
+              finalizedProject.files[0]?.path ||
+              ""
+          );
+          recordProjectSnapshot(finalizedProject, "AI কথোপকথনে নতুন প্রজেক্ট তৈরি", "AI-Created");
+          setPreviewRefreshTick((t) => t + 1);
+        };
+
+        const handleDiscardDraftProject = (messageId = null) => {
+          setStagedDraftProject(null);
+          if (messageId) {
+            updateActiveProjectChatMessages((prev) =>
+              prev.map((m) => (m.id === messageId ? { ...m, draftStatus: "rejected" } : m))
+            );
+          }
+          setPreviewRefreshTick((t) => t + 1);
+        };
+
+        const handleToggleVoiceConversation = () => {
+          const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (!SpeechRec) {
+            setApiStatusBanner({
+              type: "error",
+              text: "⚠️ আপনার ব্রাউজারে ভয়েস ইনপুট (SpeechRecognition) সাপোর্ট নেই। অনুগ্রহ করে টাইপ করে লিখুন।"
+            });
+            return;
+          }
+
+          if (isVoiceListening && speechRecRef.current) {
+            try {
+              speechRecRef.current.stop();
+            } catch {}
+            setIsVoiceListening(false);
+            return;
+          }
+
+          try {
+            const recognition = new SpeechRec();
+            recognition.lang = "bn-BD";
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => setIsVoiceListening(true);
+            recognition.onend = () => setIsVoiceListening(false);
+            recognition.onerror = () => setIsVoiceListening(false);
+            recognition.onresult = (event) => {
+              const spoken = event?.results?.[0]?.[0]?.transcript || "";
+              if (spoken.trim()) {
+                setChatInput((prev) => (prev ? `${prev} ${spoken.trim()}` : spoken.trim()));
+              }
+            };
+
+            speechRecRef.current = recognition;
+            recognition.start();
+          } catch {
+            setIsVoiceListening(false);
+          }
+        };
+
+        // =========================================================================
         // CHAT IMAGE & SCREENSHOT ATTACHMENT HANDLERS (FILE PICKER + PASTE)
         // =========================================================================
         const processSelectedChatImages = useCallback((fileList) => {
@@ -2606,8 +2817,16 @@ jobs:
 
             const mode = aiSettings.chatMode || "auto";
             const isAnalyzeOnlyMode = mode === "analyze";
+            const isNewAppBuilderMode =
+              mode === "new-app" ||
+              Boolean(stagedDraftProject) ||
+              (mode === "auto" &&
+                /(?:নতুন\s*(?:একটা|একটি)?\s*(?:অ্যাপ|প্রজেক্ট)|অ্যাপ\s*(?:বানাও|তৈরি\s*করো)|প্রজেক্ট\s*(?:বানাও|তৈরি\s*করো)|create\s+(?:a\s+)?new\s+(?:app|project)|build\s+(?:an?\s+)?app)/i.test(
+                  promptText
+                ));
             const isFastChatOnly =
               !isAnalyzeOnlyMode &&
+              !isNewAppBuilderMode &&
               pendingAttachments.length === 0 &&
               (mode === "fast-chat" ||
                 (mode === "auto" &&
@@ -2619,7 +2838,32 @@ jobs:
             let systemInstructionText = aiSettings.systemPersona;
             let composedUserPrompt = promptText;
 
-            if (!isFastChatOnly && activeProject) {
+            if (isNewAppBuilderMode) {
+              const contextTarget = stagedDraftProject || activeProject;
+              const draftFilesContext = contextTarget
+                ? contextTarget.files
+                    .filter((f) => !f.assetDataUrl)
+                    .map((f) => `--- FILE: ${f.path} ---\n${f.content}`)
+                    .join("\n\n")
+                : "";
+
+              systemInstructionText += `\n\nতুমি এখন "Conversational AI Android App Builder" মোডে আছো। ইউজার তোমার সাথে সরাসরি বাংলায় বা ইংরেজিতে কথা বলে একটি সম্পূর্ণ নতুন Android অ্যাপ তৈরি বা পরিমার্জন করছে।
+
+বাধ্যতামূলক আউটপুট নিয়ম:
+১. প্রথমে বাংলায় সংক্ষেপে ব্যাখ্যা করো ইউজারের কথা অনুযায়ী অ্যাপটির নাম, প্যাকেজ নেম (অবশ্যই com.droid. দিয়ে শুরু হবে) এবং কী কী ফিচার তৈরি করা হলো।
+২. এরপর অবশ্যই নিচের ফরম্যাটে প্রজেক্টের মেটাডাটা JSON দেবে:
+<<<PROJECT_META>>>
+{"appName":"অ্যাপের নাম","packageSuffix":"englishlowercaseonly","language":"kotlin","minSdk":24,"targetSdk":35,"accentColor":"#10B981"}
+<<<END_PROJECT_META>>>
+৩. এরপর অ্যাপটির সম্পূর্ণ রানযোগ্য ফাইলগুলো (অন্তত \`app/src/main/res/layout/activity_main.xml\`, \`app/src/main/java/com/droid/<packageSuffix>/MainActivity.kt\`, \`app/src/main/res/values/strings.xml\`, এবং \`app/src/main/res/values/colors.xml\`) সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত নিচের ফরম্যাটে দেবে (কোনো অংশ সংক্ষিপ্ত না করে):
+<<<FILE:app/src/main/res/layout/activity_main.xml>>>
+সম্পূর্ণ XML কোড
+<<<END_FILE>>>`;
+
+              composedUserPrompt = stagedDraftProject
+                ? `বর্তমান ড্রাফট প্রজেক্ট (${stagedDraftProject.name} - ${stagedDraftProject.packageName}) এর ফাইলসমূহ:\n${draftFilesContext}\n\nইউজারের নতুন পরিবর্তন/নির্দেশনা:\n${promptText}`
+                : `ইউজারের নতুন অ্যাপ তৈরির চাহিদা:\n${promptText}`;
+            } else if (!isFastChatOnly && activeProject) {
               const nonBinaryFiles = activeProject.files.filter((f) => !f.assetDataUrl);
               const projectFileTree = nonBinaryFiles
                 .map((f) => `• ${f.path} (${(f.content || "").split("\n").length} লাইন)`)
@@ -2776,10 +3020,18 @@ ${projectFileTree}
               );
             }
 
-            const extractedUpdates = extractFileUpdatesFromAiResponse(
-              finalResponseText,
-              activeProject?.files || []
-            );
+            const extractedUpdates = isNewAppBuilderMode
+              ? []
+              : extractFileUpdatesFromAiResponse(finalResponseText, activeProject?.files || []);
+
+            const builtDraftProject = isNewAppBuilderMode
+              ? buildDraftProjectFromAiResponse(finalResponseText, promptText)
+              : null;
+
+            if (builtDraftProject) {
+              setStagedDraftProject(builtDraftProject);
+              setPreviewRefreshTick((t) => t + 1);
+            }
 
             let reviewStatus = "none";
             if (extractedUpdates.length > 0) {
@@ -2801,6 +3053,8 @@ ${projectFileTree}
               modelUsed: succeededModel,
               stagedUpdates: extractedUpdates,
               reviewStatus,
+              draftProject: builtDraftProject,
+              draftStatus: builtDraftProject ? "pending" : "none",
               timestamp: Date.now()
             };
 
@@ -3818,6 +4072,18 @@ ${projectFileTree}
                         <button
                           type="button"
                           onClick={() => {
+                            updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "new-app" }));
+                            setChatInput(
+                              "আমার জন্য একটি নতুন Android অ্যাপ তৈরি করো যার নাম "
+                            );
+                          }}
+                          className="shrink-0 rounded-full border border-fuchsia-500/40 bg-fuchsia-950/60 px-3 py-1 text-[11px] font-semibold text-fuchsia-200 hover:bg-fuchsia-900"
+                        >
+                          ✨ কথা বলে নতুন অ্যাপ বানান
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
                             updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "analyze" }));
                             handleSendMessage(
                               `পুরো প্রজেক্টের (${activeProject?.name}) সব ফাইল, লেআউট ও লজিক গভীরভাবে বিশ্লেষণ করে বর্তমান অবস্থা, সম্ভাব্য সমস্যা এবং উন্নতির ধাপে ধাপে পরিকল্পনা দাও।`
@@ -3905,6 +4171,90 @@ ${projectFileTree}
                           </div>
                         )}
                         <div className="whitespace-pre-wrap break-words">{msg.text}</div>
+
+                        {/* CONVERSATIONAL DRAFT PROJECT REVIEW CARD (PREVIEW FIRST -> ACCEPT TO MAIN) */}
+                        {msg.draftProject && (
+                          <div className="mt-3 rounded-xl border border-fuchsia-500/45 bg-slate-950/95 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="font-extrabold text-fuchsia-300">
+                                ✨ নতুন ড্রাফট প্রজেক্ট প্রস্তুত
+                              </span>
+                              <span className="rounded bg-fuchsia-950/80 px-2 py-0.5 font-mono text-[10px] text-fuchsia-200">
+                                {msg.draftProject.packageName}
+                              </span>
+                            </div>
+
+                            <div className="mt-2 rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-2 text-[11px]">
+                              <div className="font-bold text-white">
+                                📱 অ্যাপের নাম: {msg.draftProject.name}
+                              </div>
+                              <div className="mt-0.5 font-mono text-[10px] text-emerald-300">
+                                📦 প্যাকেজ: {msg.draftProject.packageName} •{" "}
+                                {msg.draftProject.language.toUpperCase()} • API{" "}
+                                {msg.draftProject.minSdk}–{msg.draftProject.targetSdk}
+                              </div>
+                              <div className="mt-0.5 text-[10px] text-slate-400">
+                                মোট ফাইল: {msg.draftProject.files?.length || 0}টি
+                              </div>
+                            </div>
+
+                            {msg.draftStatus === "pending" && (
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePreviewDraftProject(msg.draftProject)}
+                                  className="rounded-xl bg-purple-600 px-3 py-2 text-xs font-extrabold text-white shadow hover:bg-purple-500"
+                                >
+                                  👁️ আগে প্রিভিউ দেখুন
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleAcceptDraftProjectIntoMain(msg.draftProject, msg.id)
+                                  }
+                                  className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white shadow hover:bg-emerald-500"
+                                >
+                                  ✅ Accept ও মূল প্রজেক্টে যুক্ত করুন
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDiscardDraftProject(msg.id)}
+                                  className="rounded-xl border border-rose-500/40 bg-rose-950/70 px-3 py-2 text-xs font-bold text-rose-200 hover:bg-rose-900"
+                                >
+                                  ❌ বাতিল
+                                </button>
+                              </div>
+                            )}
+
+                            {msg.draftStatus === "accepted" && (
+                              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-950/60 px-2.5 py-1.5 text-[11px] text-emerald-300">
+                                <span>✅ প্রজেক্টটি মূল প্রজেক্ট লিস্টে যুক্ত হয়েছে!</span>
+                                <div className="flex gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveTab("code")}
+                                    className="rounded bg-slate-800 px-2 py-0.5 font-bold text-white"
+                                  >
+                                    💻 কোড দেখুন
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveTab("preview")}
+                                    className="rounded bg-purple-700 px-2 py-0.5 font-bold text-white"
+                                  >
+                                    📱 প্রিভিউ দেখুন
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {msg.draftStatus === "rejected" && (
+                              <div className="mt-2 text-[11px] text-rose-300">
+                                ❌ ড্রাফট প্রজেক্টটি বাতিল করা হয়েছে।
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* MANUAL ACCEPT / REJECT CODE REVIEW CARD */}
                         {msg.stagedUpdates && msg.stagedUpdates.length > 0 && (
@@ -4007,6 +4357,7 @@ ${projectFileTree}
                     <span className="shrink-0 text-slate-400">মোড:</span>
                     {[
                       { id: "auto", label: "অটো" },
+                      { id: "new-app", label: "✨ নতুন অ্যাপ বিল্ডার" },
                       { id: "analyze", label: "🧠 বিশ্লেষণ" },
                       { id: "fast-chat", label: "চ্যাট (দ্রুত)" },
                       { id: "code-fix", label: "কোড-ফিক্স" }
@@ -4081,6 +4432,19 @@ ${projectFileTree}
                     >
                       🖼️
                     </button>
+                    <button
+                      type="button"
+                      disabled={isGenerating}
+                      onClick={handleToggleVoiceConversation}
+                      title="সরাসরি কথা বলে লিখুন (Voice)"
+                      className={`shrink-0 rounded-xl border px-2.5 py-2.5 text-xs font-bold transition disabled:opacity-50 ${
+                        isVoiceListening
+                          ? "animate-pulse border-rose-500 bg-rose-600 text-white"
+                          : "border-slate-700 bg-slate-900 text-emerald-300 hover:border-emerald-500 hover:bg-slate-800"
+                      }`}
+                    >
+                      {isVoiceListening ? "⏹️" : "🎤"}
+                    </button>
                     <input
                       type="text"
                       value={chatInput}
@@ -4088,7 +4452,11 @@ ${projectFileTree}
                       onFocus={() => scrollToChatBottom(true)}
                       onClick={() => scrollToChatBottom(true)}
                       onPaste={handleChatInputPaste}
-                      placeholder="বাংলায় চ্যাট করুন, স্ক্রিনশট পেস্ট করুন বা কোড/ফিক্স লিখুন..."
+                      placeholder={
+                        aiSettings.chatMode === "new-app"
+                          ? "কথা বলে বা লিখে নতুন অ্যাপের নাম ও ফিচার বলুন..."
+                          : "বাংলায় চ্যাট করুন, স্ক্রিনশট পেস্ট করুন বা কোড/ফিক্স লিখুন..."
+                      }
                       className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
                     />
                     {isGenerating ? (
@@ -4209,6 +4577,39 @@ ${projectFileTree}
             {/* =================================================================== */}
             {activeTab === "preview" && (
               <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center p-3">
+                {/* Draft Project Staging Banner (Preview Before Accepting Into Main Projects) */}
+                {stagedDraftProject && (
+                  <div className="mb-2.5 w-full max-w-[390px] rounded-2xl border border-fuchsia-500/50 bg-fuchsia-950/50 p-3 text-xs shadow-lg">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-extrabold text-fuchsia-200">
+                        👁️ ড্রাফট প্রজেক্ট প্রিভিউ
+                      </span>
+                      <span className="rounded bg-black/50 px-2 py-0.5 font-mono text-[10px] text-emerald-300">
+                        {stagedDraftProject.packageName}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-200">
+                      <strong>{stagedDraftProject.name}</strong> এখনো মূল প্রজেক্টে যুক্ত হয়নি। নিচে প্রিভিউ দেখে পছন্দ হলে Accept করুন:
+                    </p>
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptDraftProjectIntoMain(stagedDraftProject)}
+                        className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white shadow hover:bg-emerald-500"
+                      >
+                        ✅ Accept ও মূল প্রজেক্টে যুক্ত করুন
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDiscardDraftProject()}
+                        className="rounded-xl border border-rose-500/40 bg-rose-950/80 px-3 py-2 text-xs font-bold text-rose-200 hover:bg-rose-900"
+                      >
+                        ❌ ড্রাফট বাতিল
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Interactive Emulator Control Toolbar */}
                 <div className="mb-2.5 flex w-full max-w-[390px] flex-wrap items-center justify-between gap-1.5 rounded-2xl border border-slate-800 bg-[#0d1424] px-3 py-2 text-xs">
                   <div className="flex items-center gap-1.5">
@@ -5527,4 +5928,4 @@ ${projectFileTree}
       root.render(<DroidAIStudioApp />);
     </script>
   </body>
-</html>
+</html>প্র
