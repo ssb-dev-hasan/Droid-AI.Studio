@@ -11,7 +11,7 @@
     <link
       rel="icon"
       type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2310b981'/%3E%3Cstop offset='52%25' stop-color='%230284c7'/%3E%3Cstop offset='100%25' stop-color='%237c3aed'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Cline x1='32' y1='10' x2='32' y2='18' stroke='%23e2e8f0' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='9' r='3.5' fill='%23ef4444'/%3E%3Crect x='12' y='25' width='4' height='14' rx='2' fill='%23ef4444'/%3E%3Crect x='48' y='25' width='4' height='14' rx='2' fill='%23ef4444'/%3E%3Crect x='16' y='18' width='32' height='28' rx='7' fill='%2394a3b8' stroke='%23cbd5e1' stroke-width='1.5'/%3E%3Ccircle cx='25' cy='29' r='4' fill='%23ffffff'/%3E%3Ccircle cx='39' cy='29' r='4' fill='%23ffffff'/%3E%3Cpolygon points='32,33 29.5,37 34.5,37' fill='%23ef4444'/%3E%3Crect x='22' y='39.5' width='20' height='4.5' rx='2' fill='%231e293b'/%3E%3Cline x1='26' y1='39.5' x2='26' y2='44' stroke='%23ffffff' stroke-width='1.5'/%3E%3Cline x1='30' y1='39.5' x2='30' y2='44' stroke='%23ffffff' stroke-width='1.5'/%3E%3Cline x1='34' y1='39.5' x2='34' y2='44' stroke='%23ffffff' stroke-width='1.5'/%3E%3Cline x1='38' y1='39.5' x2='38' y2='44' stroke='%23ffffff' stroke-width='1.5'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2310b981'/%3E%3Cstop offset='52%25' stop-color='%230284c7'/%3E%3Cstop offset='100%25' stop-color='%237c3aed'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Cline x1='32' y1='10' x2='32' y2='18' stroke='%23e2e8f0' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='9' r='3.5' fill='%23ef4444'/%3E%3Crect x='12' y='25' width='4' height='14' rx='2' fill='%23ef4444'/%3E%3Crect x='48' y='25' width='4' height='14' rx='2' fill='%23ef4444'/%3E%3Crect x='16' y='18' width='32' height='28' rx='7' fill='%2394a3b8' stroke='%23cbd5e1' stroke-width='1.5'/%3E%3Ccircle cx='25' cy='29' r='4' fill='%23ffffff'/%3E%3Ccircle cx='39' cy='29' r='4' fill='%23ffffff'/%3E%3Cpolygon points='32,33 29.5,37 34.5,37' fill='%23ef4444'/%3E%3Crect x='22' y='39.5' width='20' height='4.5' rx='2' fill='%231e293b'/%3E%3Cline x1='26' y1='39.5' x2='26' y2='44' stroke='%23ffffff' stroke-width='1.5'/%3E%3Cline x1='30' y1='39.5' x2='30' y2='44' stroke='%23ffffff' stroke-width='1.5'/%3E%3Cline x1='34' y1='39.5' x2='34' y2='44' stroke='%23ffffff' stroke-width='1.5'/%3E%3Cline x1='38.5' y1='39.5' x2='38.5' y2='44' stroke='%23ffffff' stroke-width='1.5'/%3E%3C/svg%3E"
     />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -157,6 +157,17 @@
             id: `welcome_${Date.now()}`,
             role: "assistant",
             text: `স্বাগতম ${label} প্রজেক্টে! এই প্রজেক্টের জন্য আলাদা চ্যাট হিস্ট্রি ও AI সেটিংস স্বয়ংক্রিয়ভাবে সংরক্ষিত হচ্ছে। বাংলায় চ্যাট করুন, স্ক্রিনশট/ছবি শেয়ার করুন অথবা কোড আপডেট তৈরি করে ✅ Accept বাটনে চাপ দিন।`,
+            timestamp: Date.now()
+          }
+        ];
+      }
+
+      function createFreshNewAppBuilderMessages() {
+        return [
+          {
+            id: `new_app_welcome_${Date.now()}`,
+            role: "assistant",
+            text: "🎤 নতুন অ্যাপ তৈরির সেশন চালু হয়েছে (পুরনো কোনো প্রজেক্ট সিলেক্ট করা নেই)। এখন নিচের 🎤 মাইক্রোফোনে কথা বলে বা টাইপ করে বলুন আপনি কী ধরনের Android অ্যাপ বানাতে চান—তৈরি হওয়ার পর আগে প্রিভিউ দেখে যখন ✅ Accept ও প্রজেক্ট কনফার্ম করবেন, তখনই সেটি আপনার সেভড প্রজেক্টে যুক্ত হবে!",
             timestamp: Date.now()
           }
         ];
@@ -1568,6 +1579,18 @@ jobs:
         const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
         const [isDeleteProjectModalOpen, setIsDeleteProjectModalOpen] = useState(false);
 
+        // --- Conversational New App Session (Unselected Project Mode) & Rebuild Modal ---
+        const [isNewAppSessionActive, setIsNewAppSessionActive] = useState(false);
+        const [newAppSessionChat, setNewAppSessionChat] = useState(() =>
+          createFreshNewAppBuilderMessages()
+        );
+        const [newAppSessionSettings, setNewAppSessionSettings] = useState(() => ({
+          ...DEFAULT_AI_SETTINGS,
+          chatMode: "new-app"
+        }));
+        const [isRebuildModalOpen, setIsRebuildModalOpen] = useState(false);
+        const [rebuildBannerProjectId, setRebuildBannerProjectId] = useState("");
+
         // --- Per-Project Isolated Chat History Map (Auto-Saved Locally & RTDB) ---
         const [projectChatMap, setProjectChatMap] = useState({});
 
@@ -1606,6 +1629,7 @@ jobs:
         const chatContainerRef = useRef(null);
         const chatEndRef = useRef(null);
         const chatImageInputRef = useRef(null);
+        const chatInputBoxRef = useRef(null);
 
         const scrollToChatBottom = useCallback((smooth = true) => {
           requestAnimationFrame(() => {
@@ -1619,27 +1643,46 @@ jobs:
           });
         }, []);
 
-        // Active project reference (used by per-project chat & settings)
-        const activeProject = useMemo(
-          () => projects.find((p) => p.id === activeProjectId) || projects[0] || null,
-          [projects, activeProjectId]
-        );
+        // Active project reference (null when in unselected "কথা বলে নতুন অ্যাপ বানান" session)
+        const activeProject = useMemo(() => {
+          if (isNewAppSessionActive || !activeProjectId) return null;
+          return projects.find((p) => p.id === activeProjectId) || null;
+        }, [projects, activeProjectId, isNewAppSessionActive]);
 
         const currentProjectKey = activeProject?.id || activeProjectId || "default";
 
         const aiSettings = useMemo(() => {
+          if (isNewAppSessionActive) {
+            return { ...DEFAULT_AI_SETTINGS, ...newAppSessionSettings };
+          }
           const saved = projectAiSettingsMap[currentProjectKey];
           return saved ? { ...DEFAULT_AI_SETTINGS, ...saved } : DEFAULT_AI_SETTINGS;
-        }, [projectAiSettingsMap, currentProjectKey]);
+        }, [isNewAppSessionActive, newAppSessionSettings, projectAiSettingsMap, currentProjectKey]);
 
         const chatMessages = useMemo(() => {
+          if (isNewAppSessionActive) {
+            return newAppSessionChat;
+          }
           const list = projectChatMap[currentProjectKey];
           if (Array.isArray(list) && list.length > 0) return list;
           return createInitialProjectChatMessages(activeProject?.name);
-        }, [projectChatMap, currentProjectKey, activeProject?.name]);
+        }, [
+          isNewAppSessionActive,
+          newAppSessionChat,
+          projectChatMap,
+          currentProjectKey,
+          activeProject?.name
+        ]);
 
         const updateActiveProjectAiSettings = useCallback(
           (updater) => {
+            if (isNewAppSessionActive) {
+              setNewAppSessionSettings((prev) => {
+                const current = { ...DEFAULT_AI_SETTINGS, ...prev };
+                return typeof updater === "function" ? updater(current) : updater;
+              });
+              return;
+            }
             const projId = currentProjectKey;
             setProjectAiSettingsMap((prev) => {
               const current = prev[projId]
@@ -1662,11 +1705,18 @@ jobs:
               return nextMap;
             });
           },
-          [currentProjectKey, currentUser]
+          [isNewAppSessionActive, currentProjectKey, currentUser]
         );
 
         const updateActiveProjectChatMessages = useCallback(
           (updater) => {
+            if (isNewAppSessionActive) {
+              setNewAppSessionChat((prev) => {
+                const nextMessages = typeof updater === "function" ? updater(prev) : updater;
+                return nextMessages.slice(-60);
+              });
+              return;
+            }
             const projId = currentProjectKey;
             const projName = activeProject?.name;
             setProjectChatMap((prev) => {
@@ -1692,7 +1742,7 @@ jobs:
               return nextMap;
             });
           },
-          [currentProjectKey, activeProject?.name, currentUser]
+          [isNewAppSessionActive, currentProjectKey, activeProject?.name, currentUser]
         );
 
         // Sync active model dropdown when switching projects
@@ -1748,7 +1798,7 @@ jobs:
         // Auto-scroll chat
         useEffect(() => {
           scrollToChatBottom(true);
-        }, [chatMessages, isGenerating, activeProjectId, scrollToChatBottom]);
+        }, [chatMessages, isGenerating, activeProjectId, isNewAppSessionActive, scrollToChatBottom]);
 
         // Cleanup cloud polling on unmount
         useEffect(() => {
@@ -1813,6 +1863,7 @@ jobs:
               });
               setProjects([guestDefault]);
               setActiveProjectId(guestDefault.id);
+              setIsNewAppSessionActive(false);
               setSelectedFilePath(guestDefault.files[0].path);
               setProjectHistoryMap({});
               setProjectChatMap({
@@ -1972,6 +2023,7 @@ jobs:
             setProjectAiSettingsMap(loadedSettingsMap);
             setProjects(userProjects);
             setActiveProjectId(userProjects[0].id);
+            setIsNewAppSessionActive(false);
             setSelectedFilePath(userProjects[0].files[0]?.path || "");
             setAuthChecked(true);
           });
@@ -1986,11 +2038,10 @@ jobs:
         }, [activeProject]);
 
         const activeFile = useMemo(() => {
-          if (!activeProject?.files?.length) return null;
-          return (
-            activeProject.files.find((f) => f.path === selectedFilePath) || activeProject.files[0]
-          );
-        }, [activeProject, selectedFilePath]);
+          const codeTarget = activeProject || stagedDraftProject;
+          if (!codeTarget?.files?.length) return null;
+          return codeTarget.files.find((f) => f.path === selectedFilePath) || codeTarget.files[0];
+        }, [activeProject, stagedDraftProject, selectedFilePath]);
 
         const previewTargetProject = stagedDraftProject || activeProject;
 
@@ -2008,8 +2059,10 @@ jobs:
           setPreviewSearchQuery("");
           setPreviewNavIndex(0);
           setChatAttachments([]);
-          setStagedDraftProject(null);
-        }, [activeProjectId]);
+          if (!isNewAppSessionActive) {
+            setStagedDraftProject(null);
+          }
+        }, [activeProjectId, isNewAppSessionActive]);
 
         const appendEmuLog = useCallback((entryText) => {
           const timeStr = new Date().toLocaleTimeString([], {
@@ -2292,6 +2345,8 @@ jobs:
 
           setProjects(remainingProjects);
           setActiveProjectId(remainingProjects[0].id);
+          setIsNewAppSessionActive(false);
+          if (rebuildBannerProjectId === deletedId) setRebuildBannerProjectId("");
           setSelectedFilePath(remainingProjects[0].files[0]?.path || "");
           setPreviewLayoutPath("");
           setPreviewRefreshTick((t) => t + 1);
@@ -2553,8 +2608,43 @@ jobs:
         };
 
         // =========================================================================
-        // CONVERSATIONAL AI PROJECT BUILDER (PREVIEW DRAFT -> ACCEPT TO MAIN)
+        // CONVERSATIONAL AI PROJECT BUILDER (UNSELECTED NEW SESSION + REBUILD FLOW)
         // =========================================================================
+        const handleStartFreshNewAppSession = () => {
+          setIsNewAppSessionActive(true);
+          setActiveProjectId("");
+          setRebuildBannerProjectId("");
+          setStagedDraftProject(null);
+          setChatAttachments([]);
+          setChatInput("");
+          setNewAppSessionChat(createFreshNewAppBuilderMessages());
+          setNewAppSessionSettings({
+            ...DEFAULT_AI_SETTINGS,
+            preferredModel: activeModelId,
+            chatMode: "new-app"
+          });
+          setActiveTab("chat");
+          setPreviewRefreshTick((t) => t + 1);
+          scrollToChatBottom(true);
+          setTimeout(() => {
+            chatInputBoxRef.current?.focus();
+          }, 120);
+        };
+
+        const handleSelectProjectForRebuild = (proj) => {
+          if (!proj) return;
+          setIsNewAppSessionActive(false);
+          setStagedDraftProject(null);
+          setActiveProjectId(proj.id);
+          setRebuildBannerProjectId(proj.id);
+          setSelectedFilePath(proj.files?.[0]?.path || "");
+          setPreviewLayoutPath("");
+          setPreviewRefreshTick((t) => t + 1);
+          setIsRebuildModalOpen(false);
+          setActiveTab("chat");
+          scrollToChatBottom(true);
+        };
+
         const handlePreviewDraftProject = (draftProj) => {
           if (!draftProj) return;
           setStagedDraftProject(draftProj);
@@ -2578,7 +2668,7 @@ jobs:
           const updatedList = [finalizedProject, ...projects];
           persistProjectList(updatedList, finalizedProject);
 
-          // Copy current conversational session & settings to the newly accepted project
+          // Copy current conversational session & settings to the newly confirmed project
           const carriedMessages = chatMessages.map((m) =>
             m.id === messageId || m.draftProject?.id === draftProj.id
               ? { ...m, draftStatus: "accepted" }
@@ -2621,6 +2711,7 @@ jobs:
               .catch(() => {});
           }
 
+          setIsNewAppSessionActive(false);
           setStagedDraftProject(null);
           setActiveProjectId(finalizedProject.id);
           setSelectedFilePath(
@@ -2628,7 +2719,7 @@ jobs:
               finalizedProject.files[0]?.path ||
               ""
           );
-          recordProjectSnapshot(finalizedProject, "AI কথোপকথনে নতুন প্রজেক্ট তৈরি", "AI-Created");
+          recordProjectSnapshot(finalizedProject, "AI কথোপকথনে নতুন প্রজেক্ট কনফার্ম", "AI-Created");
           setPreviewRefreshTick((t) => t + 1);
         };
 
@@ -2756,7 +2847,7 @@ jobs:
           setIsGenerating(false);
         };
 
-        const handleSendMessage = async (overridePromptText) => {
+        const handleSendMessage = async (overridePromptText, overrideMode = null) => {
           const rawTypedText = String(
             overridePromptText !== undefined ? overridePromptText : chatInput
           ).trim();
@@ -2815,9 +2906,10 @@ jobs:
               new Set([activeModelId, ...candidateModels].filter(Boolean))
             );
 
-            const mode = aiSettings.chatMode || "auto";
-            const isAnalyzeOnlyMode = mode === "analyze";
+            const mode = overrideMode || aiSettings.chatMode || "auto";
+            const isAnalyzeOnlyMode = !isNewAppSessionActive && mode === "analyze";
             const isNewAppBuilderMode =
+              isNewAppSessionActive ||
               mode === "new-app" ||
               Boolean(stagedDraftProject) ||
               (mode === "auto" &&
@@ -2831,7 +2923,7 @@ jobs:
               (mode === "fast-chat" ||
                 (mode === "auto" &&
                   promptText.length < 70 &&
-                  !/কোড|ফাইল|ফিক্স|বাগ|তৈরি|বাটন|স্ক্রিন|লগইন|বিশ্লেষণ|পরিকল্পনা|add|fix|code|create|activity|xml|kotlin|java|analyze/i.test(
+                  !/কোড|ফাইল|ফিক্স|বাগ|তৈরি|বাটন|স্ক্রিন|লগইন|বিশ্লেষণ|পরিকল্পনা|রিবিল্ড|add|fix|code|create|activity|xml|kotlin|java|analyze|rebuild/i.test(
                     promptText
                   )));
 
@@ -2839,15 +2931,14 @@ jobs:
             let composedUserPrompt = promptText;
 
             if (isNewAppBuilderMode) {
-              const contextTarget = stagedDraftProject || activeProject;
-              const draftFilesContext = contextTarget
-                ? contextTarget.files
+              const draftFilesContext = stagedDraftProject
+                ? stagedDraftProject.files
                     .filter((f) => !f.assetDataUrl)
                     .map((f) => `--- FILE: ${f.path} ---\n${f.content}`)
                     .join("\n\n")
                 : "";
 
-              systemInstructionText += `\n\nতুমি এখন "Conversational AI Android App Builder" মোডে আছো। ইউজার তোমার সাথে সরাসরি বাংলায় বা ইংরেজিতে কথা বলে একটি সম্পূর্ণ নতুন Android অ্যাপ তৈরি বা পরিমার্জন করছে।
+              systemInstructionText += `\n\nতুমি এখন "Conversational AI Android App Builder" মোডে আছো (পুরনো কোনো প্রজেক্টের সাথে এটি মেশানো যাবে না)। ইউজার তোমার সাথে সরাসরি বাংলায় বা ইংরেজিতে কথা বলে একটি সম্পূর্ণ নতুন Android অ্যাপ তৈরি বা পরিমার্জন করছে।
 
 বাধ্যতামূলক আউটপুট নিয়ম:
 ১. প্রথমে বাংলায় সংক্ষেপে ব্যাখ্যা করো ইউজারের কথা অনুযায়ী অ্যাপটির নাম, প্যাকেজ নেম (অবশ্যই com.droid. দিয়ে শুরু হবে) এবং কী কী ফিচার তৈরি করা হলো।
@@ -3126,6 +3217,8 @@ ${projectFileTree}
 
           const updatedList = [created, ...projects];
           persistProjectList(updatedList, created);
+          setIsNewAppSessionActive(false);
+          setStagedDraftProject(null);
           setActiveProjectId(created.id);
           setSelectedFilePath(created.files[0]?.path || "");
 
@@ -3709,17 +3802,27 @@ ${projectFileTree}
                     {rtdbSynced ? "RTDB সিঙ্কড" : "লোকাল মোড"}
                   </span>
 
-                  {/* Project Selector */}
+                  {/* Project Selector (Shows Unselected State When Creating New App via Conversation) */}
                   <select
-                    value={activeProject?.id || ""}
+                    value={isNewAppSessionActive ? "" : activeProject?.id || ""}
                     onChange={(e) => {
                       const nextId = e.target.value;
+                      if (!nextId) return;
+                      setIsNewAppSessionActive(false);
+                      setStagedDraftProject(null);
                       setActiveProjectId(nextId);
                       const found = projects.find((p) => p.id === nextId);
                       if (found?.files?.[0]) setSelectedFilePath(found.files[0].path);
                     }}
-                    className="max-w-[140px] truncate rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-slate-100 focus:border-purple-500 focus:outline-none"
+                    className={`max-w-[175px] truncate rounded-xl border px-2.5 py-1 text-xs font-semibold focus:border-purple-500 focus:outline-none ${
+                      isNewAppSessionActive
+                        ? "border-fuchsia-500/60 bg-fuchsia-950/60 text-fuchsia-200"
+                        : "border-slate-700 bg-slate-900/90 text-slate-100"
+                    }`}
                   >
+                    {isNewAppSessionActive && (
+                      <option value="">-- কোনো প্রজেক্ট সিলেক্ট নেই --</option>
+                    )}
                     {projects.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -3735,47 +3838,55 @@ ${projectFileTree}
                     + প্রজেক্ট
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setIsHistoryModalOpen(true)}
-                    className="rounded-xl border border-amber-500/40 bg-amber-950/60 px-2.5 py-1 text-xs font-bold text-amber-300 transition hover:bg-amber-900/70"
-                  >
-                    📜 হিস্ট্রি ({activeProjectHistory.length})
-                  </button>
+                  {activeProject && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsHistoryModalOpen(true)}
+                        className="rounded-xl border border-amber-500/40 bg-amber-950/60 px-2.5 py-1 text-xs font-bold text-amber-300 transition hover:bg-amber-900/70"
+                      >
+                        📜 হিস্ট্রি ({activeProjectHistory.length})
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setIsDeleteProjectModalOpen(true)}
-                    title="বর্তমান প্রজেক্ট ডিলিট করুন"
-                    className="rounded-xl border border-rose-500/40 bg-rose-950/60 px-2.5 py-1 text-xs font-bold text-rose-300 transition hover:bg-rose-900/70"
-                  >
-                    🗑️ ডিলিট
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsDeleteProjectModalOpen(true)}
+                        title="বর্তমান প্রজেক্ট ডিলিট করুন"
+                        className="rounded-xl border border-rose-500/40 bg-rose-950/60 px-2.5 py-1 text-xs font-bold text-rose-300 transition hover:bg-rose-900/70"
+                      >
+                        🗑️ ডিলিট
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {/* Right Actions: Build APK/AAB + GitHub + User Account */}
                 <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHubActiveView("build");
-                      setIsGithubModalOpen(true);
-                    }}
-                    className="rounded-xl border border-sky-500/40 bg-sky-950/70 px-2.5 py-1 text-xs font-bold text-sky-300 transition hover:bg-sky-900"
-                  >
-                    📦 Build / APK
-                  </button>
+                  {activeProject && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHubActiveView("build");
+                          setIsGithubModalOpen(true);
+                        }}
+                        className="rounded-xl border border-sky-500/40 bg-sky-950/70 px-2.5 py-1 text-xs font-bold text-sky-300 transition hover:bg-sky-900"
+                      >
+                        📦 Build / APK
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHubActiveView("github");
-                      setIsGithubModalOpen(true);
-                    }}
-                    className="rounded-xl border border-slate-700 bg-slate-800/90 px-2.5 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
-                  >
-                    GitHub
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHubActiveView("github");
+                          setIsGithubModalOpen(true);
+                        }}
+                        className="rounded-xl border border-slate-700 bg-slate-800/90 px-2.5 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
+                      >
+                        GitHub
+                      </button>
+                    </>
+                  )}
 
                   <button
                     type="button"
@@ -3817,7 +3928,9 @@ ${projectFileTree}
                       : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  <span>💻 কোড ({activeProject?.files?.length || 0})</span>
+                  <span>
+                    💻 কোড ({(activeProject || stagedDraftProject)?.files?.length || 0})
+                  </span>
                 </button>
 
                 <button
@@ -3842,6 +3955,78 @@ ${projectFileTree}
             {/* =================================================================== */}
             {activeTab === "chat" && (
               <main className="mx-auto flex h-[calc(100dvh-112px)] min-h-[420px] w-full max-w-5xl flex-col overflow-hidden px-3 pt-2.5 pb-3">
+                {/* Primary Conversational Action Bar: Create New App vs Rebuild Saved Project */}
+                <section className="mb-2 shrink-0 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleStartFreshNewAppSession}
+                    className={`flex items-center justify-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-extrabold transition ${
+                      isNewAppSessionActive
+                        ? "border-fuchsia-400 bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-lg shadow-fuchsia-950/50"
+                        : "border-fuchsia-500/40 bg-[#121629] text-fuchsia-200 hover:border-fuchsia-400 hover:bg-fuchsia-950/50"
+                    }`}
+                  >
+                    <span>🎤 কথা বলে নতুন অ্যাপ বানান</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsRebuildModalOpen(true)}
+                    className="flex items-center justify-center gap-1.5 rounded-2xl border border-sky-500/40 bg-[#0f192b] px-3 py-2 text-xs font-extrabold text-sky-200 transition hover:border-sky-400 hover:bg-sky-950/60"
+                  >
+                    <span>🔄 কথা বলে প্রজেক্ট রিবিল্ড ({projects.length})</span>
+                  </button>
+                </section>
+
+                {/* Active Rebuild Project Action Banner */}
+                {!isNewAppSessionActive && activeProject && rebuildBannerProjectId === activeProject.id && (
+                  <section className="mb-2 shrink-0 rounded-2xl border border-sky-500/40 bg-sky-950/35 px-3 py-2 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="font-extrabold text-sky-300">
+                          🔄 রিবিল্ড মোড: {activeProject.name}
+                        </span>
+                        <span className="ml-2 font-mono text-[10px] text-emerald-300">
+                          ({activeProject.packageName})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRebuildBannerProjectId("")}
+                        className="text-[11px] text-slate-400 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "analyze" }));
+                          handleSendMessage(
+                            `পুরো প্রজেক্টের (${activeProject.name}) সব ফাইল, লেআউট ও লজিক গভীরভাবে বিশ্লেষণ করে বর্তমান অবস্থা, সম্ভাব্য সমস্যা এবং রিবিল্ড/উন্নতির ধাপে ধাপে পরিকল্পনা দাও।`,
+                            "analyze"
+                          );
+                        }}
+                        className="rounded-xl bg-amber-600 px-3 py-1.5 text-[11px] font-extrabold text-white shadow hover:bg-amber-500"
+                      >
+                        🔍 প্রজেক্ট বিশ্লেষণ করুন
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "code-fix" }));
+                          chatInputBoxRef.current?.focus();
+                          handleToggleVoiceConversation();
+                        }}
+                        className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[11px] font-extrabold text-white shadow hover:bg-emerald-500"
+                      >
+                        🎤 কথা বলে রি-আপডেট করুন
+                      </button>
+                    </div>
+                  </section>
+                )}
+
                 {/* Collapsible BYOK API Key, Model & Quick Analysis Strip */}
                 <section className="shrink-0 rounded-2xl border border-slate-800 bg-[#0d1424] p-2.5 shadow-lg">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3986,7 +4171,10 @@ ${projectFileTree}
                         <div className="mt-3 space-y-2.5 rounded-xl border border-slate-800 bg-slate-950/90 p-3 text-xs">
                           <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-[11px]">
                             <span className="font-bold text-purple-300">
-                              📁 প্রজেক্ট সেটিংস: {activeProject?.name}
+                              📁 সেশন সেটিংস:{" "}
+                              {isNewAppSessionActive
+                                ? "নতুন অ্যাপ বিল্ডার সেশন"
+                                : activeProject?.name}
                             </span>
                             <span className="text-[10px] text-emerald-400">✅ অটো-সেভ সক্রিয়</span>
                           </div>
@@ -4068,65 +4256,56 @@ ${projectFileTree}
                       )}
 
                       {/* Quick Prompt Chips */}
-                      <div className="no-scrollbar mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "new-app" }));
-                            setChatInput(
-                              "আমার জন্য একটি নতুন Android অ্যাপ তৈরি করো যার নাম "
-                            );
-                          }}
-                          className="shrink-0 rounded-full border border-fuchsia-500/40 bg-fuchsia-950/60 px-3 py-1 text-[11px] font-semibold text-fuchsia-200 hover:bg-fuchsia-900"
-                        >
-                          ✨ কথা বলে নতুন অ্যাপ বানান
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "analyze" }));
-                            handleSendMessage(
-                              `পুরো প্রজেক্টের (${activeProject?.name}) সব ফাইল, লেআউট ও লজিক গভীরভাবে বিশ্লেষণ করে বর্তমান অবস্থা, সম্ভাব্য সমস্যা এবং উন্নতির ধাপে ধাপে পরিকল্পনা দাও।`
-                            );
-                          }}
-                          className="shrink-0 rounded-full border border-amber-500/40 bg-amber-950/60 px-3 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-900"
-                        >
-                          🧠 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা দাও
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleSendMessage(
-                              `বর্তমান ফাইল (${activeFile?.path || "MainActivity"}) পরীক্ষা করে কোনো বাগ থাকলে ফিক্স করো।`
-                            )
-                          }
-                          className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-950/60 px-3 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-900"
-                        >
-                          বর্তমান ফাইল ফিক্স করো
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleSendMessage(
-                              "এই অ্যাপে একটি সুন্দর বাটন, ইনপুট ফিল্ড এবং ক্লিক করলে Toast মেসেজ দেখানোর ফিচার যোগ করো।"
-                            )
-                          }
-                          className="shrink-0 rounded-full border border-purple-500/40 bg-purple-950/60 px-3 py-1 text-[11px] font-semibold text-purple-200 hover:bg-purple-900"
-                        >
-                          নতুন ফিচার যোগ করো
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleSendMessage(
-                              `বর্তমান প্রজেক্ট (${activeProject?.name}) কী কাজ করছে সংক্ষেপে বাংলায় বুঝিয়ে বলো।`
-                            )
-                          }
-                          className="shrink-0 rounded-full border border-sky-500/40 bg-sky-950/60 px-3 py-1 text-[11px] font-semibold text-sky-200 hover:bg-sky-900"
-                        >
-                          কোড বুঝিয়ে দাও
-                        </button>
-                      </div>
+                      {!isNewAppSessionActive && activeProject && (
+                        <div className="no-scrollbar mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "analyze" }));
+                              handleSendMessage(
+                                `পুরো প্রজেক্টের (${activeProject?.name}) সব ফাইল, লেআউট ও লজিক গভীরভাবে বিশ্লেষণ করে বর্তমান অবস্থা, সম্ভাব্য সমস্যা এবং উন্নতির ধাপে ধাপে পরিকল্পনা দাও।`,
+                                "analyze"
+                              );
+                            }}
+                            className="shrink-0 rounded-full border border-amber-500/40 bg-amber-950/60 px-3 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-900"
+                          >
+                            🧠 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা দাও
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSendMessage(
+                                `বর্তমান ফাইল (${activeFile?.path || "MainActivity"}) পরীক্ষা করে কোনো বাগ থাকলে ফিক্স করো।`
+                              )
+                            }
+                            className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-950/60 px-3 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-900"
+                          >
+                            বর্তমান ফাইল ফিক্স করো
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSendMessage(
+                                "এই অ্যাপে একটি সুন্দর বাটন, ইনপুট ফিল্ড এবং ক্লিক করলে Toast মেসেজ দেখানোর ফিচার যোগ করো।"
+                              )
+                            }
+                            className="shrink-0 rounded-full border border-purple-500/40 bg-purple-950/60 px-3 py-1 text-[11px] font-semibold text-purple-200 hover:bg-purple-900"
+                          >
+                            নতুন ফিচার যোগ করো
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSendMessage(
+                                `বর্তমান প্রজেক্ট (${activeProject?.name}) কী কাজ করছে সংক্ষেপে বাংলায় বুঝিয়ে বলো।`
+                              )
+                            }
+                            className="shrink-0 rounded-full border border-sky-500/40 bg-sky-950/60 px-3 py-1 text-[11px] font-semibold text-sky-200 hover:bg-sky-900"
+                          >
+                            কোড বুঝিয়ে দাও
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </section>
@@ -4172,12 +4351,12 @@ ${projectFileTree}
                         )}
                         <div className="whitespace-pre-wrap break-words">{msg.text}</div>
 
-                        {/* CONVERSATIONAL DRAFT PROJECT REVIEW CARD (PREVIEW FIRST -> ACCEPT TO MAIN) */}
+                        {/* CONVERSATIONAL DRAFT PROJECT REVIEW CARD (PREVIEW FIRST -> CONFIRM TO SAVE) */}
                         {msg.draftProject && (
                           <div className="mt-3 rounded-xl border border-fuchsia-500/45 bg-slate-950/95 p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <span className="font-extrabold text-fuchsia-300">
-                                ✨ নতুন ড্রাফট প্রজেক্ট প্রস্তুত
+                                ✨ নতুন ড্রাফট প্রজেক্ট প্রস্তুত (এখনো সেভ করা হয়নি)
                               </span>
                               <span className="rounded bg-fuchsia-950/80 px-2 py-0.5 font-mono text-[10px] text-fuchsia-200">
                                 {msg.draftProject.packageName}
@@ -4214,7 +4393,7 @@ ${projectFileTree}
                                   }
                                   className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white shadow hover:bg-emerald-500"
                                 >
-                                  ✅ Accept ও মূল প্রজেক্টে যুক্ত করুন
+                                  ✅ Accept ও প্রজেক্ট কনফার্ম করুন
                                 </button>
                                 <button
                                   type="button"
@@ -4228,7 +4407,7 @@ ${projectFileTree}
 
                             {msg.draftStatus === "accepted" && (
                               <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-950/60 px-2.5 py-1.5 text-[11px] text-emerald-300">
-                                <span>✅ প্রজেক্টটি মূল প্রজেক্ট লিস্টে যুক্ত হয়েছে!</span>
+                                <span>✅ প্রজেক্টটি কনফার্ম হয়ে সেভড প্রজেক্টে যুক্ত হয়েছে!</span>
                                 <div className="flex gap-1.5">
                                   <button
                                     type="button"
@@ -4365,9 +4544,13 @@ ${projectFileTree}
                       <button
                         key={m.id}
                         type="button"
-                        onClick={() =>
-                          updateActiveProjectAiSettings((s) => ({ ...s, chatMode: m.id }))
-                        }
+                        onClick={() => {
+                          if (m.id === "new-app" && !isNewAppSessionActive) {
+                            handleStartFreshNewAppSession();
+                          } else {
+                            updateActiveProjectAiSettings((s) => ({ ...s, chatMode: m.id }));
+                          }
+                        }}
                         className={`shrink-0 rounded-full px-2.5 py-0.5 font-bold transition ${
                           aiSettings.chatMode === m.id
                             ? "bg-emerald-600 text-white"
@@ -4446,6 +4629,7 @@ ${projectFileTree}
                       {isVoiceListening ? "⏹️" : "🎤"}
                     </button>
                     <input
+                      ref={chatInputBoxRef}
                       type="text"
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
@@ -4453,7 +4637,7 @@ ${projectFileTree}
                       onClick={() => scrollToChatBottom(true)}
                       onPaste={handleChatInputPaste}
                       placeholder={
-                        aiSettings.chatMode === "new-app"
+                        isNewAppSessionActive || aiSettings.chatMode === "new-app"
                           ? "কথা বলে বা লিখে নতুন অ্যাপের নাম ও ফিচার বলুন..."
                           : "বাংলায় চ্যাট করুন, স্ক্রিনশট পেস্ট করুন বা কোড/ফিক্স লিখুন..."
                       }
@@ -4483,62 +4667,76 @@ ${projectFileTree}
             {/* =================================================================== */}
             {/* TAB 2: MULTI-FILE ANDROID CODE EDITOR                               */}
             {/* =================================================================== */}
-            {activeTab === "code" && activeProject && (
+            {activeTab === "code" && (activeProject || stagedDraftProject) && (
               <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-2.5 p-3">
                 {/* Project Metadata Strip */}
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-800 bg-[#0d1424] px-3 py-2 text-[11px]">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono font-bold text-emerald-300">
-                      {activeProject.packageName}
-                    </span>
-                    <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-300">
-                      {activeProject.language.toUpperCase()}
-                    </span>
-                    <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-300">
-                      Min SDK {activeProject.minSdk} • Target SDK {activeProject.targetSdk}
-                    </span>
-                  </div>
+                {(() => {
+                  const codeTarget = activeProject || stagedDraftProject;
+                  return (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-800 bg-[#0d1424] px-3 py-2 text-[11px]">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono font-bold text-emerald-300">
+                            {codeTarget.packageName}
+                          </span>
+                          <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-300">
+                            {codeTarget.language.toUpperCase()}
+                          </span>
+                          <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-300">
+                            Min SDK {codeTarget.minSdk} • Target SDK {codeTarget.targetSdk}
+                          </span>
+                          {!activeProject && stagedDraftProject && (
+                            <span className="rounded bg-fuchsia-950 px-2 py-0.5 font-bold text-fuchsia-300">
+                              ড্রাফট প্রজেক্ট (কনফার্ম বাকি)
+                            </span>
+                          )}
+                        </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setIsNewFileModalOpen(true)}
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 font-semibold text-slate-200 hover:bg-slate-700"
-                    >
-                      + ফাইল
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleManualSaveCode}
-                      className="rounded-lg bg-emerald-600 px-3 py-1 font-bold text-white hover:bg-emerald-500"
-                    >
-                      {codeSavedToast ? "✅ সেভ হয়েছে" : "💾 সেভ ও সিঙ্ক"}
-                    </button>
-                  </div>
-                </div>
+                        {activeProject && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setIsNewFileModalOpen(true)}
+                              className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 font-semibold text-slate-200 hover:bg-slate-700"
+                            >
+                              + ফাইল
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleManualSaveCode}
+                              className="rounded-lg bg-emerald-600 px-3 py-1 font-bold text-white hover:bg-emerald-500"
+                            >
+                              {codeSavedToast ? "✅ সেভ হয়েছে" : "💾 সেভ ও সিঙ্ক"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
 
-                {/* Horizontal File Tabs */}
-                <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1">
-                  {activeProject.files.map((f) => {
-                    const shortName = f.path.split("/").pop();
-                    const isSelected = activeFile?.path === f.path;
-                    return (
-                      <button
-                        key={f.path}
-                        type="button"
-                        onClick={() => setSelectedFilePath(f.path)}
-                        title={f.path}
-                        className={`shrink-0 rounded-xl border px-3 py-1.5 font-mono text-xs transition ${
-                          isSelected
-                            ? "border-purple-500 bg-purple-950/80 font-bold text-white"
-                            : "border-slate-800 bg-slate-900/80 text-slate-400 hover:text-slate-200"
-                        }`}
-                      >
-                        {shortName}
-                      </button>
-                    );
-                  })}
-                </div>
+                      {/* Horizontal File Tabs */}
+                      <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1">
+                        {codeTarget.files.map((f) => {
+                          const shortName = f.path.split("/").pop();
+                          const isSelected = activeFile?.path === f.path;
+                          return (
+                            <button
+                              key={f.path}
+                              type="button"
+                              onClick={() => setSelectedFilePath(f.path)}
+                              title={f.path}
+                              className={`shrink-0 rounded-xl border px-3 py-1.5 font-mono text-xs transition ${
+                                isSelected
+                                  ? "border-purple-500 bg-purple-950/80 font-bold text-white"
+                                  : "border-slate-800 bg-slate-900/80 text-slate-400 hover:text-slate-200"
+                              }`}
+                            >
+                              {shortName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {/* Active File Editor */}
                 {activeFile && (
@@ -4562,6 +4760,7 @@ ${projectFileTree}
                     ) : (
                       <textarea
                         value={activeFile.content}
+                        readOnly={!activeProject}
                         onChange={(e) => handleUpdateActiveFileContent(e.target.value)}
                         spellCheck={false}
                         className="code-editor custom-scrollbar min-h-[420px] w-full flex-1 resize-none bg-transparent p-3.5 text-xs text-slate-100 focus:outline-none"
@@ -4577,7 +4776,7 @@ ${projectFileTree}
             {/* =================================================================== */}
             {activeTab === "preview" && (
               <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center p-3">
-                {/* Draft Project Staging Banner (Preview Before Accepting Into Main Projects) */}
+                {/* Draft Project Staging Banner (Preview Before Confirming Into Saved Projects) */}
                 {stagedDraftProject && (
                   <div className="mb-2.5 w-full max-w-[390px] rounded-2xl border border-fuchsia-500/50 bg-fuchsia-950/50 p-3 text-xs shadow-lg">
                     <div className="flex items-center justify-between gap-2">
@@ -4589,7 +4788,7 @@ ${projectFileTree}
                       </span>
                     </div>
                     <p className="mt-1 text-[11px] text-slate-200">
-                      <strong>{stagedDraftProject.name}</strong> এখনো মূল প্রজেক্টে যুক্ত হয়নি। নিচে প্রিভিউ দেখে পছন্দ হলে Accept করুন:
+                      <strong>{stagedDraftProject.name}</strong> এখনো সেভ প্রজেক্টে যুক্ত হয়নি। নিচে প্রিভিউ দেখে পছন্দ হলে কনফার্ম করুন:
                     </p>
                     <div className="mt-2.5 flex items-center gap-2">
                       <button
@@ -4597,7 +4796,7 @@ ${projectFileTree}
                         onClick={() => handleAcceptDraftProjectIntoMain(stagedDraftProject)}
                         className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white shadow hover:bg-emerald-500"
                       >
-                        ✅ Accept ও মূল প্রজেক্টে যুক্ত করুন
+                        ✅ Accept ও প্রজেক্ট কনফার্ম করুন
                       </button>
                       <button
                         type="button"
@@ -5003,6 +5202,75 @@ ${projectFileTree}
                   </div>
                 </div>
               </main>
+            )}
+
+            {/* =================================================================== */}
+            {/* MODAL 0: REBUILD SAVED PROJECT SELECTOR MODAL                       */}
+            {/* =================================================================== */}
+            {isRebuildModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm">
+                <div className="w-full max-w-md rounded-2xl border border-sky-500/40 bg-[#0d1424] p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between border-b border-slate-800 pb-2.5">
+                    <div>
+                      <h2 className="text-sm font-extrabold text-sky-300">
+                        🔄 কথা বলে প্রজেক্ট রিবিল্ড করুন
+                      </h2>
+                      <p className="text-[11px] text-slate-400">
+                        নিচের সেভ করা প্রজেক্ট থেকে যেটি বিশ্লেষণ বা রি-আপডেট করতে চান সেটি বাছুন:
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsRebuildModalOpen(false)}
+                      className="rounded-lg bg-slate-800 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-700"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="custom-scrollbar max-h-80 space-y-2 overflow-y-auto">
+                    {projects.map((proj) => {
+                      const isCurrent = !isNewAppSessionActive && activeProject?.id === proj.id;
+                      return (
+                        <button
+                          key={proj.id}
+                          type="button"
+                          onClick={() => handleSelectProjectForRebuild(proj)}
+                          className={`flex w-full items-center justify-between gap-2.5 rounded-xl border p-3 text-left transition ${
+                            isCurrent
+                              ? "border-sky-400 bg-sky-950/60 shadow"
+                              : "border-slate-800 bg-slate-950/90 hover:border-sky-500/50 hover:bg-slate-900"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-xs font-extrabold text-white">
+                                📱 {proj.name}
+                              </span>
+                              {isCurrent && (
+                                <span className="rounded bg-sky-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                  সক্রিয়
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1 font-mono text-[11px] text-emerald-300">
+                              {proj.packageName}
+                            </div>
+                            <div className="mt-0.5 text-[10px] text-slate-400">
+                              {proj.language?.toUpperCase()} • API {proj.minSdk}–{proj.targetSdk} •{" "}
+                              {proj.files?.length || 0}টি ফাইল
+                            </div>
+                          </div>
+
+                          <span className="shrink-0 rounded-xl bg-sky-600 px-2.5 py-1.5 text-[11px] font-bold text-white">
+                            রিবিল্ড ➔
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* =================================================================== */}
@@ -5573,7 +5841,7 @@ ${projectFileTree}
             {/* =================================================================== */}
             {/* MODAL 5: BUILD APK / AAB, ZIP EXPORT & GITHUB PUSH CENTER           */}
             {/* =================================================================== */}
-            {isGithubModalOpen && (
+            {isGithubModalOpen && activeProject && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm">
                 <div className="custom-scrollbar max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-[#0d1424] p-4 shadow-2xl">
                   <div className="mb-3 flex items-center justify-between border-b border-slate-800 pb-2.5">
@@ -5928,4 +6196,4 @@ ${projectFileTree}
       root.render(<DroidAIStudioApp />);
     </script>
   </body>
-</html>প্র
+</html>
