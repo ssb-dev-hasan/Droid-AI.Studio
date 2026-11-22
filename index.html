@@ -156,7 +156,7 @@
           {
             id: `welcome_${Date.now()}`,
             role: "assistant",
-            text: `স্বাগতম ${label} প্রজেক্টে! এই প্রজেক্টটি শূন্য (০টি ফাইল) থেকে শুরু হয়েছে—কোনো ডিফল্ট কোড, টেমপ্লেট বা কালার আগে থেকে সেট করা নেই। বাংলায় চ্যাট করুন, 🎤 কথা বলুন বা স্ক্রিনশট শেয়ার করে আপনার পূর্ণাঙ্গ UI/UX ডিজাইন ও কার্যকর লজিক তৈরি করুন। সম্পূর্ণ প্রজেক্ট তৈরি ও Accept করার পরই প্রিভিউ আনলক হবে।`,
+            text: `স্বাগতম ${label} প্রজেক্টে! এই প্রজেক্টটি শূন্য (০টি ফাইল) থেকে শুরু হয়েছে—কোনো ডিফল্ট কোড, টেমপ্লেট বা কালার আগে থেকে সেট করা নেই। বাংলায় চ্যাট করুন, 🎤 কথা বলুন বা স্ক্রিনশট শেয়ার করে আপনার পূর্ণাঙ্গ UI/UX ডিজাইন ও কার্যকর লজিক তৈরি করুন। সম্পূর্ণ UI/UX ও লজিক তৈরি হলে স্বয়ংক্রিয়ভাবে প্রিভিউ দেখাবে।`,
             timestamp: Date.now()
           }
         ];
@@ -167,7 +167,7 @@
           {
             id: `new_app_welcome_${Date.now()}`,
             role: "assistant",
-            text: "🎤 নতুন অ্যাপ তৈরির লকড সেশন চালু হয়েছে (পুরনো কোনো প্রজেক্ট সিলেক্ট করা নেই)। এখন নিচের 🎤 মাইক্রোফোনে কথা বলে বা টাইপ করে বলুন আপনি কী ধরনের Android অ্যাপ বানাতে চান। সম্পূর্ণ UI/UX ডিজাইন ও লজিক তৈরি এবং ✅ Accept করার পরেই প্রিভিউ আনলক হবে, এবং আপনি 🚪 Exit Project না করা পর্যন্ত AI কেবল এই প্রজেক্টের ওপরই কাজ করবে!",
+            text: "🎤 নতুন অ্যাপ তৈরির লকড সেশন চালু হয়েছে (পুরনো কোনো প্রজেক্ট সিলেক্ট করা নেই)। এখন নিচের 🎤 মাইক্রোফোনে কথা বলে বা টাইপ করে বলুন আপনি কী ধরনের Android অ্যাপ বানাতে চান। সম্পূর্ণ UI/UX ডিজাইন ও লজিক তৈরি শেষ হলেই স্বয়ংক্রিয়ভাবে প্রিভিউ দেখাবে, এবং আপনি 🚪 Exit Project না করা পর্যন্ত AI কেবল এই প্রজেক্টের ওপরই কাজ করবে!",
             timestamp: Date.now()
           }
         ];
@@ -195,16 +195,24 @@
       }
 
       // =========================================================================
-      // 2. GEMINI REST API (v1beta) MODEL DISCOVERY & FILTERING
+      // 2. GEMINI REST API (v1beta) MODEL DISCOVERY, RETRY & MULTI-MODEL FALLBACK
       // =========================================================================
       const PREFERRED_MODEL_ORDER = [
-        "gemini-3.8-flash",
-        "gemini-3-flash-preview",
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
         "gemini-2.5-pro",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
         "gemini-flash-latest",
         "gemini-pro-latest"
+      ];
+
+      const FALLBACK_MODELS_CHAIN = [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-2.5-pro"
       ];
 
       const EXCLUDED_MODEL_KEYWORDS = [
@@ -250,6 +258,43 @@
           if (idxB !== -1) return 1;
           return a.id.localeCompare(b.id);
         });
+      }
+
+      function sleepWithAbort(ms, signal) {
+        return new Promise((resolve, reject) => {
+          if (signal?.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          const t = setTimeout(resolve, ms);
+          if (signal) {
+            signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(t);
+                reject(new DOMException("Aborted", "AbortError"));
+              },
+              { once: true }
+            );
+          }
+        });
+      }
+
+      function isTransientGeminiError(status, message) {
+        const msg = String(message || "").toLowerCase();
+        if ([429, 500, 502, 503, 504].includes(Number(status))) return true;
+        if (
+          msg.includes("high demand") ||
+          msg.includes("overloaded") ||
+          msg.includes("unavailable") ||
+          msg.includes("rate limit") ||
+          msg.includes("quota") ||
+          msg.includes("temporarily") ||
+          msg.includes("timeout")
+        ) {
+          return true;
+        }
+        return false;
       }
 
       async function discoverEligibleGeminiModels(apiKey, externalSignal) {
@@ -306,6 +351,103 @@
         } finally {
           clearTimeout(timeoutId);
         }
+      }
+
+      async function generateGeminiWithResilientFallback({
+        apiKey,
+        primaryModel,
+        availableModels,
+        requestBody,
+        signal,
+        onStatusUpdate
+      }) {
+        const cleanKey = String(apiKey || "").trim();
+        const discoveredIds = Array.isArray(availableModels)
+          ? availableModels.map((m) => m.id)
+          : [];
+        const candidateModels = Array.from(
+          new Set(
+            [primaryModel, ...discoveredIds, ...FALLBACK_MODELS_CHAIN].filter(Boolean)
+          )
+        );
+
+        let lastError = null;
+
+        for (let mIdx = 0; mIdx < candidateModels.length; mIdx++) {
+          const modelId = candidateModels[mIdx];
+          const maxAttemptsForModel = 2;
+
+          for (let attempt = 1; attempt <= maxAttemptsForModel; attempt++) {
+            if (signal?.aborted) {
+              throw new DOMException("Aborted", "AbortError");
+            }
+
+            try {
+              if (mIdx > 0 || attempt > 1) {
+                onStatusUpdate?.(
+                  `সার্ভারে চাপ থাকায় বিকল্প মডেল (${modelId}) দিয়ে পুনরায় সংযোগ করা হচ্ছে (চেষ্টা ${attempt})...`
+                );
+              }
+
+              const res = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+                  modelId
+                )}:generateContent?key=${encodeURIComponent(cleanKey)}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  signal,
+                  body: JSON.stringify(requestBody)
+                }
+              );
+
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                const errMsg = data?.error?.message || `HTTP ${res.status}`;
+                const transient = isTransientGeminiError(res.status, errMsg);
+                lastError = new Error(errMsg);
+
+                // If invalid API key or permission denied, do not retry endlessly
+                if (res.status === 400 || res.status === 401 || res.status === 403) {
+                  throw lastError;
+                }
+
+                if (transient && attempt < maxAttemptsForModel) {
+                  const backoffMs = 900 * Math.pow(2, attempt - 1);
+                  await sleepWithAbort(backoffMs, signal);
+                  continue;
+                }
+                // Move to next fallback model
+                break;
+              }
+
+              const parts = data?.candidates?.[0]?.content?.parts || [];
+              const rawReply = parts
+                .map((p) => p.text || "")
+                .join("\n")
+                .trim();
+
+              if (!rawReply) {
+                lastError = new Error("AI থেকে কোনো উত্তর পাওয়া যায়নি।");
+                break;
+              }
+
+              return { rawReply, usedModel: modelId };
+            } catch (err) {
+              if (err?.name === "AbortError") throw err;
+              lastError = err;
+              const transient = isTransientGeminiError(0, err?.message);
+              if (!transient) {
+                throw err;
+              }
+              if (attempt < maxAttemptsForModel) {
+                await sleepWithAbort(900 * attempt, signal);
+              }
+            }
+          }
+        }
+
+        throw lastError || new Error("Gemini API-এর সাথে সংযোগ করা সম্ভব হয়নি।");
       }
 
       // =========================================================================
@@ -438,13 +580,13 @@
           (f) => !f.assetDataUrl && !f.path.toLowerCase().endsWith(".png")
         );
         if (codeFiles.length === 0) return false;
-        const hasLayout = codeFiles.some((f) =>
-          f.path.toLowerCase().includes("res/layout/") || f.path.toLowerCase().endsWith(".xml")
+        const hasLayout = codeFiles.some(
+          (f) =>
+            f.path.toLowerCase().includes("res/layout/") || f.path.toLowerCase().endsWith(".xml")
         );
         const hasLogic = codeFiles.some(
           (f) => f.path.toLowerCase().endsWith(".kt") || f.path.toLowerCase().endsWith(".java")
         );
-        // Either full layout+logic pair OR updating an already-complete project with valid code
         return (hasLayout && hasLogic) || codeFiles.length >= 1;
       }
 
@@ -535,7 +677,7 @@
       }
 
       // =========================================================================
-      // 5. LIVE ANDROID EMULATOR PARSER (SUPPORTS CARDS, GRIDS, INPUTS & LOGIC)
+      // 5. LIVE ANDROID EMULATOR PARSER (CARDS, GRIDS, INPUTS, BUTTONS & LOGIC)
       // =========================================================================
       function normalizeAndroidHexColor(rawColor, fallback) {
         const val = String(rawColor || "").trim();
@@ -545,6 +687,16 @@
         }
         if (val.length === 7 || val.length === 4) return val;
         return fallback;
+      }
+
+      function cleanHumanLabelFromId(rawId) {
+        const clean = String(rawId || "")
+          .replace(/^(et|tv|btn|iv|ll|rl|cv|input|edit|text|lbl|txt)_?/i, "")
+          .replace(/([a-z])([A-Z])/g, "$1 $2")
+          .replace(/[_-]+/g, " ")
+          .trim();
+        if (!clean) return "মান লিখুন";
+        return clean.charAt(0).toUpperCase() + clean.slice(1);
       }
 
       function parseProjectForLivePreview(project) {
@@ -571,8 +723,9 @@
 
         if (!project || codeFiles.length === 0) return defaultResult;
 
-        const layoutFiles = codeFiles.filter((f) =>
-          f.path.toLowerCase().includes("res/layout/") || f.path.toLowerCase().endsWith(".xml")
+        const layoutFiles = codeFiles.filter(
+          (f) =>
+            f.path.toLowerCase().includes("res/layout/") || f.path.toLowerCase().endsWith(".xml")
         );
         const layoutFile =
           layoutFiles.find((f) => f.path.toLowerCase().includes("activity_main")) ||
@@ -682,10 +835,14 @@
             if (tagName.includes("RecyclerView")) {
               defaultResult.hasRecycler = true;
             } else if (tagName.includes("EditText") || tagName.includes("TextInputEditText")) {
+              const safeHint =
+                hint && !/^[a-z]+[A-Z][a-zA-Z0-9]*$/.test(hint)
+                  ? hint
+                  : text || cleanHumanLabelFromId(id);
               defaultResult.widgets.push({
                 kind: "input",
                 id,
-                hint: hint || text || "মান লিখুন...",
+                hint: safeHint,
                 text,
                 inputType
               });
@@ -693,7 +850,7 @@
               defaultResult.widgets.push({
                 kind: "button",
                 id,
-                text: text || "Action",
+                text: text || cleanHumanLabelFromId(id),
                 bg: bg || defaultResult.accentColor,
                 textColor: textColor || "#ffffff"
               });
@@ -705,7 +862,7 @@
               defaultResult.widgets.push({
                 kind: "switch",
                 id,
-                text: text || id
+                text: text || cleanHumanLabelFromId(id)
               });
             } else if (tagName.includes("ProgressBar")) {
               defaultResult.widgets.push({
@@ -741,7 +898,7 @@
 
         const itemMatches = [
           ...combinedLogic.matchAll(
-            /(?:AppItem|NewsArticle|Item|Product|MenuModel|OptionItem)\(\s*"([^"]+)"\s*,\s*"([^"]+)"(?:\s*,\s*"([^"]+)")?/g
+            /(?:AppItem|NewsArticle|Item|Product|MenuModel|OptionItem|CategoryItem)\(\s*"([^"]+)"\s*,\s*"([^"]+)"(?:\s*,\s*"([^"]+)")?/g
           )
         ];
         if (itemMatches.length > 0) {
@@ -892,16 +1049,16 @@ jobs:
       }
 
       // =========================================================================
-      // 7. DEFAULT AI SETTINGS & STRICT RAW-PROJECT SYSTEM PROMPT
+      // 7. DEFAULT AI SETTINGS & STRICT CLEAN-SLATE SYSTEM PROMPT
       // =========================================================================
       const DEFAULT_AI_SETTINGS = {
-        preferredModel: "gemini-3.8-flash",
+        preferredModel: "gemini-2.5-flash",
         temperature: 0.15,
         maxOutputTokens: 8192,
         chatMode: "auto",
         autoApplyCodeUpdates: false,
         systemPersona:
-          "তুমি Droid AI Studio-এর একজন সিনিয়র Android (Kotlin/Java/XML/Gradle) আর্কিটেক্ট ও UI/UX ডিজাইনার। সবসময় পরিষ্কার বাংলায় উত্তর দাও। মনে রাখবে প্রতিটি নতুন প্রজেক্ট ০টি ফাইল (সম্পূর্ণ ফাঁকা/raw) দিয়ে শুরু হয়—আগে থেকে কোনো ডিফল্ট ফাইল, ডিফল্ট কালার, Material 3 প্রিসেট বা ডিফল্ট লোগো কোড তৈরি থাকে না। সম্পূর্ণ UI/UX ডিজাইন, কালার প্যালেট, কার্ড/গ্রিড লেআউট, স্পেসিং, টাইপোগ্রাফি এবং পূর্ণাঙ্গ কার্যকর লজিক ১০০% কোডিংয়ের মাধ্যমেই তৈরি করবে। ইউজার-ফেসিং টেক্সট, বাটন ও ইনপুট হিন্টে কখনোই কাঁচা ভেরিয়েবল নাম (যেমন inputAmount, InputRate) ব্যবহার করবে না—সবসময় স্বাভাবিক ও বোধগম্য লেবেল দেবে এবং কোনো TODO বা সংক্ষেপণ ছাড়া সম্পূর্ণ রানযোগ্য কোড <<<FILE:পাথ>>> এবং <<<END_FILE>>> ব্লকের ভেতরে দেবে।"
+          "তুমি Droid AI Studio-এর একজন সিনিয়র Android (Kotlin/Java/XML/Gradle) আর্কিটেক্ট ও প্রিমিয়াম UI/UX ডিজাইনার। সবসময় পরিষ্কার বাংলায় উত্তর দাও। মনে রাখবে প্রতিটি নতুন প্রজেক্ট ০টি ফাইল (সম্পূর্ণ ফাঁকা/raw) দিয়ে শুরু হয়—আগে থেকে কোনো ডিফল্ট ফাইল, ডিফল্ট কালার, Material 3 প্রিসেট বা ডিফল্ট লোগো কোড তৈরি থাকে না। সম্পূর্ণ UI/UX ডিজাইন, কালার প্যালেট, কার্ড/গ্রিড লেআউট, স্পেসিং, টাইপোগ্রাফি এবং পূর্ণাঙ্গ কার্যকর লজিক ১০০% কোডিংয়ের মাধ্যমেই তৈরি করবে। ইউজার-ফেসিং টেক্সট, বাটন ও ইনপুট হিন্টে কখনোই কাঁচা ভেরিয়েবল নাম (যেমন inputAmount, InputRate, inputTime) ব্যবহার করবে না—সবসময় স্বাভাবিক ও বোধগম্য লেবেল দেবে এবং কোনো TODO বা সংক্ষেপণ ছাড়া সম্পূর্ণ রানযোগ্য কোড <<<FILE:পাথ>>> এবং <<<END_FILE>>> ব্লকের ভেতরে দেবে।"
       };
 
       // =========================================================================
@@ -919,19 +1076,41 @@ jobs:
             aria-label="Droid AI Studio Robot Logo"
           >
             <defs>
-              <linearGradient id="droidBadgeBg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+              <linearGradient
+                id="droidBadgeBg"
+                x1="0"
+                y1="0"
+                x2="64"
+                y2="64"
+                gradientUnits="userSpaceOnUse"
+              >
                 <stop offset="0%" stopColor="#10b981" />
                 <stop offset="52%" stopColor="#0284c7" />
                 <stop offset="100%" stopColor="#7c3aed" />
               </linearGradient>
-              <linearGradient id="droidHeadMetal" x1="16" y1="18" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+              <linearGradient
+                id="droidHeadMetal"
+                x1="16"
+                y1="18"
+                x2="48"
+                y2="48"
+                gradientUnits="userSpaceOnUse"
+              >
                 <stop offset="0%" stopColor="#cbd5e1" />
                 <stop offset="55%" stopColor="#94a3b8" />
                 <stop offset="100%" stopColor="#64748b" />
               </linearGradient>
             </defs>
             <rect width="64" height="64" rx="16" fill="url(#droidBadgeBg)" />
-            <line x1="32" y1="10" x2="32" y2="18" stroke="#e2e8f0" strokeWidth="3" strokeLinecap="round" />
+            <line
+              x1="32"
+              y1="10"
+              x2="32"
+              y2="18"
+              stroke="#e2e8f0"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
             <circle cx="32" cy="9" r="3.5" fill="#ef4444" />
             <rect x="11.5" y="25" width="4.5" height="14" rx="2.2" fill="#ef4444" />
             <rect x="48" y="25" width="4.5" height="14" rx="2.2" fill="#ef4444" />
@@ -977,10 +1156,10 @@ jobs:
         const [userGeminiKey, setUserGeminiKey] = useState("");
         const [keyInputDraft, setKeyInputDraft] = useState("");
         const [availableModels, setAvailableModels] = useState([]);
-        const [selectedModel, setSelectedModel] = useState("gemini-3.8-flash");
+        const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
         const [isVerifyingKey, setIsVerifyingKey] = useState(false);
         const [keyStatusBanner, setKeyStatusBanner] = useState(null);
-        const [isApiPanelExpanded, setIsApiPanelExpanded] = useState(true);
+        const [isApiPanelExpanded, setIsApiPanelExpanded] = useState(false);
 
         // --- Per-Project AI Settings ---
         const [projectAiSettingsMap, setProjectAiSettingsMap] = useState({});
@@ -1016,6 +1195,7 @@ jobs:
         const [chatInput, setChatInput] = useState("");
         const [attachedImage, setAttachedImage] = useState(null);
         const [isAiGenerating, setIsAiGenerating] = useState(false);
+        const [aiProgressNote, setAiProgressNote] = useState("");
         const [pendingCodeProposals, setPendingCodeProposals] = useState({});
         const aiAbortControllerRef = useRef(null);
         const chatEndRef = useRef(null);
@@ -1050,7 +1230,9 @@ jobs:
         const [ghOwner, setGhOwner] = useState("ssb-dev-hasan");
         const [ghRepo, setGhRepo] = useState("droid-ai-studio-app");
         const [ghBranch, setGhBranch] = useState("main");
-        const [ghCommitMsg, setGhCommitMsg] = useState("Update Android project from Droid AI Studio");
+        const [ghCommitMsg, setGhCommitMsg] = useState(
+          "Update Android project from Droid AI Studio"
+        );
         const [ghPushStatus, setGhPushStatus] = useState(null);
         const [isPushingGh, setIsPushingGh] = useState(false);
         const [isZipExporting, setIsZipExporting] = useState(false);
@@ -1074,7 +1256,7 @@ jobs:
 
         // --- Splash Timer ---
         useEffect(() => {
-          const timer = setTimeout(() => setShowSplash(false), 1200);
+          const timer = setTimeout(() => setShowSplash(false), 1100);
           return () => clearTimeout(timer);
         }, []);
 
@@ -1083,8 +1265,7 @@ jobs:
           return projects.find((p) => p.id === activeProjectId) || null;
         }, [projects, activeProjectId]);
 
-        const isUnconfirmedNewDraft =
-          lockedSessionType === "new-app" && !activeProjectId;
+        const isUnconfirmedNewDraft = lockedSessionType === "new-app" && !activeProjectId;
 
         const previewTargetProject = useMemo(() => {
           if (isUnconfirmedNewDraft) {
@@ -1098,152 +1279,110 @@ jobs:
           [previewTargetProject]
         );
 
-        // STRICT RULE: Preview stays locked while AI is generating, while an unaccepted proposal is pending, or before UI/UX + Logic is complete
-        const hasPendingProposals = Object.keys(pendingCodeProposals).length > 0;
-        const isPreviewUnlocked = useMemo(() => {
-          if (isAiGenerating) return false;
-          if (hasPendingProposals) return false;
-          if (!previewTargetProject) return false;
-          return previewModel.hasCodeFiles && previewModel.hasCompleteUiAndLogic;
-        }, [isAiGenerating, hasPendingProposals, previewTargetProject, previewModel]);
+        // Top 📱 প্রিভিউ button is NEVER locked, hidden, or disabled
+        const isPreviewTabAvailable = true;
 
-        // Auto-redirect away from preview tab if preview becomes locked mid-build
-        useEffect(() => {
-          if (activeTab === "preview" && !isPreviewUnlocked) {
-            setActiveTab("chat");
-          }
-        }, [activeTab, isPreviewUnlocked]);
+        const isSessionLocked = lockedSessionType !== "none";
 
         const activeAiSettings = useMemo(() => {
-          if (!activeProject?.id) return DEFAULT_AI_SETTINGS;
-          return {
-            ...DEFAULT_AI_SETTINGS,
-            ...(projectAiSettingsMap[activeProject.id] || {})
-          };
-        }, [projectAiSettingsMap, activeProject?.id]);
+          if (activeProject && projectAiSettingsMap[activeProject.id]) {
+            return { ...DEFAULT_AI_SETTINGS, ...projectAiSettingsMap[activeProject.id] };
+          }
+          return DEFAULT_AI_SETTINGS;
+        }, [activeProject, projectAiSettingsMap]);
 
-        const updateActiveAiSettings = useCallback(
-          (patch) => {
-            if (!activeProject?.id) return;
-            setProjectAiSettingsMap((prev) => {
-              const updated = {
-                ...prev,
-                [activeProject.id]: {
-                  ...DEFAULT_AI_SETTINGS,
-                  ...(prev[activeProject.id] || {}),
-                  ...patch
-                }
-              };
-              const storageName = getUserScopedProjectAiSettingsStorageName(currentUser?.uid);
-              localStorage.setItem(storageName, JSON.stringify(updated));
-              return updated;
-            });
-          },
-          [activeProject?.id, currentUser?.uid]
-        );
+        const currentFilesList = useMemo(() => {
+          if (isUnconfirmedNewDraft) {
+            return draftNewAppProject?.files || [];
+          }
+          return activeProject?.files || [];
+        }, [isUnconfirmedNewDraft, draftNewAppProject, activeProject]);
+
+        const activeFile = useMemo(() => {
+          if (currentFilesList.length === 0) return null;
+          return (
+            currentFilesList.find((f) => f.path === activeFilePath) || currentFilesList[0]
+          );
+        }, [currentFilesList, activeFilePath]);
 
         const activeChatMessages = useMemo(() => {
           if (isUnconfirmedNewDraft) {
             return newAppDraftChat;
           }
-          if (!activeProject?.id) return createInitialProjectChatMessages("");
-          const list = projectChatsMap[activeProject.id];
-          if (Array.isArray(list) && list.length > 0) return list;
-          return createInitialProjectChatMessages(activeProject.name);
-        }, [isUnconfirmedNewDraft, newAppDraftChat, projectChatsMap, activeProject?.id, activeProject?.name]);
+          if (!activeProject) {
+            return createInitialProjectChatMessages("");
+          }
+          return (
+            projectChatsMap[activeProject.id] ||
+            createInitialProjectChatMessages(activeProject.name)
+          );
+        }, [isUnconfirmedNewDraft, newAppDraftChat, activeProject, projectChatsMap]);
 
         const setActiveChatMessages = useCallback(
-          (updater) => {
+          (updaterOrArray) => {
             if (isUnconfirmedNewDraft) {
               setNewAppDraftChat((prev) =>
-                typeof updater === "function" ? updater(prev) : updater
+                typeof updaterOrArray === "function" ? updaterOrArray(prev) : updaterOrArray
               );
               return;
             }
-            const projId = activeProject?.id;
-            if (!projId) return;
+            if (!activeProject) return;
+            const projId = activeProject.id;
+            const projName = activeProject.name;
             setProjectChatsMap((prev) => {
               const currentList =
-                Array.isArray(prev[projId]) && prev[projId].length > 0
-                  ? prev[projId]
-                  : createInitialProjectChatMessages(activeProject?.name);
+                prev[projId] || createInitialProjectChatMessages(projName);
               const nextList =
-                typeof updater === "function" ? updater(currentList) : updater;
+                typeof updaterOrArray === "function"
+                  ? updaterOrArray(currentList)
+                  : updaterOrArray;
               const updatedMap = { ...prev, [projId]: nextList };
-              const storageName = getUserScopedProjectChatsStorageName(currentUser?.uid);
-              localStorage.setItem(storageName, JSON.stringify(updatedMap));
+              try {
+                localStorage.setItem(
+                  getUserScopedProjectChatsStorageName(currentUser?.uid),
+                  JSON.stringify(updatedMap)
+                );
+              } catch (err) {
+                console.warn("Chat storage quota warning:", err);
+              }
               return updatedMap;
             });
           },
-          [isUnconfirmedNewDraft, activeProject?.id, activeProject?.name, currentUser?.uid]
+          [isUnconfirmedNewDraft, activeProject, currentUser]
         );
-
-        const activeFile = useMemo(() => {
-          const target = isUnconfirmedNewDraft && draftNewAppProject ? draftNewAppProject : activeProject;
-          if (!target || !Array.isArray(target.files) || target.files.length === 0) return null;
-          return target.files.find((f) => f.path === activeFilePath) || target.files[0] || null;
-        }, [isUnconfirmedNewDraft, draftNewAppProject, activeProject, activeFilePath]);
 
         const activeProjectHistory = useMemo(() => {
           if (!activeProject) return [];
           return projectHistoryMap[activeProject.id] || [];
-        }, [projectHistoryMap, activeProject]);
+        }, [activeProject, projectHistoryMap]);
 
-        // --- Reset Emulator Interactive State when switching projects ---
+        // Scroll chat to bottom smoothly
         useEffect(() => {
-          setEmuInputValues({});
-          setEmuSwitchValues({});
-          setEmuResultText("");
-          setEmuStatusToast("");
-        }, [previewTargetProject?.id, previewTargetProject?.updatedAt]);
+          chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, [activeChatMessages, isAiGenerating, activeTab]);
 
-        // --- Record Snapshot Helper ---
-        const recordProjectSnapshot = useCallback(
-          (projectObj, note, tag = "AI") => {
-            if (!projectObj) return;
-            const snap = {
-              id: `snap_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-              timestamp: Date.now(),
-              tag,
-              note: note || "কোড আপডেট স্ন্যাপশট",
-              files: JSON.parse(JSON.stringify(projectObj.files || []))
-            };
-            setProjectHistoryMap((prev) => {
-              const existing = prev[projectObj.id] || [];
-              const updated = {
-                ...prev,
-                [projectObj.id]: [snap, ...existing].slice(0, 25)
-              };
-              const histStorage = getUserScopedHistoryStorageName(currentUser?.uid);
-              localStorage.setItem(histStorage, JSON.stringify(updated));
-              return updated;
-            });
-          },
-          [currentUser?.uid]
-        );
-
-        // --- Save Projects to User-Scoped LocalStorage + Firebase RTDB ---
+        // =====================================================================
+        // 10. PERSISTENCE HELPERS (LOCALSTORAGE + FIREBASE RTDB)
+        // =====================================================================
         const persistProjectsForUser = useCallback(
           async (nextProjects, userObj) => {
-            const uid = userObj?.uid || "";
-            const storageKey = getUserScopedProjectsStorageName(uid);
-            localStorage.setItem(storageKey, JSON.stringify(nextProjects));
+            const uid = userObj?.uid;
+            try {
+              localStorage.setItem(
+                getUserScopedProjectsStorageName(uid),
+                JSON.stringify(nextProjects)
+              );
+            } catch (e) {
+              console.warn("Local projects save error:", e);
+            }
 
-            if (uid && !userObj?.isGuest && window.DroidFirebaseReady && window.DroidDB) {
+            if (window.DroidFirebaseReady && window.DroidDB && uid && !userObj?.isGuest) {
               try {
                 setRtdbSyncStatus("syncing");
                 await window.DroidDB.ref(`users/${uid}/projects`).set(nextProjects);
-                if (userObj.email) {
-                  const safeEmail = sanitizeEmailKey(userObj.email);
-                  await window.DroidDB.ref(`emails/${safeEmail}`).set({
-                    uid,
-                    email: userObj.email,
-                    lastSyncedAt: Date.now()
-                  });
-                }
                 setRtdbSyncStatus("synced");
               } catch (err) {
-                console.warn("RTDB sync failed:", err);
+                console.warn("RTDB projects sync warning:", err);
                 setRtdbSyncStatus("offline");
               }
             }
@@ -1251,133 +1390,155 @@ jobs:
           []
         );
 
-        // --- Load User-Scoped Key & Projects on Auth State Change ---
-        useEffect(() => {
-          const loadUserWorkspace = async (user) => {
-            setUserGeminiKey("");
-            setKeyInputDraft("");
-            setAvailableModels([]);
-            setKeyStatusBanner(null);
-
-            const uid = user?.uid || "";
-            const keyStorage = getUserScopedKeyStorageName(uid);
-            const savedKey = localStorage.getItem(keyStorage) || "";
-            if (savedKey) {
-              setUserGeminiKey(savedKey);
-              setKeyInputDraft(savedKey);
-              setIsApiPanelExpanded(false);
-              discoverEligibleGeminiModels(savedKey)
-                .then((models) => {
-                  setAvailableModels(models);
-                  if (models.length > 0 && !models.some((m) => m.id === selectedModel)) {
-                    setSelectedModel(models[0].id);
-                  }
-                })
-                .catch(() => {});
-            } else {
-              setIsApiPanelExpanded(true);
-            }
-
-            const histStorage = getUserScopedHistoryStorageName(uid);
-            try {
-              const rawHist = localStorage.getItem(histStorage);
-              setProjectHistoryMap(rawHist ? JSON.parse(rawHist) : {});
-            } catch {
-              setProjectHistoryMap({});
-            }
-
-            const chatsStorage = getUserScopedProjectChatsStorageName(uid);
-            try {
-              const rawChats = localStorage.getItem(chatsStorage);
-              setProjectChatsMap(rawChats ? JSON.parse(rawChats) : {});
-            } catch {
-              setProjectChatsMap({});
-            }
-
-            const aiSettingsStorage = getUserScopedProjectAiSettingsStorageName(uid);
-            try {
-              const rawAiSettings = localStorage.getItem(aiSettingsStorage);
-              setProjectAiSettingsMap(rawAiSettings ? JSON.parse(rawAiSettings) : {});
-            } catch {
-              setProjectAiSettingsMap({});
-            }
-
-            const projStorage = getUserScopedProjectsStorageName(uid);
-            let localProjects = [];
-            try {
-              const raw = localStorage.getItem(projStorage);
-              if (raw) localProjects = JSON.parse(raw);
-            } catch (e) {
-              localProjects = [];
-            }
-
-            if (user && !user.isGuest && window.DroidFirebaseReady && window.DroidDB) {
+        const recordProjectSnapshot = useCallback(
+          (projectObj, note, tag = "Auto") => {
+            if (!projectObj) return;
+            const snap = {
+              id: `snap_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+              timestamp: Date.now(),
+              note,
+              tag,
+              files: JSON.parse(JSON.stringify(projectObj.files || []))
+            };
+            setProjectHistoryMap((prev) => {
+              const existing = prev[projectObj.id] || [];
+              const nextMap = {
+                ...prev,
+                [projectObj.id]: [snap, ...existing].slice(0, 25)
+              };
               try {
-                setRtdbSyncStatus("syncing");
-                const snap = await window.DroidDB.ref(`users/${uid}/projects`).once("value");
-                const remoteVal = snap.val();
-                if (Array.isArray(remoteVal) && remoteVal.length > 0) {
-                  localProjects = remoteVal;
-                  localStorage.setItem(projStorage, JSON.stringify(remoteVal));
-                } else if (localProjects.length > 0) {
-                  await window.DroidDB.ref(`users/${uid}/projects`).set(localProjects);
-                }
-                setRtdbSyncStatus("synced");
-              } catch (err) {
-                console.warn("RTDB fetch error:", err);
-                setRtdbSyncStatus("offline");
+                localStorage.setItem(
+                  getUserScopedHistoryStorageName(currentUser?.uid),
+                  JSON.stringify(nextMap)
+                );
+              } catch (e) {}
+              return nextMap;
+            });
+          },
+          [currentUser]
+        );
+
+        // =====================================================================
+        // 11. LOAD USER WORKSPACE & VERIFY GEMINI KEY ON AUTH CHANGE
+        // =====================================================================
+        const loadUserWorkspace = useCallback(async (userObj) => {
+          const uid = userObj?.uid;
+          // 1. Load saved Gemini API key strictly for this user
+          const savedKey = localStorage.getItem(getUserScopedKeyStorageName(uid)) || "";
+          setUserGeminiKey(savedKey);
+          setKeyInputDraft(savedKey);
+          if (!savedKey) {
+            setIsApiPanelExpanded(true);
+          } else {
+            setIsApiPanelExpanded(false);
+            discoverEligibleGeminiModels(savedKey)
+              .then((models) => {
+                setAvailableModels(models);
+                setSelectedModel((prev) =>
+                  models.some((m) => m.id === prev) ? prev : models[0]?.id || "gemini-2.5-flash"
+                );
+              })
+              .catch(() => {});
+          }
+
+          // 2. Load saved projects
+          let loadedProjects = [];
+          try {
+            const rawProjs = localStorage.getItem(getUserScopedProjectsStorageName(uid));
+            if (rawProjs) loadedProjects = JSON.parse(rawProjs) || [];
+          } catch (e) {}
+
+          if (
+            window.DroidFirebaseReady &&
+            window.DroidDB &&
+            uid &&
+            !userObj?.isGuest
+          ) {
+            try {
+              setRtdbSyncStatus("syncing");
+              const snap = await window.DroidDB.ref(`users/${uid}/projects`).once("value");
+              const remoteVal = snap.val();
+              if (Array.isArray(remoteVal) && remoteVal.length > 0) {
+                loadedProjects = remoteVal;
+                localStorage.setItem(
+                  getUserScopedProjectsStorageName(uid),
+                  JSON.stringify(loadedProjects)
+                );
               }
-            } else {
+              setRtdbSyncStatus("synced");
+            } catch (err) {
               setRtdbSyncStatus("offline");
             }
-
-            if (!Array.isArray(localProjects) || localProjects.length === 0) {
-              const starterProj = generateAuthenticAndroidProject({
-                name: "My Android App",
-                packageSuffix: "myapp",
-                codeLang: "kotlin",
-                minSdk: 24,
-                targetSdk: 35,
-                buildConfigDsl: "kts",
-                useViewBinding: true
-              });
-              localProjects = [starterProj];
-              localStorage.setItem(projStorage, JSON.stringify(localProjects));
-            }
-
-            setProjects(localProjects);
-            setActiveProjectId(localProjects[0].id);
-            setActiveFilePath(localProjects[0].files?.[0]?.path || "");
-          };
-
-          if (window.DroidFirebaseReady && window.DroidAuth) {
-            const unsubscribe = window.DroidAuth.onAuthStateChanged((user) => {
-              setCurrentUser(user || null);
-              if (!user) {
-                setIsAuthModalOpen(true);
-              }
-              loadUserWorkspace(user || null);
-            });
-            return () => unsubscribe();
-          } else {
-            loadUserWorkspace(null);
           }
+
+          setProjects(loadedProjects);
+          if (loadedProjects.length > 0) {
+            setActiveProjectId(loadedProjects[0].id);
+            setActiveFilePath(loadedProjects[0].files?.[0]?.path || "");
+          } else {
+            setActiveProjectId("");
+            setActiveFilePath("");
+          }
+
+          // 3. Load chats, history & AI settings
+          try {
+            const rawChats = localStorage.getItem(
+              getUserScopedProjectChatsStorageName(uid)
+            );
+            if (rawChats) setProjectChatsMap(JSON.parse(rawChats) || {});
+          } catch (e) {}
+
+          try {
+            const rawHist = localStorage.getItem(getUserScopedHistoryStorageName(uid));
+            if (rawHist) setProjectHistoryMap(JSON.parse(rawHist) || {});
+          } catch (e) {}
+
+          try {
+            const rawAiCfg = localStorage.getItem(
+              getUserScopedProjectAiSettingsStorageName(uid)
+            );
+            if (rawAiCfg) setProjectAiSettingsMap(JSON.parse(rawAiCfg) || {});
+          } catch (e) {}
         }, []);
 
-        // --- Scroll Chat to Bottom ---
         useEffect(() => {
-          chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, [activeChatMessages, isAiGenerating]);
-
-        // --- Auth Handlers ---
-        const handleEmailAuthSubmit = async (e) => {
-          e.preventDefault();
           if (!window.DroidFirebaseReady || !window.DroidAuth) {
-            setAuthError("Firebase সংযোগ প্রস্তুত নয়।");
+            const guestUser = {
+              uid: "guest_local",
+              email: "guest@droid.studio",
+              isGuest: true
+            };
+            setCurrentUser(guestUser);
+            loadUserWorkspace(guestUser);
             return;
           }
-          setAuthError("");
+
+          const unsubscribe = window.DroidAuth.onAuthStateChanged((fbUser) => {
+            if (fbUser) {
+              setCurrentUser(fbUser);
+              setIsAuthModalOpen(false);
+              loadUserWorkspace(fbUser);
+            } else {
+              const guestUser = {
+                uid: "guest_local",
+                email: "guest@droid.studio",
+                isGuest: true
+              };
+              setCurrentUser(guestUser);
+              loadUserWorkspace(guestUser);
+            }
+          });
+          return () => unsubscribe();
+        }, [loadUserWorkspace]);
+
+        // =====================================================================
+        // 12. AUTH HANDLERS (EMAIL, GOOGLE, GUEST DEMO, LOGOUT)
+        // =====================================================================
+        const handleEmailAuthSubmit = async (e) => {
+          e.preventDefault();
+          if (!window.DroidAuth) return;
           setAuthLoading(true);
+          setAuthError("");
           try {
             if (authMode === "signup") {
               await window.DroidAuth.createUserWithEmailAndPassword(
@@ -1390,29 +1551,22 @@ jobs:
                 authPassword
               );
             }
-            setIsAuthModalOpen(false);
-            setAuthEmail("");
-            setAuthPassword("");
           } catch (err) {
-            setAuthError(err?.message || "ইমেইল/পাসওয়ার্ড যাচাই ব্যর্থ হয়েছে।");
+            setAuthError(err?.message || "অথেনটিকেশন ব্যর্থ হয়েছে।");
           } finally {
             setAuthLoading(false);
           }
         };
 
         const handleGoogleSignIn = async () => {
-          if (!window.DroidFirebaseReady || !window.DroidAuth) {
-            setAuthError("Firebase সংযোগ প্রস্তুত নয়।");
-            return;
-          }
-          setAuthError("");
+          if (!window.DroidAuth) return;
           setAuthLoading(true);
+          setAuthError("");
           try {
             const provider = new firebase.auth.GoogleAuthProvider();
             await window.DroidAuth.signInWithPopup(provider);
-            setIsAuthModalOpen(false);
           } catch (err) {
-            setAuthError(err?.message || "Google Sign-In সম্পন্ন হয়নি।");
+            setAuthError(err?.message || "Google Sign-In ব্যর্থ হয়েছে।");
           } finally {
             setAuthLoading(false);
           }
@@ -1421,88 +1575,138 @@ jobs:
         const handleGuestDemoLogin = () => {
           const guestUser = {
             uid: "guest_demo_user",
-            email: "guest@droid-studio.local",
+            email: "guest@droid.studio",
             isGuest: true
           };
           setCurrentUser(guestUser);
           setIsAuthModalOpen(false);
+          loadUserWorkspace(guestUser);
         };
 
         const handleLogout = async () => {
+          try {
+            if (window.DroidAuth && currentUser && !currentUser.isGuest) {
+              await window.DroidAuth.signOut();
+            }
+          } catch (e) {}
           setUserGeminiKey("");
           setKeyInputDraft("");
           setAvailableModels([]);
-          setKeyStatusBanner(null);
-
-          if (window.DroidFirebaseReady && window.DroidAuth && !currentUser?.isGuest) {
-            await window.DroidAuth.signOut().catch(() => {});
-          }
-          setCurrentUser(null);
-          setIsAuthModalOpen(true);
+          setIsAuthModalOpen(false);
         };
 
-        // --- Verify & Save User's Own Gemini API Key ---
-        const handleVerifyAndSaveKey = async (e) => {
+        // =====================================================================
+        // 13. GEMINI API KEY VERIFY & SAVE
+        // =====================================================================
+        const handleVerifyAndSaveApiKey = async (e) => {
           if (e) e.preventDefault();
-          const trimmed = keyInputDraft.trim();
-          if (!trimmed) {
+          const clean = String(keyInputDraft || "").trim();
+          if (!clean) {
             setKeyStatusBanner({
               ok: false,
-              msg: "অনুগ্রহ করে আপনার Google AI Studio Gemini API Key লিখুন।"
+              msg: "অনুগ্রহ করে আপনার Gemini API Key লিখুন।"
             });
             return;
           }
-
           setIsVerifyingKey(true);
           setKeyStatusBanner(null);
           try {
-            const models = await discoverEligibleGeminiModels(trimmed);
-            const storageName = getUserScopedKeyStorageName(currentUser?.uid);
-            localStorage.setItem(storageName, trimmed);
-
-            setUserGeminiKey(trimmed);
+            const models = await discoverEligibleGeminiModels(clean);
             setAvailableModels(models);
-            if (models.length > 0) {
-              setSelectedModel(models[0].id);
-            }
+            const bestModel = models[0]?.id || "gemini-2.5-flash";
+            setSelectedModel(bestModel);
+            setUserGeminiKey(clean);
+            localStorage.setItem(
+              getUserScopedKeyStorageName(currentUser?.uid),
+              clean
+            );
             setKeyStatusBanner({
               ok: true,
-              msg: `API Key যাচাই সফল! ${models.length}টি টেক্সট/কোড মডেল পাওয়া গেছে।`
+              msg: `✅ সফলভাবে যাচাই ও সেভ হয়েছে! (${models.length}টি মডেল যুক্ত)`
             });
             setIsApiPanelExpanded(false);
           } catch (err) {
             setKeyStatusBanner({
               ok: false,
-              msg: err?.message || "API Key যাচাই ব্যর্থ হয়েছে।"
+              msg: `⚠️ ${err.message}`
             });
           } finally {
             setIsVerifyingKey(false);
           }
         };
 
-        const handleClearUserKey = () => {
-          const storageName = getUserScopedKeyStorageName(currentUser?.uid);
-          localStorage.removeItem(storageName);
-          setUserGeminiKey("");
-          setKeyInputDraft("");
-          setAvailableModels([]);
-          setKeyStatusBanner({
-            ok: false,
-            msg: "API Key মুছে ফেলা হয়েছে। নতুন কী বসিয়ে যাচাই করুন।"
-          });
-          setIsApiPanelExpanded(true);
+        // =====================================================================
+        // 14. LOCKED SESSION WORKFLOWS: NEW APP BUILDER, REBUILD & EXIT PROJECT
+        // =====================================================================
+        const handleStartConversationalNewAppSession = () => {
+          setLockedSessionType("new-app");
+          setActiveProjectId("");
+          setActiveFilePath("");
+          setDraftNewAppProject(null);
+          setPendingCodeProposals({});
+          setNewAppDraftChat(createFreshNewAppBuilderMessages());
+          setActiveTab("chat");
         };
 
-        // --- Voice Input (Bangla / English SpeechRecognition) ---
+        const handleOpenRebuildWorkflow = () => {
+          if (projects.length === 0) {
+            handleStartConversationalNewAppSession();
+            return;
+          }
+          setIsRebuildPickerOpen(true);
+        };
+
+        const handleSelectProjectForRebuild = (proj) => {
+          setIsRebuildPickerOpen(false);
+          setLockedSessionType("rebuild");
+          setDraftNewAppProject(null);
+          setActiveProjectId(proj.id);
+          setActiveFilePath(proj.files?.[0]?.path || "");
+          setActiveTab("chat");
+          setProjectChatsMap((prev) => {
+            const existing =
+              prev[proj.id] || createInitialProjectChatMessages(proj.name);
+            const noticeMsg = {
+              id: `rebuild_lock_${Date.now()}`,
+              role: "assistant",
+              text: `🔄 "${proj.name}" প্রজেক্টটি রিবিল্ড ও আপডেট সেশনে লক করা হয়েছে (${proj.files?.length || 0}টি ফাইল)। আপনি 🚪 Exit Project না করা পর্যন্ত AI কেবল এই প্রজেক্টেই কাজ করবে। নিচে 🔍 প্রজেক্ট বিশ্লেষণ করুন, 🛠️ এরর ফিক্স করুন অথবা কথা বলে/লিখে কী পরিবর্তন চান তা বলুন।`,
+              timestamp: Date.now()
+            };
+            const nextList = [...existing, noticeMsg];
+            const nextMap = { ...prev, [proj.id]: nextList };
+            try {
+              localStorage.setItem(
+                getUserScopedProjectChatsStorageName(currentUser?.uid),
+                JSON.stringify(nextMap)
+              );
+            } catch (e) {}
+            return nextMap;
+          });
+        };
+
+        const handleExitLockedProjectSession = () => {
+          setLockedSessionType("none");
+          setDraftNewAppProject(null);
+          setPendingCodeProposals({});
+          if (!activeProjectId && projects.length > 0) {
+            setActiveProjectId(projects[0].id);
+            setActiveFilePath(projects[0].files?.[0]?.path || "");
+          }
+        };
+
+        // =====================================================================
+        // 15. VOICE INPUT (SPEECH RECOGNITION) & IMAGE ATTACHMENT
+        // =====================================================================
         const toggleVoiceInput = () => {
-          const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-          if (!SpeechRec) {
+          const SpeechRecognition =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (!SpeechRecognition) {
             setActiveChatMessages((prev) => [
               ...prev,
               {
                 id: `voice_err_${Date.now()}`,
                 role: "assistant",
-                text: "⚠️ আপনার ব্রাউজারে ভয়েস টাইপিং সাপোর্ট করছে না। অনুগ্রহ করে নিচের বক্সে লিখে পাঠান।",
+                text: "⚠️ আপনার ব্রাউজারে ভয়েস ইনপুট সমর্থিত নয়। অনুগ্রহ করে টাইপ করে লিখুন।",
                 timestamp: Date.now()
               }
             ]);
@@ -1515,68 +1719,25 @@ jobs:
             return;
           }
 
-          const recognition = new SpeechRec();
+          const recognition = new SpeechRecognition();
           recognition.lang = voiceLang;
           recognition.interimResults = false;
           recognition.maxAlternatives = 1;
-          recognitionRef.current = recognition;
 
           recognition.onstart = () => setIsVoiceListening(true);
+          recognition.onend = () => setIsVoiceListening(false);
+          recognition.onerror = () => setIsVoiceListening(false);
           recognition.onresult = (event) => {
             const transcript = event.results?.[0]?.[0]?.transcript || "";
             if (transcript) {
               setChatInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
             }
           };
-          recognition.onerror = () => setIsVoiceListening(false);
-          recognition.onend = () => setIsVoiceListening(false);
 
-          try {
-            recognition.start();
-          } catch {
-            setIsVoiceListening(false);
-          }
+          recognitionRef.current = recognition;
+          recognition.start();
         };
 
-        // --- Workflow 1: Start Locked New App Builder Session (Unselects Old Project Until Exit Project) ---
-        const handleStartNewAppBuilderSession = () => {
-          setActiveProjectId("");
-          setActiveFilePath("");
-          setLockedSessionType("new-app");
-          setDraftNewAppProject(null);
-          setPendingCodeProposals({});
-          setNewAppDraftChat(createFreshNewAppBuilderMessages());
-          setActiveTab("chat");
-        };
-
-        // --- Workflow 2: Open Rebuild Existing Project Picker ---
-        const handleOpenRebuildPicker = () => {
-          setIsRebuildPickerOpen(true);
-        };
-
-        const handleSelectProjectForRebuild = (proj) => {
-          setLockedSessionType("rebuild");
-          setDraftNewAppProject(null);
-          setPendingCodeProposals({});
-          setActiveProjectId(proj.id);
-          setActiveFilePath(proj.files?.[0]?.path || "");
-          setIsRebuildPickerOpen(false);
-          setActiveTab("chat");
-        };
-
-        // --- Explicit Exit Project Session Handler ---
-        const handleExitLockedProjectSession = () => {
-          setLockedSessionType("none");
-          setDraftNewAppProject(null);
-          setPendingCodeProposals({});
-          if (!activeProjectId && projects[0]) {
-            setActiveProjectId(projects[0].id);
-            setActiveFilePath(projects[0].files?.[0]?.path || "");
-          }
-          setActiveTab("chat");
-        };
-
-        // --- Image Attachment Handler ---
         const handleImageUpload = (e) => {
           const file = e.target.files?.[0];
           if (!file) return;
@@ -1587,68 +1748,55 @@ jobs:
             setAttachedImage({
               name: file.name,
               mimeType: file.type || "image/png",
-              base64,
-              dataUrl
+              dataUrl,
+              base64
             });
           };
           reader.readAsDataURL(file);
           e.target.value = "";
         };
 
-        // --- Stop Ongoing AI Request ---
+        // =====================================================================
+        // 16. SEND MESSAGE TO GEMINI API (CLEAN-SLATE UI/UX + LOGIC + AUTO-PREVIEW)
+        // =====================================================================
         const handleStopAiGeneration = () => {
           if (aiAbortControllerRef.current) {
             aiAbortControllerRef.current.abort();
             aiAbortControllerRef.current = null;
           }
           setIsAiGenerating(false);
+          setAiProgressNote("");
         };
 
-        // --- Apply AI Code Proposal (Confirm New App OR Update Active Project, Unlocking Preview ONLY After Completion) ---
         const handleAcceptAiCodeProposal = (msgId, fileUpdates) => {
           if (isUnconfirmedNewDraft) {
-            const targetMsg = newAppDraftChat.find((m) => m.id === msgId);
-            let finalizedProject = draftNewAppProject;
-
-            if (!finalizedProject && targetMsg?.rawText) {
-              const built = buildDraftProjectFromAiResponse(
-                targetMsg.rawText,
-                targetMsg.userPrompt || "Droid App",
-                null
-              );
-              finalizedProject = built.draftProject;
-            }
-
-            if (!finalizedProject) return;
-
-            if (Array.isArray(fileUpdates) && fileUpdates.length > 0) {
-              finalizedProject = {
-                ...finalizedProject,
-                files: applyFileUpdatesToProject(finalizedProject, fileUpdates),
-                updatedAt: Date.now()
-              };
-            }
-
+            if (!draftNewAppProject) return;
+            const finalizedProject = {
+              ...draftNewAppProject,
+              id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+              updatedAt: Date.now()
+            };
             const nextProjects = [finalizedProject, ...projects];
             setProjects(nextProjects);
             persistProjectsForUser(nextProjects, currentUser);
             recordProjectSnapshot(
               finalizedProject,
-              `নতুন অ্যাপ কনফার্ম ও সেভ: ${finalizedProject.name}`,
-              "New App"
+              `নতুন AI অ্যাপ কনফার্মড (${finalizedProject.files.length}টি ফাইল)`,
+              "AI"
             );
 
-            // Migrate draft chat into permanent project chat while keeping lockedSessionType === "new-app" until explicit Exit Project
+            const confirmedChatHistory = newAppDraftChat.map((m) =>
+              m.id === msgId ? { ...m, proposalAccepted: true } : m
+            );
             setProjectChatsMap((prev) => {
-              const updatedMap = {
-                ...prev,
-                [finalizedProject.id]: newAppDraftChat.map((m) =>
-                  m.id === msgId ? { ...m, proposalAccepted: true } : m
-                )
-              };
-              const storageName = getUserScopedProjectChatsStorageName(currentUser?.uid);
-              localStorage.setItem(storageName, JSON.stringify(updatedMap));
-              return updatedMap;
+              const nextMap = { ...prev, [finalizedProject.id]: confirmedChatHistory };
+              try {
+                localStorage.setItem(
+                  getUserScopedProjectChatsStorageName(currentUser?.uid),
+                  JSON.stringify(nextMap)
+                );
+              } catch (e) {}
+              return nextMap;
             });
 
             setPendingCodeProposals({});
@@ -1705,112 +1853,99 @@ jobs:
           }
         };
 
-        // --- Send Message to Gemini API (Enforcing Session Lock & Complete UI/UX + Logic) ---
-        const handleSendChatMessage = async (e, overridePromptText = null) => {
+        const handleSendChatMessage = async (e, overridePromptText) => {
           if (e) e.preventDefault();
-          const promptText =
-            overridePromptText !== null ? String(overridePromptText).trim() : chatInput.trim();
+          const promptText = String(overridePromptText ?? chatInput).trim();
           if (!promptText && !attachedImage) return;
 
           if (!userGeminiKey) {
             setIsApiPanelExpanded(true);
-            setKeyStatusBanner({
-              ok: false,
-              msg: "AI ব্যবহারের আগে উপরে আপনার নিজস্ব Gemini API Key বসিয়ে যাচাই করুন।"
-            });
+            setActiveChatMessages((prev) => [
+              ...prev,
+              {
+                id: `no_key_${Date.now()}`,
+                role: "assistant",
+                text: "🔑 অনুগ্রহ করে উপরে আপনার নিজস্ব Gemini API Key যুক্ত করে যাচাই করুন।",
+                timestamp: Date.now()
+              }
+            ]);
             return;
           }
 
-          if (isAiGenerating) return;
+          if (!isUnconfirmedNewDraft && !activeProject) {
+            handleStartConversationalNewAppSession();
+          }
 
+          const currentImage = attachedImage;
           const userMsg = {
-            id: `u_${Date.now()}`,
+            id: `usr_${Date.now()}`,
             role: "user",
-            text: promptText || "ছবিটি বিশ্লেষণ করে সম্পূর্ণ UI/UX ও লজিক কোড তৈরি করুন।",
-            imagePreview: attachedImage?.dataUrl || null,
+            text: promptText || "(UI স্ক্রিনশট পাঠানো হয়েছে)",
+            imagePreview: currentImage?.dataUrl || null,
             timestamp: Date.now()
           };
 
-          const currentImage = attachedImage;
           setActiveChatMessages((prev) => [...prev, userMsg]);
-          if (overridePromptText === null) setChatInput("");
+          if (!overridePromptText) setChatInput("");
           setAttachedImage(null);
           setIsAiGenerating(true);
+          setAiProgressNote(
+            "AI সম্পূর্ণ UI/UX ডিজাইন ও কার্যকর লজিক তৈরি করছে (সম্পন্ন হলেই প্রিভিউ দেখাবে)..."
+          );
 
           const controller = new AbortController();
           aiAbortControllerRef.current = controller;
 
           try {
-            const activeTargetProj = isUnconfirmedNewDraft
-              ? draftNewAppProject
-              : activeProject;
-
-            const currentFiles = Array.isArray(activeTargetProj?.files)
-              ? activeTargetProj.files
-              : [];
-            const projectContextSummary =
-              currentFiles.length === 0
-                ? "(এই প্রজেক্টে বর্তমানে ০টি ফাইল আছে — একদম শূন্য থেকে সম্পূর্ণ UI/UX লেআউট XML এবং পূর্ণাঙ্গ কার্যকর Kotlin/Java লজিক ফাইল তৈরি করতে হবে)"
-                : currentFiles
+            const targetProj = isUnconfirmedNewDraft ? draftNewAppProject : activeProject;
+            const existingFilesContext =
+              targetProj && Array.isArray(targetProj.files) && targetProj.files.length > 0
+                ? targetProj.files
                     .filter((f) => !f.assetDataUrl)
-                    .map(
-                      (f) =>
-                        `--- FILE: ${f.path} ---\n${String(f.content || "").slice(0, 4500)}`
-                    )
-                    .join("\n\n");
+                    .map((f) => `--- FILE: ${f.path} ---\n${f.content}`)
+                    .join("\n\n")
+                : "(বর্তমানে প্রজেক্টে ০টি ফাইল আছে — সম্পূর্ণ নতুনভাবে UI/UX ও লজিক তৈরি করতে হবে)";
 
-            let systemInstructionText =
-              activeAiSettings.systemPersona || DEFAULT_AI_SETTINGS.systemPersona;
+            const sessionLockRule = isSessionLocked
+              ? `\n[STRICT SESSION LOCK]: তুমি এখন একটি লকড প্রজেক্ট সেশনে আছো (${
+                  targetProj?.name || "New App"
+                })। ইউজার Exit Project না করা পর্যন্ত কখনোই নতুন কোনো আলাদা অ্যাপের আইডিয়া দেবে না—শুধু এই প্রজেক্টের ওপরই কাজ করবে।`
+              : "";
 
-            if (isUnconfirmedNewDraft) {
-              systemInstructionText += `\n\nতুমি এখন "Locked New App Builder Session"-এ আছো (পুরনো কোনো প্রজেক্টের সাথে এটি মেশানো যাবে না)। ইউজার তোমার সাথে কথা বলে শূন্য (০টি ফাইল) থেকে একটি সম্পূর্ণ নতুন Android অ্যাপ তৈরি করছে।
+            const cleanSlateArchitectPrompt = `${activeAiSettings.systemPersona}${sessionLockRule}
 
-বাধ্যতামূলক নিয়মাবলি:
-১. আংশিক বা অসম্পূর্ণ কোড কখনোই দেবে না—একবারে সম্পূর্ণ UI/UX ডিজাইন (XML লেআউট, কালার, কার্ড/গ্রিড বিন্যাস) এবং সম্পূর্ণ কার্যকর লজিক (Kotlin/Java Activity ও সব বাটন/ইনপুটের পূর্ণাঙ্গ কোড) তৈরি করবে।
-২. কোনো প্রি-বিল্ট টেমপ্লেট, ডিফল্ট কালার বা Material 3 প্রিসেট ব্যবহার করবে না—১০০% ডিজাইন ও কালার সরাসরি কোডে লিখবে।
-৩. ইউজার-ফেসিং টেক্সট, বাটন ও ইনপুট হিন্টে কখনোই কাঁচা ভেরিয়েবল নাম (যেমন inputAmount, InputRate) ব্যবহার করবে না।
-৪. প্রথমে \`### 🔍 প্রজেক্ট বিশ্লেষণ ও পূর্ণাঙ্গ পরিকল্পনা\` শিরোনামে বাংলায় ব্যাখ্যা করো অ্যাপটির নাম, প্যাকেজ নেম (com.droid. দিয়ে শুরু) এবং তৈরি করা ফাইলগুলো।
-৫. এরপর অবশ্যই প্রজেক্ট মেটাডাটা JSON দেবে:
+[CRITICAL DESIGN & ARCHITECTURE MANDATES]:
+1. Zero Default Templates / Zero Default Colors: প্রজেক্টে আগে থেকে কোনো ডিফল্ট টেমপ্লেট বা কালার নেই। সম্পূর্ণ কালার স্কিম (colors.xml / থিম), কার্ড/গ্রিড লেআউট, টাইপোগ্রাফি, প্যাডিং ও রাউন্ডেড কর্নার ১০০% কোডের ভেতরেই ডিজাইন করো।
+2. Clean Human-Friendly UI Labels: ইউজার-ফেসিং টেক্সট, বাটন ও EditText হিন্টে কখনোই কাঁচা ভেরিয়েবল নাম (যেমন inputAmount, InputRate, inputTime) লিখবে না। স্বাভাবিক বাংলা বা স্পষ্ট ইংরেজি লেবেল দাও (যেমন: "মাসিক জমার পরিমাণ (৳)", "বার্ষিক সুদের হার (%)", "সময়কাল (বছর)")।
+3. Complete UI/UX + Full Working Logic in One Pass: আংশিক বা অসম্পূর্ণ কোড দেবে না। একটি পূর্ণাঙ্গ প্রজেক্টের জন্য প্রয়োজনীয় XML লেআউট (যেমন app/src/main/res/layout/activity_main.xml), Kotlin/Java লজিক (যেমন app/src/main/java/.../MainActivity.kt), colors.xml, strings.xml এবং AndroidManifest.xml সম্পূর্ণ কার্যকর লজিকসহ একসাথে দাও।
+4. Output Format:
+${
+  isUnconfirmedNewDraft
+    ? `প্রথমে প্রজেক্ট মেটাডাটা দাও:
 <<<PROJECT_META>>>
-{"appName":"অ্যাপের নাম","packageSuffix":"englishlowercaseonly","language":"kotlin","minSdk":24,"targetSdk":35}
+{"appName":"App Name","packageSuffix":"appsuffix","language":"kotlin","minSdk":24,"targetSdk":35}
 <<<END_PROJECT_META>>>
-৬. এরপর তৈরি করা সব প্রয়োজনীয় ফাইলের (অবশ্যই XML লেআউট ও Kotlin/Java লজিক ফাইলসহ) সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত রানযোগ্য কোড নিচের ফরম্যাটে দেবে (কোনো TODO বা সংক্ষেপণ ছাড়া):
+`
+    : ""
+}প্রতিটি ফাইল অবশ্যই নিচের ফরম্যাটে দেবে:
 <<<FILE:app/src/main/res/layout/activity_main.xml>>>
-সম্পূর্ণ XML কোড
-<<<END_FILE>>>`;
-            } else {
-              const sessionLockDirective =
-                lockedSessionType !== "none"
-                  ? `\n🔒 কঠোর সেশন লক চালু আছে: তুমি এখন "${activeTargetProj?.name}" (${activeTargetProj?.packageName}) প্রজেক্টের ভেতরে লকড আছো। ইউজার যতক্ষণ না Exit Project করছে, ততক্ষণ নিজে থেকে নতুন কোনো অ্যাপ বা অন্য প্রজেক্টের আইডিয়া দেবে না—শুধুমাত্র এই প্রজেক্টের বিদ্যমান ফাইলগুলোর ওপর ইউজারের চাওয়া আপডেট বা বিশ্লেষণ করবে।`
-                  : "";
+...সম্পূর্ণ XML কোড...
+<<<END_FILE>>>
 
-              systemInstructionText += `${sessionLockDirective}\n\nবর্তমান প্রজেক্টের তথ্য:
-- অ্যাপের নাম: ${activeTargetProj?.name || "Droid App"}
-- প্যাকেজ নেম (লকড): ${activeTargetProj?.packageName || "com.droid.myapp"}
-- ভাষা: ${activeTargetProj?.language || "kotlin"} | Min SDK: ${activeTargetProj?.minSdk || 24} | Target SDK: ${activeTargetProj?.targetSdk || 35}
-- বর্তমান ফাইল সংখ্যা: ${currentFiles.length}টি
+বর্তমান প্রজেক্টের তথ্য:
+- App Name: ${targetProj?.name || "New Custom App"}
+- Package: ${targetProj?.packageName || "com.droid.myapp"}
+- Language: ${targetProj?.language || "kotlin"}
 
 বর্তমান প্রজেক্টের ফাইলসমূহ:
-${projectContextSummary}
+${existingFilesContext}`;
 
-বাধ্যতামূলক কোডিং নিয়ম:
-১. আংশিক বা অসম্পূর্ণ কোড দেবে না—সম্পূর্ণ UI/UX ডিজাইন ও পূর্ণাঙ্গ কার্যকর লজিক একসাথে তৈরি করবে।
-২. নতুন প্রজেক্ট ০টি ফাইল দিয়ে শুরু হয়—সম্পূর্ণ ডিজাইন, কালার প্যালেট, কার্ড/গ্রিড লেআউট এবং কার্যকর লজিক ১০০% কোডিংয়ের মাধ্যমেই তৈরি করবে এবং ইউজার-ফেসিং টেক্সট/হিন্টে কখনোই কাঁচা ভেরিয়েবল নাম (যেমন inputAmount) দেবে না।
-৩. প্রথমে \`### 🔍 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা\` শিরোনামে লিখবে কী বিশ্লেষণ করা হলো এবং ঠিক কোন কোন ফাইল তৈরি বা আপডেট করা হচ্ছে।
-৪. এরপর প্রয়োজনীয় প্রতিটি ফাইলের সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত রানযোগ্য কোড (কোনো TODO বা সংক্ষেপণ ছাড়া) নিচের ফরম্যাটে দেবে:
-<<<FILE:app/src/main/path/FileName.ext>>>
-সম্পূর্ণ কোড
-<<<END_FILE>>>`;
-            }
-
-            const historyTurns = activeChatMessages.slice(-8).map((m) => ({
+            const recentTurns = activeChatMessages.slice(-6).map((m) => ({
               role: m.role === "user" ? "user" : "model",
               parts: [{ text: m.rawText || m.text }]
             }));
 
-            const currentUserParts = [
-              { text: promptText || "ছবিটি বিশ্লেষণ করে সম্পূর্ণ UI/UX ও লজিক কোড তৈরি করুন।" }
-            ];
+            const currentUserParts = [{ text: promptText }];
             if (currentImage?.base64) {
               currentUserParts.push({
                 inlineData: {
@@ -1820,45 +1955,36 @@ ${projectContextSummary}
               });
             }
 
-            const modelToUse =
-              selectedModel || activeAiSettings.preferredModel || "gemini-3.8-flash";
-
-            const res = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-                modelToUse
-              )}:generateContent?key=${encodeURIComponent(userGeminiKey)}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                signal: controller.signal,
-                body: JSON.stringify({
-                  systemInstruction: {
-                    parts: [{ text: systemInstructionText }]
-                  },
-                  contents: [...historyTurns, { role: "user", parts: currentUserParts }],
-                  generationConfig: {
-                    temperature: Number(activeAiSettings.temperature) || 0.15,
-                    maxOutputTokens: Number(activeAiSettings.maxOutputTokens) || 8192
-                  }
-                })
+            const requestBody = {
+              systemInstruction: {
+                parts: [{ text: cleanSlateArchitectPrompt }]
+              },
+              contents: [
+                ...recentTurns,
+                {
+                  role: "user",
+                  parts: currentUserParts
+                }
+              ],
+              generationConfig: {
+                temperature: Number(activeAiSettings.temperature) || 0.15,
+                maxOutputTokens: Number(activeAiSettings.maxOutputTokens) || 8192
               }
-            );
+            };
 
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-              throw new Error(
-                data?.error?.message || `Gemini API ত্রুটি (HTTP ${res.status})`
-              );
-            }
-
-            const rawReply =
-              data?.candidates?.[0]?.content?.parts
-                ?.map((p) => p.text || "")
-                .join("\n") || "কোনো উত্তর পাওয়া যায়নি।";
+            const { rawReply } = await generateGeminiWithResilientFallback({
+              apiKey: userGeminiKey,
+              primaryModel: selectedModel,
+              availableModels,
+              requestBody,
+              signal: controller.signal,
+              onStatusUpdate: (statusMsg) => setAiProgressNote(statusMsg)
+            });
 
             const fileUpdates = parseAiFileBlocks(rawReply);
             const assistantMsgId = `ai_${Date.now()}`;
             let isCompleteBuild = isCompleteBuildProposal(fileUpdates);
+            let completedPreviewReady = false;
 
             if (isUnconfirmedNewDraft) {
               const { draftProject } = buildDraftProjectFromAiResponse(
@@ -1870,7 +1996,36 @@ ${projectContextSummary}
               if (draftProject.files.length > 0) {
                 setActiveFilePath(draftProject.files[0].path);
               }
+              const parsedDraft = parseProjectForLivePreview(draftProject);
               isCompleteBuild = isCompleteBuildProposal(draftProject.files);
+              completedPreviewReady =
+                parsedDraft.hasCodeFiles && parsedDraft.hasCompleteUiAndLogic;
+            } else if (activeProject && fileUpdates.length > 0) {
+              const updatedFiles = applyFileUpdatesToProject(activeProject, fileUpdates);
+              const updatedProj = {
+                ...activeProject,
+                files: updatedFiles,
+                updatedAt: Date.now()
+              };
+              const parsedUpdated = parseProjectForLivePreview(updatedProj);
+              completedPreviewReady =
+                parsedUpdated.hasCodeFiles && parsedUpdated.hasCompleteUiAndLogic;
+
+              if (completedPreviewReady || activeAiSettings.autoApplyCodeUpdates) {
+                const nextProjects = projects.map((p) =>
+                  p.id === activeProject.id ? updatedProj : p
+                );
+                setProjects(nextProjects);
+                persistProjectsForUser(nextProjects, currentUser);
+                recordProjectSnapshot(
+                  updatedProj,
+                  `AI কোড সম্পন্ন (${fileUpdates.length}টি ফাইল)`,
+                  "AI"
+                );
+                if (!activeFilePath || !updatedFiles.some((f) => f.path === activeFilePath)) {
+                  setActiveFilePath(updatedFiles[0]?.path || "");
+                }
+              }
             }
 
             const assistantMsg = {
@@ -1881,11 +2036,26 @@ ${projectContextSummary}
               userPrompt: promptText,
               fileUpdates,
               isCompleteBuild,
-              proposalAccepted: false,
+              proposalAccepted:
+                !isUnconfirmedNewDraft &&
+                (completedPreviewReady || Boolean(activeAiSettings.autoApplyCodeUpdates)),
               timestamp: Date.now()
             };
 
-            if (fileUpdates.length > 0 || (isUnconfirmedNewDraft && draftNewAppProject)) {
+            if (
+              isUnconfirmedNewDraft &&
+              (fileUpdates.length > 0 || draftNewAppProject)
+            ) {
+              setPendingCodeProposals((prev) => ({
+                ...prev,
+                [assistantMsgId]: fileUpdates
+              }));
+            } else if (
+              !isUnconfirmedNewDraft &&
+              fileUpdates.length > 0 &&
+              !completedPreviewReady &&
+              !activeAiSettings.autoApplyCodeUpdates
+            ) {
               setPendingCodeProposals((prev) => ({
                 ...prev,
                 [assistantMsgId]: fileUpdates
@@ -1894,43 +2064,32 @@ ${projectContextSummary}
 
             setActiveChatMessages((prev) => [...prev, assistantMsg]);
 
-            if (
-              !isUnconfirmedNewDraft &&
-              activeAiSettings.autoApplyCodeUpdates &&
-              fileUpdates.length > 0 &&
-              isCompleteBuild
-            ) {
-              setTimeout(() => handleAcceptAiCodeProposal(assistantMsgId, fileUpdates), 80);
+            // Auto-open live preview ONLY after complete UI/UX design & working logic are 100% finished
+            if (completedPreviewReady && isCompleteBuild) {
+              setActiveTab("preview");
             }
           } catch (err) {
-            if (err?.name === "AbortError") {
-              setActiveChatMessages((prev) => [
-                ...prev,
-                {
-                  id: `abort_${Date.now()}`,
-                  role: "assistant",
-                  text: "⏹️ জেনারেশন থামানো হয়েছে।",
-                  timestamp: Date.now()
-                }
-              ]);
-            } else {
+            if (err?.name !== "AbortError") {
               setActiveChatMessages((prev) => [
                 ...prev,
                 {
                   id: `err_${Date.now()}`,
                   role: "assistant",
-                  text: `⚠️ ত্রুটি: ${err?.message || "AI রেসপন্স পাওয়া যায়নি।"}`,
+                  text: `⚠️ ত্রুটি: ${err?.message || "AI সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।"}`,
                   timestamp: Date.now()
                 }
               ]);
             }
           } finally {
-            aiAbortControllerRef.current = null;
             setIsAiGenerating(false);
+            setAiProgressNote("");
+            aiAbortControllerRef.current = null;
           }
         };
 
-        // --- New Raw Project Modal Handlers ---
+        // =====================================================================
+        // 17. MANUAL NEW RAW PROJECT, ADD FILE, DELETE PROJECT & SNAPSHOT RESTORE
+        // =====================================================================
         const handleNewProjNameChange = (val) => {
           setNewProjName(val);
           if (!newProjPkgManual) {
@@ -1941,11 +2100,11 @@ ${projectContextSummary}
         const handleNewProjLogoUpload = (e) => {
           const file = e.target.files?.[0];
           if (!file) return;
-          setNewProjLogoError("");
-          if (file.size > 1024 * 1024) {
-            setNewProjLogoError("লোগো সাইজ ১ MB-এর কম হতে হবে।");
+          if (file.size > 1.5 * 1024 * 1024) {
+            setNewProjLogoError("লোগো ফাইলের আকার ১.৫ MB-এর কম হতে হবে।");
             return;
           }
+          setNewProjLogoError("");
           const reader = new FileReader();
           reader.onload = () => {
             setNewProjLogoDataUrl(String(reader.result || ""));
@@ -1957,9 +2116,8 @@ ${projectContextSummary}
 
         const handleCreateNewProject = (e) => {
           e.preventDefault();
-          const finalName = newProjName.trim() || "Droid App";
           const created = generateAuthenticAndroidProject({
-            name: finalName,
+            name: newProjName || "New Raw App",
             packageSuffix: newProjPkgSuffix,
             codeLang: newProjLang,
             minSdk: newProjMinSdk,
@@ -1973,16 +2131,12 @@ ${projectContextSummary}
           const nextProjects = [created, ...projects];
           setProjects(nextProjects);
           persistProjectsForUser(nextProjects, currentUser);
-          recordProjectSnapshot(created, "নতুন র (Raw) প্রজেক্ট তৈরি", "New");
-
-          setLockedSessionType("new-app");
+          setLockedSessionType("none");
           setDraftNewAppProject(null);
-          setPendingCodeProposals({});
           setActiveProjectId(created.id);
-          setActiveFilePath(created.files?.[0]?.path || "");
-          setIsNewProjectModalOpen(false);
+          setActiveFilePath(created.files[0]?.path || "");
           setActiveTab("chat");
-
+          setIsNewProjectModalOpen(false);
           setNewProjName("");
           setNewProjPkgSuffix("myapp");
           setNewProjPkgManual(false);
@@ -1990,38 +2144,36 @@ ${projectContextSummary}
           setNewProjLogoName("");
         };
 
-        // --- Delete Active Project ---
         const handleDeleteActiveProject = () => {
           if (!activeProject) return;
-          const deletedId = activeProject.id;
-          let remaining = projects.filter((p) => p.id !== deletedId);
-          if (remaining.length === 0) {
-            const fallback = generateAuthenticAndroidProject({
-              name: "My Android App",
-              packageSuffix: "myapp",
-              codeLang: "kotlin",
-              minSdk: 24,
-              targetSdk: 35,
-              buildConfigDsl: "kts",
-              useViewBinding: true
-            });
-            remaining = [fallback];
-          }
+          const remaining = projects.filter((p) => p.id !== activeProject.id);
           setProjects(remaining);
           persistProjectsForUser(remaining, currentUser);
-          setLockedSessionType("none");
-          setActiveProjectId(remaining[0].id);
-          setActiveFilePath(remaining[0].files?.[0]?.path || "");
           setIsDeleteProjectModalOpen(false);
+          setLockedSessionType("none");
+          if (remaining.length > 0) {
+            setActiveProjectId(remaining[0].id);
+            setActiveFilePath(remaining[0].files?.[0]?.path || "");
+          } else {
+            setActiveProjectId("");
+            setActiveFilePath("");
+          }
         };
 
-        // --- Restore History Snapshot ---
-        const handleRestoreSnapshot = (snap) => {
-          if (!activeProject || !snap) return;
-          const restoredFiles = JSON.parse(JSON.stringify(snap.files || []));
+        const handleAddNewFile = (e) => {
+          e.preventDefault();
+          const cleanPath = String(newFilePathInput || "").trim().replace(/^\/+/, "");
+          if (!cleanPath || !activeProject) return;
+          if (activeProject.files.some((f) => f.path === cleanPath)) {
+            setActiveFilePath(cleanPath);
+            setIsNewFileModalOpen(false);
+            setNewFilePathInput("");
+            return;
+          }
+          const updatedFiles = [...activeProject.files, { path: cleanPath, content: "" }];
           const updatedProj = {
             ...activeProject,
-            files: restoredFiles,
+            files: updatedFiles,
             updatedAt: Date.now()
           };
           const nextProjects = projects.map((p) =>
@@ -2029,79 +2181,109 @@ ${projectContextSummary}
           );
           setProjects(nextProjects);
           persistProjectsForUser(nextProjects, currentUser);
-          setActiveFilePath(restoredFiles[0]?.path || "");
-          setIsHistoryModalOpen(false);
+          setActiveFilePath(cleanPath);
+          setIsNewFileModalOpen(false);
+          setNewFilePathInput("");
         };
 
-        // --- Manual Code Editor File Update & Add File ---
-        const handleEditorCodeChange = (newContent) => {
+        const handleEditorCodeChange = (newCodeText) => {
           if (!activeFile) return;
           if (isUnconfirmedNewDraft && draftNewAppProject) {
-            setDraftNewAppProject((prev) => ({
-              ...prev,
-              updatedAt: Date.now(),
-              files: prev.files.map((f) =>
-                f.path === activeFile.path ? { ...f, content: newContent } : f
+            setDraftNewAppProject({
+              ...draftNewAppProject,
+              files: draftNewAppProject.files.map((f) =>
+                f.path === activeFile.path ? { ...f, content: newCodeText } : f
               )
-            }));
+            });
             return;
           }
           if (!activeProject) return;
-          const nextProjects = projects.map((p) => {
-            if (p.id !== activeProject.id) return p;
-            return {
-              ...p,
-              updatedAt: Date.now(),
-              files: p.files.map((f) =>
-                f.path === activeFile.path ? { ...f, content: newContent } : f
-              )
-            };
-          });
+          const updatedFiles = activeProject.files.map((f) =>
+            f.path === activeFile.path ? { ...f, content: newCodeText } : f
+          );
+          const updatedProj = {
+            ...activeProject,
+            files: updatedFiles,
+            updatedAt: Date.now()
+          };
+          const nextProjects = projects.map((p) =>
+            p.id === activeProject.id ? updatedProj : p
+          );
           setProjects(nextProjects);
-          localStorage.setItem(
-            getUserScopedProjectsStorageName(currentUser?.uid),
-            JSON.stringify(nextProjects)
-          );
+          persistProjectsForUser(nextProjects, currentUser);
         };
 
-        const handleAddNewFile = (e) => {
-          e.preventDefault();
-          const cleanPath = newFilePathInput.trim().replace(/^\/+/, "");
-          if (!cleanPath || !activeProject) return;
-          const exists = activeProject.files.some(
-            (f) => f.path.toLowerCase() === cleanPath.toLowerCase()
+        const handleRestoreSnapshot = (snap) => {
+          if (!activeProject || !snap) return;
+          const restoredProj = {
+            ...activeProject,
+            files: JSON.parse(JSON.stringify(snap.files || [])),
+            updatedAt: Date.now()
+          };
+          const nextProjects = projects.map((p) =>
+            p.id === activeProject.id ? restoredProj : p
           );
-          if (!exists) {
-            const updatedProj = {
-              ...activeProject,
-              updatedAt: Date.now(),
-              files: [...activeProject.files, { path: cleanPath, content: "" }]
-            };
-            const nextProjects = projects.map((p) =>
-              p.id === activeProject.id ? updatedProj : p
-            );
-            setProjects(nextProjects);
-            persistProjectsForUser(nextProjects, currentUser);
+          setProjects(nextProjects);
+          persistProjectsForUser(nextProjects, currentUser);
+          setActiveFilePath(restoredProj.files[0]?.path || "");
+          setIsHistoryModalOpen(false);
+        };
+
+        // =====================================================================
+        // 18. LIVE EMULATOR INTERACTIVE SIMULATION HANDLER
+        // =====================================================================
+        const handleEmulatorButtonClick = (buttonLabel) => {
+          const numericValues = Object.values(emuInputValues)
+            .map((v) => parseFloat(v))
+            .filter((n) => !Number.isNaN(n));
+
+          if (numericValues.length >= 2) {
+            const p = numericValues[0] || 0;
+            const r = numericValues[1] || 0;
+            const t = numericValues[2] || 1;
+            if (previewModel.formulaType === "sip") {
+              const monthlyRate = r / 12 / 100;
+              const months = t * 12;
+              const futureVal =
+                monthlyRate > 0
+                  ? p *
+                    ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate) *
+                    (1 + monthlyRate)
+                  : p * months;
+              setEmuResultText(`৳ ${futureVal.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+            } else if (previewModel.formulaType === "emi") {
+              const monthlyRate = r / 12 / 100;
+              const months = t * 12;
+              const emi =
+                monthlyRate > 0
+                  ? (p * monthlyRate * Math.pow(1 + monthlyRate, months)) /
+                    (Math.pow(1 + monthlyRate, months) - 1)
+                  : p / Math.max(months, 1);
+              setEmuResultText(`৳ ${emi.toLocaleString("en-US", { maximumFractionDigits: 2 })} / মাস`);
+            } else {
+              const sum = numericValues.reduce((acc, cur) => acc + cur, 0);
+              setEmuResultText(`৳ ${sum.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+            }
           }
-          setActiveFilePath(cleanPath);
-          setNewFilePathInput("");
-          setIsNewFileModalOpen(false);
+
+          setEmuStatusToast(`"${buttonLabel}" অ্যাকশন সম্পন্ন হয়েছে`);
+          setTimeout(() => setEmuStatusToast(""), 2400);
         };
 
-        // --- Export Project ZIP ---
+        // =====================================================================
+        // 19. ZIP EXPORT, GITHUB PUSH & CLOUD APK / AAB BUILD
+        // =====================================================================
         const handleExportProjectZip = async () => {
           if (!activeProject || !window.JSZip) return;
           setIsZipExporting(true);
           setZipExportStatus(null);
           try {
             const zip = new window.JSZip();
-            activeProject.files.forEach((file) => {
-              if (file.assetDataUrl) {
-                zip.file(file.path, dataUrlToPureBase64(file.assetDataUrl), {
-                  base64: true
-                });
+            activeProject.files.forEach((f) => {
+              if (f.assetDataUrl) {
+                zip.file(f.path, dataUrlToPureBase64(f.assetDataUrl), { base64: true });
               } else {
-                zip.file(file.path, file.content || "");
+                zip.file(f.path, f.content || "");
               }
             });
             const blob = await zip.generateAsync({ type: "blob" });
@@ -2115,54 +2297,47 @@ ${projectContextSummary}
             URL.revokeObjectURL(url);
             setZipExportStatus({
               ok: true,
-              msg: `✅ সফলভাবে ${activeProject.files.length}টি ফাইলসহ .zip ডাউনলোড হয়েছে!`
+              msg: `✅ ${activeProject.files.length}টি ফাইলসহ .zip ডাউনলোড সম্পন্ন হয়েছে!`
             });
           } catch (err) {
             setZipExportStatus({
               ok: false,
-              msg: `ZIP তৈরি ব্যর্থ হয়েছে: ${err?.message || "Unknown error"}`
+              msg: `⚠️ ZIP তৈরি ব্যর্থ: ${err.message}`
             });
           } finally {
             setIsZipExporting(false);
           }
         };
 
-        // --- Push All Project Files to GitHub ---
         const handlePushToGitHub = async (e) => {
           e.preventDefault();
           if (!activeProject) return;
           setIsPushingGh(true);
           setGhPushStatus(null);
           try {
-            for (const file of activeProject.files) {
+            for (const f of activeProject.files) {
               await pushSingleFileToGitHub({
                 token: ghToken.trim(),
                 owner: ghOwner.trim(),
                 repo: ghRepo.trim(),
                 branch: ghBranch.trim() || "main",
-                path: file.path,
-                content: file.assetDataUrl
-                  ? dataUrlToPureBase64(file.assetDataUrl)
-                  : file.content || "",
-                isBase64Payload: Boolean(file.assetDataUrl),
-                message: ghCommitMsg.trim() || "Push from Droid AI Studio"
+                path: f.path,
+                content: f.assetDataUrl ? dataUrlToPureBase64(f.assetDataUrl) : f.content || "",
+                isBase64Payload: Boolean(f.assetDataUrl),
+                message: ghCommitMsg
               });
             }
             setGhPushStatus({
               ok: true,
-              msg: `✅ সফলভাবে সব ${activeProject.files.length}টি ফাইল GitHub-এ পুশ হয়েছে!`
+              msg: `✅ সফলভাবে ${activeProject.files.length}টি ফাইল ${ghOwner}/${ghRepo}-তে পুশ হয়েছে!`
             });
           } catch (err) {
-            setGhPushStatus({
-              ok: false,
-              msg: err?.message || "GitHub পুশ ব্যর্থ হয়েছে।"
-            });
+            setGhPushStatus({ ok: false, msg: `⚠️ ${err.message}` });
           } finally {
             setIsPushingGh(false);
           }
         };
 
-        // --- Cloud Gradle APK & AAB Build via GitHub Actions ---
         const handleStartCloudApkAabBuild = async (e) => {
           e.preventDefault();
           if (!activeProject) return;
@@ -2170,116 +2345,52 @@ ${projectContextSummary}
           setCloudBuildError("");
           setCloudBuildArtifacts([]);
           setCloudBuildRun(null);
-
-          const token = ghToken.trim();
-          const owner = ghOwner.trim();
-          const repo = buildAppRepo.trim();
-
           try {
-            setCloudBuildStep("১/৩: GitHub রিপোজিটরি যাচাই করা হচ্ছে...");
-            const repoCheckRes = await fetch(
-              `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+            setCloudBuildStep("১/৩: GitHub রিপোজিটরিতে প্রজেক্ট ফাইল আপলোড হচ্ছে...");
+            for (const f of activeProject.files) {
+              await pushSingleFileToGitHub({
+                token: ghToken.trim(),
+                owner: ghOwner.trim(),
+                repo: buildAppRepo.trim(),
+                branch: "main",
+                path: f.path,
+                content: f.assetDataUrl ? dataUrlToPureBase64(f.assetDataUrl) : f.content || "",
+                isBase64Payload: Boolean(f.assetDataUrl),
+                message: `Upload ${f.path} for APK/AAB cloud build`
+              });
+            }
+
+            setCloudBuildStep("২/৩: Gradle Cloud Build Workflow যুক্ত হচ্ছে...");
+            await pushSingleFileToGitHub({
+              token: ghToken.trim(),
+              owner: ghOwner.trim(),
+              repo: buildAppRepo.trim(),
+              branch: "main",
+              path: ".github/workflows/droid-ai-build.yml",
+              content: generateDroidCloudGradleWorkflowYaml(activeProject.name),
+              isBase64Payload: false,
+              message: "Configure Droid AI Studio Cloud Gradle Build"
+            });
+
+            setCloudBuildStep("৩/৩: GitHub Actions বিল্ড ট্রিগার সম্পন্ন হয়েছে। রান স্ট্যাটাস চেক হচ্ছে...");
+            const runsRes = await fetch(
+              `https://api.github.com/repos/${encodeURIComponent(
+                ghOwner.trim()
+              )}/${encodeURIComponent(buildAppRepo.trim())}/actions/runs?per_page=1`,
               {
                 headers: {
-                  Authorization: `Bearer ${token}`,
+                  Authorization: `Bearer ${ghToken.trim()}`,
                   Accept: "application/vnd.github+json"
                 }
               }
             );
-            if (!repoCheckRes.ok) {
-              const createRes = await fetch("https://api.github.com/user/repos", {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  Accept: "application/vnd.github+json",
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                  name: repo,
-                  auto_init: true,
-                  private: false
-                })
-              });
-              if (!createRes.ok) {
-                throw new Error("রিপোজিটরি পাওয়া যায়নি বা তৈরি করা যায়নি। টোকেন চেক করুন।");
-              }
-            }
-
-            setCloudBuildStep("২/৩: প্রজেক্ট ফাইল ও Gradle Build Workflow আপলোড হচ্ছে...");
-            for (const file of activeProject.files) {
-              await pushSingleFileToGitHub({
-                token,
-                owner,
-                repo,
-                branch: "main",
-                path: file.path,
-                content: file.assetDataUrl
-                  ? dataUrlToPureBase64(file.assetDataUrl)
-                  : file.content || "",
-                isBase64Payload: Boolean(file.assetDataUrl),
-                message: `Sync ${file.path} for APK/AAB build`
-              });
-            }
-
-            const workflowYaml = generateDroidCloudGradleWorkflowYaml(activeProject.name);
-            await pushSingleFileToGitHub({
-              token,
-              owner,
-              repo,
-              branch: "main",
-              path: ".github/workflows/droid-ai-build.yml",
-              content: workflowYaml,
-              isBase64Payload: false,
-              message: "Add Droid AI Studio APK & AAB build workflow"
-            });
-
-            setCloudBuildStep("৩/৩: ক্লাউডে Gradle APK ও AAB বিল্ড শুরু হয়েছে...");
-            await new Promise((r) => setTimeout(r, 4000));
-
-            for (let attempt = 0; attempt < 18; attempt++) {
-              const runsRes = await fetch(
-                `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
-                  repo
-                )}/actions/runs?per_page=1`,
-                {
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: "application/vnd.github+json"
-                  }
-                }
-              );
-              const runsData = await runsRes.json().catch(() => ({}));
-              const latestRun = runsData?.workflow_runs?.[0];
-              if (latestRun) {
-                setCloudBuildRun(latestRun);
-                if (latestRun.status === "completed") {
-                  if (latestRun.conclusion === "success") {
-                    const artRes = await fetch(
-                      `https://api.github.com/repos/${encodeURIComponent(
-                        owner
-                      )}/${encodeURIComponent(repo)}/actions/runs/${latestRun.id}/artifacts`,
-                      {
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          Accept: "application/vnd.github+json"
-                        }
-                      }
-                    );
-                    const artData = await artRes.json().catch(() => ({}));
-                    setCloudBuildArtifacts(artData?.artifacts || []);
-                    setCloudBuildStep("✅ APK ও AAB বিল্ড সফলভাবে সম্পন্ন হয়েছে!");
-                  } else {
-                    setCloudBuildError(
-                      `বিল্ড ব্যর্থ হয়েছে (Status: ${latestRun.conclusion})। Logs দেখে AI দিয়ে ফিক্স করুন।`
-                    );
-                  }
-                  break;
-                }
-              }
-              await new Promise((r) => setTimeout(r, 6000));
+            const runsData = await runsRes.json().catch(() => ({}));
+            const latestRun = runsData?.workflow_runs?.[0] || null;
+            if (latestRun) {
+              setCloudBuildRun(latestRun);
             }
           } catch (err) {
-            setCloudBuildError(err?.message || "Cloud Build ব্যর্থ হয়েছে।");
+            setCloudBuildError(err?.message || "Cloud Build শুরু করতে সমস্যা হয়েছে।");
           } finally {
             setIsCloudBuilding(false);
           }
@@ -2288,406 +2399,246 @@ ${projectContextSummary}
         const handleDownloadBuildArtifact = async (artifact) => {
           setDownloadingArtifactId(artifact.id);
           try {
-            const res = await fetch(artifact.archive_download_url, {
-              headers: {
-                Authorization: `Bearer ${ghToken.trim()}`,
-                Accept: "application/vnd.github+json"
-              }
-            });
-            if (!res.ok) throw new Error("Artifact ডাউনলোড ব্যর্থ হয়েছে।");
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `${artifact.name}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-          } catch (err) {
-            setCloudBuildError(err?.message || "Artifact ডাউনলোড করা যায়নি।");
+            window.open(artifact.archive_download_url, "_blank");
           } finally {
             setDownloadingArtifactId(null);
           }
         };
 
         const handleFixBuildErrorWithAi = () => {
+          const errText = cloudBuildError;
           setIsGithubModalOpen(false);
           setActiveTab("chat");
           handleSendChatMessage(
             null,
-            `GitHub Actions Gradle APK/AAB বিল্ডে এই সমস্যা হয়েছে: "${cloudBuildError}"। প্রজেক্টের ফাইলগুলো বিশ্লেষণ করে বিল্ড এরর ফিক্স করুন।`
+            `GitHub Cloud Gradle Build চলাকালীন নিচের এররটি এসেছে:\n${errText}\nঅনুগ্রহ করে কারণ বিশ্লেষণ করে সম্পূর্ণ ফিক্সড কোড দিন।`
           );
         };
 
-        // --- Interactive Emulator Calculation & Button Action Handler ---
-        const handleEmulatorButtonClick = (btnLabel) => {
-          const numericInputs = Object.values(emuInputValues)
-            .map((v) => parseFloat(String(v || "").replace(/[^0-9.-]/g, "")))
-            .filter((n) => !Number.isNaN(n));
-
-          if (numericInputs.length >= 2) {
-            if (previewModel.formulaType === "sip" && numericInputs.length >= 3) {
-              const p = numericInputs[0];
-              const annualRate = numericInputs[1];
-              const years = numericInputs[2];
-              const r = annualRate / 12 / 100;
-              const n = years * 12;
-              const fv =
-                r > 0
-                  ? p * ((Math.pow(1 + r, n) - 1) / r) * (1 + r)
-                  : p * n;
-              setEmuResultText(`৳ ${fv.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`);
-            } else if (previewModel.formulaType === "emi" && numericInputs.length >= 3) {
-              const p = numericInputs[0];
-              const annualRate = numericInputs[1];
-              const years = numericInputs[2];
-              const r = annualRate / 12 / 100;
-              const n = years * 12;
-              const emi =
-                r > 0
-                  ? (p * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
-                  : p / n;
-              setEmuResultText(`৳ ${emi.toLocaleString("en-IN", { maximumFractionDigits: 2 })}/মাস`);
-            } else {
-              const sum = numericInputs.reduce((acc, val) => acc + val, 0);
-              setEmuResultText(`ফলাফল: ${sum.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`);
-            }
-          } else if (numericInputs.length === 1) {
-            setEmuResultText(`ফলাফল: ${numericInputs[0]}`);
-          }
-
-          setEmuStatusToast(`"${btnLabel}" অ্যাকশন সম্পন্ন হয়েছে`);
-          setTimeout(() => setEmuStatusToast(""), 2400);
-        };
-
-        // =========================================================================
-        // SPLASH SCREEN VIEW
-        // =========================================================================
+        // =====================================================================
+        // 20. SPLASH SCREEN RENDER
+        // =====================================================================
         if (showSplash) {
           return (
-            <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#060913] px-4 text-center">
+            <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#070b14] p-6 text-center">
               <div className="splash-logo-glow rounded-3xl p-1">
-                <DroidRobotLogo size={88} />
+                <DroidRobotLogo size={84} />
               </div>
-              <h1 className="mt-5 bg-gradient-to-r from-emerald-300 via-sky-300 to-purple-300 bg-clip-text text-2xl font-black tracking-tight text-transparent">
+              <h1 className="mt-5 text-2xl font-black tracking-tight text-white">
                 Droid AI Studio
               </h1>
-              <p className="mt-1 text-xs font-semibold text-slate-400">
-                ড্রয়েড এআই স্টুডিও • Pure Raw AI Android Builder
+              <p className="mt-1 text-xs font-medium text-emerald-300">
+                ড্রয়েড এআই স্টুডিও • Zero-Default Raw Android App Builder
               </p>
             </div>
           );
         }
 
-        // =========================================================================
-        // MAIN STUDIO LAYOUT
-        // =========================================================================
-        const currentFilesList =
-          isUnconfirmedNewDraft && draftNewAppProject
-            ? draftNewAppProject.files
-            : activeProject?.files || [];
-
-        const isSessionLocked = lockedSessionType !== "none";
-
+        // =====================================================================
+        // 21. MAIN STUDIO WORKSPACE RENDER
+        // =====================================================================
         return (
           <div className="flex min-h-screen flex-col bg-[#070b14] text-slate-100">
             {/* ================================================================= */}
-            {/* TOP STUDIO HEADER BAR                                             */}
+            {/* TOP STUDIO HEADER & WORKSPACE ACTION BAR                          */}
             {/* ================================================================= */}
-            <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#0b1120]/95 px-2.5 py-2 backdrop-blur-md">
-              <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
-                {/* Left Brand & RTDB Sync Badge */}
-                <div className="flex items-center gap-2">
-                  <DroidRobotLogo size={34} />
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-black tracking-tight text-white">
-                        Droid AI Studio
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          rtdbSyncStatus === "synced"
-                            ? "bg-emerald-950 text-emerald-300 border border-emerald-500/40"
-                            : rtdbSyncStatus === "syncing"
-                            ? "bg-amber-950 text-amber-300 border border-amber-500/40"
-                            : "bg-slate-800 text-slate-400"
-                        }`}
-                      >
-                        {rtdbSyncStatus === "synced"
-                          ? "RTDB সিঙ্কড"
-                          : rtdbSyncStatus === "syncing"
-                          ? "সিঙ্ক হচ্ছে..."
-                          : "লোকাল"}
-                      </span>
-                    </div>
+            <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#090e1c]/95 px-2.5 py-2 backdrop-blur-md">
+              <div className="mx-auto max-w-6xl space-y-2">
+                {/* Row 1: Brand, RTDB Sync Pill & Multi-Project Selector */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <DroidRobotLogo size={32} />
+                    <span className="text-sm font-black tracking-tight text-white sm:text-base">
+                      Droid AI Studio
+                    </span>
+                    <span
+                      className={`rounded-full border px-2.5 py-0.5 text-[10px] font-extrabold ${
+                        rtdbSyncStatus === "synced"
+                          ? "border-emerald-500/50 bg-emerald-950/70 text-emerald-300"
+                          : "border-slate-700 bg-slate-900 text-slate-300"
+                      }`}
+                    >
+                      {rtdbSyncStatus === "synced" ? "RTDB সিঙ্কড" : "RTDB রেডি"}
+                    </span>
+                  </div>
+
+                  {/* Multi-Project Dropdown Selector */}
+                  <div className="min-w-[160px] flex-1 sm:max-w-[230px]">
+                    <select
+                      value={isUnconfirmedNewDraft ? "" : activeProjectId}
+                      onChange={(e) => {
+                        const chosenId = e.target.value;
+                        if (!chosenId) return;
+                        setLockedSessionType("none");
+                        setDraftNewAppProject(null);
+                        setActiveProjectId(chosenId);
+                        const found = projects.find((p) => p.id === chosenId);
+                        setActiveFilePath(found?.files?.[0]?.path || "");
+                      }}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs font-bold text-slate-100 focus:border-purple-500 focus:outline-none"
+                    >
+                      {isUnconfirmedNewDraft && (
+                        <option value="">-- নতুন ড্রাফট (অসংরক্ষিত) --</option>
+                      )}
+                      {projects.length === 0 ? (
+                        <option value="">-- কোনো প্রজেক্ট সিলেক্ট নেই --</option>
+                      ) : (
+                        projects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
                   </div>
                 </div>
 
-                {/* Project Selector Dropdown (Disabled while locked in active session until Exit Project) */}
-                <div className="flex flex-1 items-center justify-end gap-1.5 sm:flex-initial">
-                  <select
-                    disabled={isSessionLocked}
-                    value={isUnconfirmedNewDraft ? "" : activeProjectId}
-                    onChange={(e) => {
-                      const chosenId = e.target.value;
-                      if (!chosenId) return;
-                      setActiveProjectId(chosenId);
-                      const chosenProj = projects.find((p) => p.id === chosenId);
-                      setActiveFilePath(chosenProj?.files?.[0]?.path || "");
-                    }}
-                    title={
-                      isSessionLocked
-                        ? "প্রজেক্ট লকড আছে — পরিবর্তন করতে আগে Exit Project চাপুন"
-                        : "প্রজেক্ট নির্বাচন করুন"
-                    }
-                    className="max-w-[175px] truncate rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-slate-100 focus:border-emerald-500 focus:outline-none disabled:opacity-60 sm:max-w-[230px]"
+                {/* Row 2: Project Actions (+ প্রজেক্ট, হিস্ট্রি, ডিলিট, Build/APK, GitHub, User) */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setIsNewProjectModalOpen(true)}
+                    className="rounded-xl border border-emerald-500/50 bg-emerald-950/70 px-2.5 py-1.5 font-extrabold text-emerald-300 hover:bg-emerald-900"
                   >
-                    {isUnconfirmedNewDraft && (
-                      <option value="">-- কোনো প্রজেক্ট সিলেক্ট নেই --</option>
-                    )}
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.files?.length || 0})
-                      </option>
-                    ))}
-                  </select>
+                    + প্রজেক্ট
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!activeProject}
+                    onClick={() => setIsHistoryModalOpen(true)}
+                    className="rounded-xl border border-amber-500/40 bg-amber-950/60 px-2.5 py-1.5 font-bold text-amber-300 hover:bg-amber-900 disabled:opacity-40"
+                  >
+                    📜 হিস্ট্রি ({activeProjectHistory.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!activeProject}
+                    onClick={() => setIsDeleteProjectModalOpen(true)}
+                    className="rounded-xl border border-rose-500/40 bg-rose-950/60 px-2.5 py-1.5 font-bold text-rose-300 hover:bg-rose-900 disabled:opacity-40"
+                  >
+                    🗑️ ডিলিট
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!activeProject}
+                    onClick={() => {
+                      setHubActiveView("build");
+                      setIsGithubModalOpen(true);
+                    }}
+                    className="rounded-xl border border-sky-500/40 bg-sky-950/60 px-2.5 py-1.5 font-bold text-sky-300 hover:bg-sky-900 disabled:opacity-40"
+                  >
+                    📦 Build / APK
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!activeProject}
+                    onClick={() => {
+                      setHubActiveView("github");
+                      setIsGithubModalOpen(true);
+                    }}
+                    className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1.5 font-bold text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                  >
+                    GitHub
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsApiPanelExpanded((v) => !v)}
+                    className={`rounded-xl border px-2.5 py-1.5 font-bold ${
+                      userGeminiKey
+                        ? "border-purple-500/40 bg-purple-950/60 text-purple-200"
+                        : "border-amber-500/50 bg-amber-950/70 text-amber-200"
+                    }`}
+                  >
+                    🔑 {userGeminiKey ? selectedModel : "API Key সেট করুন"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="ml-auto rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-2.5 py-1.5 font-bold text-emerald-300 hover:bg-emerald-900"
+                  >
+                    👤 {currentUser?.email ? currentUser.email.split("@")[0] : "sebatel24.com"}
+                  </button>
                 </div>
-              </div>
 
-              {/* Action Toolbar Row */}
-              <div className="mx-auto mt-2 flex max-w-6xl flex-wrap items-center gap-1.5 text-[11px]">
-                <button
-                  type="button"
-                  disabled={isSessionLocked}
-                  onClick={() => setIsNewProjectModalOpen(true)}
-                  className="rounded-xl border border-emerald-500/40 bg-emerald-950/70 px-2.5 py-1.5 font-bold text-emerald-200 hover:bg-emerald-900/80 disabled:opacity-40"
-                >
-                  + প্রজেক্ট
-                </button>
+                {/* Collapsible BYOK Gemini API Key & Model Bar */}
+                {isApiPanelExpanded && (
+                  <form
+                    onSubmit={handleVerifyAndSaveApiKey}
+                    className="rounded-2xl border border-purple-500/35 bg-slate-950/95 p-2.5 text-xs shadow-lg"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="password"
+                        value={keyInputDraft}
+                        onChange={(e) => setKeyInputDraft(e.target.value)}
+                        placeholder="আপনার Gemini API Key (AIza...) বসান"
+                        className="min-w-[180px] flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-slate-100 focus:border-purple-500 focus:outline-none"
+                      />
+                      {availableModels.length > 0 && (
+                        <select
+                          value={selectedModel}
+                          onChange={(e) => setSelectedModel(e.target.value)}
+                          className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-1.5 font-mono text-[11px] text-emerald-300"
+                        >
+                          {availableModels.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.id}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={isVerifyingKey}
+                        className="rounded-xl bg-purple-600 px-3.5 py-1.5 font-extrabold text-white hover:bg-purple-500 disabled:opacity-50"
+                      >
+                        {isVerifyingKey ? "যাচাই হচ্ছে..." : "যাচাই ও সেভ"}
+                      </button>
+                    </div>
+                    {keyStatusBanner && (
+                      <div
+                        className={`mt-1.5 text-[11px] font-semibold ${
+                          keyStatusBanner.ok ? "text-emerald-300" : "text-rose-300"
+                        }`}
+                      >
+                        {keyStatusBanner.msg}
+                      </div>
+                    )}
+                  </form>
+                )}
 
-                <button
-                  type="button"
-                  disabled={!activeProject || isUnconfirmedNewDraft}
-                  onClick={() => setIsHistoryModalOpen(true)}
-                  className="rounded-xl border border-amber-500/40 bg-amber-950/60 px-2.5 py-1.5 font-bold text-amber-200 hover:bg-amber-900/70 disabled:opacity-40"
-                >
-                  📜 হিস্ট্রি ({activeProjectHistory.length})
-                </button>
+                {/* Row 3: Conversational New App Builder & Project Rebuild Triggers */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={handleStartConversationalNewAppSession}
+                    className="rounded-xl border border-emerald-500/45 bg-gradient-to-r from-emerald-950/90 to-teal-950/90 px-3 py-2 font-extrabold text-emerald-200 shadow hover:from-emerald-900 hover:to-teal-900"
+                  >
+                    🎤 কথা বলে নতুন অ্যাপ বানান
+                  </button>
 
-                <button
-                  type="button"
-                  disabled={!activeProject || isUnconfirmedNewDraft || isSessionLocked}
-                  onClick={() => setIsDeleteProjectModalOpen(true)}
-                  className="rounded-xl border border-rose-500/40 bg-rose-950/60 px-2.5 py-1.5 font-bold text-rose-200 hover:bg-rose-900/70 disabled:opacity-40"
-                >
-                  🗑️ ডিলিট
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!activeProject || isUnconfirmedNewDraft}
-                  onClick={() => {
-                    setHubActiveView("build");
-                    setIsGithubModalOpen(true);
-                  }}
-                  className="rounded-xl border border-sky-500/40 bg-sky-950/70 px-2.5 py-1.5 font-bold text-sky-200 hover:bg-sky-900/80 disabled:opacity-40"
-                >
-                  📦 Build / APK
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!activeProject || isUnconfirmedNewDraft}
-                  onClick={() => {
-                    setHubActiveView("github");
-                    setIsGithubModalOpen(true);
-                  }}
-                  className="rounded-xl border border-slate-700 bg-slate-800/90 px-2.5 py-1.5 font-bold text-slate-200 hover:bg-slate-700 disabled:opacity-40"
-                >
-                  GitHub
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsAuthModalOpen(true)}
-                  className="ml-auto rounded-xl border border-emerald-500/35 bg-emerald-950/40 px-2.5 py-1.5 font-bold text-emerald-300 hover:bg-emerald-900/50"
-                >
-                  👤 {currentUser?.email ? currentUser.email.split("@")[0] : "লগইন"}
-                </button>
-              </div>
-
-              {/* Conversational Voice App Builder & Project Rebuild Bar */}
-              <div className="mx-auto mt-2 grid max-w-6xl grid-cols-2 gap-1.5 text-[11px]">
-                <button
-                  type="button"
-                  disabled={isSessionLocked}
-                  onClick={handleStartNewAppBuilderSession}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 font-extrabold transition disabled:opacity-45 ${
-                    lockedSessionType === "new-app"
-                      ? "border-emerald-400 bg-emerald-600 text-white shadow-lg"
-                      : "border-emerald-500/40 bg-gradient-to-r from-emerald-950/90 to-teal-950/90 text-emerald-200 hover:border-emerald-400"
-                  }`}
-                >
-                  <span>🎤 কথা বলে নতুন অ্যাপ বানান</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isSessionLocked}
-                  onClick={handleOpenRebuildPicker}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 font-extrabold transition disabled:opacity-45 ${
-                    lockedSessionType === "rebuild"
-                      ? "border-purple-400 bg-purple-600 text-white shadow-lg"
-                      : "border-purple-500/40 bg-gradient-to-r from-purple-950/90 to-indigo-950/90 text-purple-200 hover:border-purple-400"
-                  }`}
-                >
-                  <span>🔄 কথা বলে প্রজেক্ট রিবিল্ড</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenRebuildWorkflow}
+                    className="rounded-xl border border-purple-500/45 bg-gradient-to-r from-purple-950/90 to-indigo-950/90 px-3 py-2 font-extrabold text-purple-200 shadow hover:from-purple-900 hover:to-indigo-900"
+                  >
+                    🔄 কথা বলে প্রজেক্ট রিবিল্ড
+                  </button>
+                </div>
               </div>
             </header>
 
             {/* ================================================================= */}
-            {/* COLLAPSIBLE BYOK GEMINI API KEY & MODEL BAR                       */}
+            {/* PRIMARY WORKSPACE NAVIGATION TABS (চ্যাট | কোড | প্রিভিউ)          */}
             {/* ================================================================= */}
-            <section className="border-b border-slate-800/80 bg-[#0a0f1d] px-2.5 py-2">
-              <div className="mx-auto max-w-6xl">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-block h-2.5 w-2.5 rounded-full ${
-                        userGeminiKey ? "bg-emerald-400" : "bg-amber-400"
-                      }`}
-                    />
-                    <span className="font-bold text-slate-200">
-                      {userGeminiKey
-                        ? `Gemini সংযুক্ত (${selectedModel})`
-                        : "Gemini API Key সেট করা নেই"}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    {availableModels.length > 0 && (
-                      <select
-                        value={selectedModel}
-                        onChange={(e) => {
-                          setSelectedModel(e.target.value);
-                          updateActiveAiSettings({ preferredModel: e.target.value });
-                        }}
-                        className="max-w-[165px] rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-emerald-300"
-                      >
-                        {availableModels.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.id}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setIsAiSettingsOpen((v) => !v)}
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-slate-700"
-                    >
-                      ⚙️ AI সেটিংস
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsApiPanelExpanded((v) => !v)}
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-semibold text-sky-300 hover:bg-slate-700"
-                    >
-                      {isApiPanelExpanded ? "লুকান ▲" : "API Key ▼"}
-                    </button>
-                  </div>
-                </div>
-
-                {isApiPanelExpanded && (
-                  <form
-                    onSubmit={handleVerifyAndSaveKey}
-                    className="mt-2 flex flex-col gap-2 sm:flex-row"
-                  >
-                    <input
-                      type="password"
-                      value={keyInputDraft}
-                      onChange={(e) => setKeyInputDraft(e.target.value)}
-                      placeholder="আপনার নিজস্ব Google AI Studio Gemini API Key লিখুন (AIzaSy...)"
-                      className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none"
-                    />
-                    <div className="flex gap-1.5">
-                      <button
-                        type="submit"
-                        disabled={isVerifyingKey}
-                        className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-extrabold text-white hover:bg-emerald-500 disabled:opacity-50"
-                      >
-                        {isVerifyingKey ? "যাচাই হচ্ছে..." : "যাচাই ও সেভ করুন"}
-                      </button>
-                      {userGeminiKey && (
-                        <button
-                          type="button"
-                          onClick={handleClearUserKey}
-                          className="rounded-xl border border-rose-500/40 bg-rose-950/60 px-3 py-2 text-xs font-bold text-rose-200"
-                        >
-                          মুছুন
-                        </button>
-                      )}
-                    </div>
-                  </form>
-                )}
-
-                {keyStatusBanner && (
-                  <div
-                    className={`mt-2 rounded-xl border px-3 py-1.5 text-[11px] ${
-                      keyStatusBanner.ok
-                        ? "border-emerald-500/40 bg-emerald-950/50 text-emerald-200"
-                        : "border-rose-500/40 bg-rose-950/50 text-rose-200"
-                    }`}
-                  >
-                    {keyStatusBanner.msg}
-                  </div>
-                )}
-
-                {isAiSettingsOpen && (
-                  <div className="mt-2 space-y-2 rounded-xl border border-slate-800 bg-slate-950/90 p-3 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-purple-300">
-                        🤖 প্রজেক্ট AI কনফিগারেশন
-                      </span>
-                      <label className="flex items-center gap-1.5 text-[11px] text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(activeAiSettings.autoApplyCodeUpdates)}
-                          onChange={(e) =>
-                            updateActiveAiSettings({ autoApplyCodeUpdates: e.target.checked })
-                          }
-                          className="accent-emerald-500"
-                        />
-                        <span>কোড অটো-Accept</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[11px] text-slate-400">
-                        System Persona & Coding Rules:
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={activeAiSettings.systemPersona}
-                        onChange={(e) =>
-                          updateActiveAiSettings({ systemPersona: e.target.value })
-                        }
-                        className="w-full rounded-xl border border-slate-700 bg-slate-900 p-2 text-[11px] text-slate-200 focus:border-purple-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* ================================================================= */}
-            {/* MAIN 3-TAB NAVIGATION (চ্যাট | কোড | প্রিভিউ — লকড আনটিল কমপ্লিট) */}
-            {/* ================================================================= */}
-            <nav className="mx-auto mt-2.5 w-full max-w-6xl px-2.5">
-              <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-800 bg-[#0c1324] p-1 text-xs">
+            <nav className="mx-auto w-full max-w-6xl px-2.5 pt-2.5">
+              <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-800 bg-[#0b1120] p-1 text-xs">
                 <button
                   type="button"
                   onClick={() => setActiveTab("chat")}
@@ -2712,20 +2663,15 @@ ${projectContextSummary}
                 </button>
                 <button
                   type="button"
-                  disabled={!isPreviewUnlocked}
-                  onClick={() => isPreviewUnlocked && setActiveTab("preview")}
-                  title={
-                    isPreviewUnlocked
-                      ? "সম্পূর্ণ প্রজেক্টের লাইভ প্রিভিউ দেখুন"
-                      : "সম্পূর্ণ UI/UX ডিজাইন ও লজিক তৈরি এবং Accept করার পর প্রিভিউ আনলক হবে"
-                  }
-                  className={`rounded-xl py-2.5 font-extrabold transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                  onClick={() => isPreviewTabAvailable && setActiveTab("preview")}
+                  title="লাইভ প্রিভিউ দেখুন"
+                  className={`rounded-xl py-2.5 font-extrabold transition ${
                     activeTab === "preview"
                       ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg"
                       : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  {isPreviewUnlocked ? "📱 প্রিভিউ" : "🔒 প্রিভিউ"}
+                  📱 প্রিভিউ
                 </button>
               </div>
             </nav>
@@ -2739,53 +2685,84 @@ ${projectContextSummary}
               {/* --------------------------------------------------------------- */}
               {activeTab === "chat" && (
                 <div className="flex flex-1 flex-col rounded-2xl border border-slate-800 bg-[#0b1120] shadow-xl">
-                  {/* Strict Project Session Lock Banner (with In-Session Analysis & Explicit Exit Project) */}
-                  {isSessionLocked && (
+                  {/* Strict Project Session Lock & Quick Analysis / Error-Fix Bar */}
+                  {(isSessionLocked || activeProject || draftNewAppProject) && (
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-500/35 bg-gradient-to-r from-emerald-950/60 via-slate-900 to-purple-950/60 px-3 py-2 text-xs">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="font-extrabold text-emerald-300">
-                            🔒 লকড প্রজেক্ট সেশন:{" "}
-                            {activeProject?.name ||
-                              draftNewAppProject?.name ||
-                              "নতুন অ্যাপ তৈরি হচ্ছে"}
+                            {isSessionLocked
+                              ? `🔒 লকড প্রজেক্ট সেশন: ${
+                                  activeProject?.name ||
+                                  draftNewAppProject?.name ||
+                                  "নতুন অ্যাপ তৈরি হচ্ছে"
+                                }`
+                              : `📂 সক্রিয় প্রজেক্ট: ${
+                                  activeProject?.name || draftNewAppProject?.name
+                                }`}
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-300">
                           {isUnconfirmedNewDraft
                             ? draftNewAppProject
-                              ? `ড্রাফট প্রস্তুত (${draftNewAppProject.packageName}) — ✅ Accept ও কনফার্ম করুন`
-                              : "পুরনো প্রজেক্ট আনসিলেক্ট আছে। সম্পূর্ণ UI/UX ও লজিক তৈরি হওয়ার পর প্রিভিউ আনলক হবে।"
-                            : `আপনি 🚪 Exit Project না করা পর্যন্ত AI শুধু এই প্রজেক্টেই কাজ করবে (${activeProject?.files?.length || 0}টি ফাইল)।`}
+                              ? `ড্রাফট প্রস্তুত (${draftNewAppProject.packageName}) — সম্পূর্ণ UI/UX ও লজিক তৈরি হলে প্রিভিউ দেখাবে`
+                              : "পুরনো প্রজেক্ট আনসিলেক্ট আছে। সম্পূর্ণ UI/UX ও লজিক তৈরি শেষ হলেই স্বয়ংক্রিয়ভাবে প্রিভিউ দেখাবে।"
+                            : isSessionLocked
+                            ? `আপনি 🚪 Exit Project না করা পর্যন্ত AI শুধু এই প্রজেক্টেই কাজ করবে (${
+                                activeProject?.files?.length || 0
+                              }টি ফাইল)।`
+                            : `মোট ফাইল: ${activeProject?.files?.length || 0}টি • প্যাকেজ: ${
+                                activeProject?.packageName || ""
+                              }`}
                         </p>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5">
                         {(activeProject || draftNewAppProject) && (
-                          <button
-                            type="button"
-                            disabled={isAiGenerating}
-                            onClick={() => {
-                              const targetName =
-                                activeProject?.name || draftNewAppProject?.name || "এই অ্যাপ";
-                              handleSendChatMessage(
-                                null,
-                                `এই "${targetName}" প্রজেক্টের সব ফাইল গভীরভাবে বিশ্লেষণ করে UI/UX ডিজাইন, লেআউট কাঠামো এবং লজিকের বর্তমান অবস্থা ও উন্নতির দিকগুলো বিস্তারিতভাবে জানান।`
-                              );
-                            }}
-                            className="rounded-xl bg-amber-600 px-2.5 py-1.5 text-[11px] font-extrabold text-white shadow hover:bg-amber-500 disabled:opacity-50"
-                          >
-                            🔍 প্রজেক্ট বিশ্লেষণ
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              disabled={isAiGenerating}
+                              onClick={() => {
+                                const targetName =
+                                  activeProject?.name || draftNewAppProject?.name || "এই অ্যাপ";
+                                handleSendChatMessage(
+                                  null,
+                                  `এই "${targetName}" প্রজেক্টের সব ফাইল গভীরভাবে বিশ্লেষণ করে UI/UX ডিজাইন, লেআউট কাঠামো এবং লজিকের বর্তমান অবস্থা ও উন্নতির দিকগুলো বিস্তারিতভাবে জানান।`
+                                );
+                              }}
+                              className="rounded-xl bg-amber-600 px-2.5 py-1.5 text-[11px] font-extrabold text-white shadow hover:bg-amber-500 disabled:opacity-50"
+                            >
+                              🔍 প্রজেক্ট বিশ্লেষণ করুন
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isAiGenerating}
+                              onClick={() => {
+                                const targetName =
+                                  activeProject?.name || draftNewAppProject?.name || "এই অ্যাপ";
+                                handleSendChatMessage(
+                                  null,
+                                  `এই "${targetName}" প্রজেক্টের সব কোড ও XML লেআউট পরীক্ষা করে কোনো এরর, বাগ, ক্র্যাশ বা অসম্পূর্ণ লজিক থাকলে তা সম্পূর্ণভাবে ফিক্স করে দিন।`
+                                );
+                              }}
+                              className="rounded-xl bg-sky-600 px-2.5 py-1.5 text-[11px] font-extrabold text-white shadow hover:bg-sky-500 disabled:opacity-50"
+                            >
+                              🛠️ এরর ফিক্স করুন
+                            </button>
+                          </>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={handleExitLockedProjectSession}
-                          className="rounded-xl border border-rose-500/50 bg-rose-950/80 px-2.5 py-1.5 text-[11px] font-extrabold text-rose-200 hover:bg-rose-900"
-                        >
-                          🚪 Exit Project
-                        </button>
+                        {isSessionLocked && (
+                          <button
+                            type="button"
+                            onClick={handleExitLockedProjectSession}
+                            className="rounded-xl border border-rose-500/50 bg-rose-950/80 px-2.5 py-1.5 text-[11px] font-extrabold text-rose-200 hover:bg-rose-900"
+                          >
+                            🚪 Exit Project
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2835,17 +2812,14 @@ ${projectContextSummary}
                                 >
                                   {isUnconfirmedNewDraft
                                     ? "✅ Accept ও প্রজেক্ট কনফার্ম করুন"
-                                    : `✅ Accept (${proposalFiles?.length || 0}টি ফাইল সেভ ও প্রিভিউ আনলক)`}
+                                    : `✅ Accept (${proposalFiles?.length || 0}টি ফাইল সেভ করুন)`}
                                 </button>
-                                <span className="text-[10px] text-amber-300">
-                                  🔒 Accept করার পর প্রিভিউ আনলক হবে
-                                </span>
                               </div>
                             )}
 
                             {msg.proposalAccepted && (
                               <div className="mt-2 inline-block rounded-lg border border-emerald-500/40 bg-emerald-950/60 px-2.5 py-1 text-[11px] font-bold text-emerald-300">
-                                ✔️ সম্পূর্ণ UI/UX ও লজিক প্রজেক্টে যুক্ত হয়েছে (প্রিভিউ আনলকড)
+                                ✔️ সম্পূর্ণ UI/UX ও লজিক প্রজেক্টে যুক্ত হয়েছে
                               </div>
                             )}
                           </div>
@@ -2857,7 +2831,8 @@ ${projectContextSummary}
                       <div className="flex items-center gap-2 rounded-2xl border border-purple-500/30 bg-purple-950/40 px-3.5 py-2.5 text-xs text-purple-200">
                         <span className="inline-block h-2.5 w-2.5 animate-ping rounded-full bg-purple-400" />
                         <span>
-                          AI সম্পূর্ণ UI/UX ডিজাইন ও কার্যকর লজিক তৈরি করছে (সম্পন্ন না হওয়া পর্যন্ত প্রিভিউ লকড থাকবে)...
+                          {aiProgressNote ||
+                            "AI সম্পূর্ণ UI/UX ডিজাইন ও কার্যকর লজিক তৈরি করছে (সম্পন্ন হলেই প্রিভিউ দেখাবে)..."}
                         </span>
                       </div>
                     )}
@@ -3054,7 +3029,7 @@ ${projectContextSummary}
               {activeTab === "preview" && (
                 <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-slate-800 bg-[#0b1120] p-3 shadow-xl">
                   {/* Emulator Top Controls */}
-                  <div className="mb-3 flex w-full max-w-md items-center justify-between rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs">
+                  <div className="mb-3 flex w-full max-w-md flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs">
                     <div className="truncate">
                       <span className="font-bold text-slate-200">
                         {previewTargetProject?.name || "কোনো প্রজেক্ট নেই"}
@@ -3062,6 +3037,28 @@ ${projectContextSummary}
                     </div>
 
                     <div className="flex items-center gap-1.5">
+                      {isUnconfirmedNewDraft && draftNewAppProject && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const pendingEntry = Object.entries(pendingCodeProposals)[0];
+                            handleAcceptAiCodeProposal(
+                              pendingEntry?.[0] || "",
+                              pendingEntry?.[1] || []
+                            );
+                          }}
+                          className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-extrabold text-white shadow hover:bg-emerald-500"
+                        >
+                          ✅ প্রজেক্ট সেভ করুন
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("chat")}
+                        className="rounded-lg border border-purple-500/40 bg-purple-950/60 px-2 py-1 text-[11px] font-semibold text-purple-200"
+                      >
+                        💬 চ্যাট
+                      </button>
                       <button
                         type="button"
                         onClick={() => setEmuDarkTheme((v) => !v)}
@@ -3943,7 +3940,10 @@ ${projectContextSummary}
                           ☁️ GitHub Actions Cloud Gradle Build (.apk ও .aab)
                         </div>
                         <p className="mt-1 text-[11px] text-slate-200">
-                          স্বয়ংক্রিয়ভাবে <code className="text-sky-300">.github/workflows/droid-ai-build.yml</code> তৈরি হয়ে ক্লাউডে <strong>app-debug.apk</strong> এবং <strong>app-release.aab</strong> কম্পাইল হবে।
+                          স্বয়ংক্রিয়ভাবে{" "}
+                          <code className="text-sky-300">.github/workflows/droid-ai-build.yml</code>{" "}
+                          তৈরি হয়ে ক্লাউডে <strong>app-debug.apk</strong> এবং{" "}
+                          <strong>app-release.aab</strong> কম্পাইল হবে।
                         </p>
                       </div>
 
@@ -4072,7 +4072,9 @@ ${projectContextSummary}
                           🗜️ প্রজেক্ট ফাইল .zip ডাউনলোড
                         </div>
                         <p className="mt-1 text-[11px] text-slate-200">
-                          এই প্রজেক্টে তৈরি হওয়া ঠিক যে কয়টি ফাইল আছে ({activeProject?.files?.length || 0}টি ফাইল), কেবল সেই ফাইলগুলোই .zip হিসেবে ডাউনলোড হবে।
+                          এই প্রজেক্টে তৈরি হওয়া ঠিক যে কয়টি ফাইল আছে (
+                          {activeProject?.files?.length || 0}টি ফাইল), কেবল সেই ফাইলগুলোই .zip
+                          হিসেবে ডাউনলোড হবে।
                         </p>
                       </div>
 
