@@ -82,7 +82,7 @@
       }
     </style>
 
-    <!-- Synchronous Firebase Compat SDKs (Guaranteed Immediate Initialization) -->
+    <!-- Synchronous Firebase Compat SDKs (v10.12.2) -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -111,7 +111,7 @@
       }
     </script>
 
-    <!-- React 18, Babel Standalone & JSZip for 1-Click Android Project Export -->
+    <!-- React 18, Babel Standalone & JSZip -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -156,7 +156,7 @@
           {
             id: `welcome_${Date.now()}`,
             role: "assistant",
-            text: `স্বাগতম ${label} প্রজেক্টে! এই প্রজেক্টের জন্য আলাদা চ্যাট হিস্ট্রি ও AI সেটিংস স্বয়ংক্রিয়ভাবে সংরক্ষিত হচ্ছে। বাংলায় চ্যাট করুন, স্ক্রিনশট/ছবি শেয়ার করুন অথবা কোড আপডেট তৈরি করে ✅ Accept বাটনে চাপ দিন।`,
+            text: `স্বাগতম ${label} প্রজেক্টে! এই প্রজেক্টটি শূন্য (০টি ফাইল) থেকে শুরু হয়েছে—কোনো ডিফল্ট কোড বা কালার আগে থেকে সেট করা নেই। বাংলায় চ্যাট করুন, 🎤 কথা বলুন বা স্ক্রিনশট শেয়ার করে আপনার প্রয়োজনীয় ফাইল তৈরি করুন এবং ✅ Accept চাপুন।`,
             timestamp: Date.now()
           }
         ];
@@ -195,7 +195,7 @@
       }
 
       // =========================================================================
-      // 2. GEMINI REST API (v1beta) MODEL DISCOVERY, FILTERING & CASCADING
+      // 2. GEMINI REST API (v1beta) MODEL DISCOVERY & FILTERING
       // =========================================================================
       const PREFERRED_MODEL_ORDER = [
         "gemini-3.8-flash",
@@ -309,51 +309,12 @@
       }
 
       // =========================================================================
-      // 3. AUTHENTIC ANDROID STUDIO TEMPLATES, SDK OPTIONS & PROJECT GENERATOR
+      // 3. SDK OPTIONS & ZERO-DEFAULT PURE RAW PROJECT GENERATOR
       // =========================================================================
-      const ANDROID_STUDIO_TEMPLATES = [
-        {
-          id: "empty-views",
-          label: "Empty Views Activity",
-          badge: "Android Studio",
-          desc: "হুবহু Android Studio-এর ConstraintLayout, মাঝখানে Hello World! ও enableEdgeToEdge()"
-        },
-        {
-          id: "bottom-nav",
-          label: "Bottom Navigation Views Activity",
-          badge: "Navigation",
-          desc: "Home, Explore ও Profile ট্যাবসহ BottomNavigationView আর্কিটেকচার"
-        },
-        {
-          id: "nav-drawer",
-          label: "Navigation Drawer Views Activity",
-          badge: "Drawer",
-          desc: "সাইড মেনু ড্রয়ার, হেডার লোগো ও মাল্টি-স্ক্রিন নেভিগেশন সাপোর্ট"
-        },
-        {
-          id: "login-auth",
-          label: "Login & Auth Activity",
-          badge: "Auth UI",
-          desc: "Email/Password ইনপুট, ভ্যালিডেশন ও Material লগইন স্ক্রিন"
-        },
-        {
-          id: "bangla-news",
-          label: "News / Blog Feed Activity",
-          badge: "Feed",
-          desc: "RecyclerView সংবাদ তালিকা, ডার্ক/লাইট থিম টগল ও আধুনিক কার্ড লেআউট"
-        },
-        {
-          id: "ecommerce-store",
-          label: "E-Commerce Store Activity",
-          badge: "Commerce",
-          desc: "প্রোডাক্ট গ্রিড, কার্ট কাউন্টার ও অর্ডার বাটনসহ শপিং অ্যাপ"
-        }
-      ];
-
       const MIN_SDK_OPTIONS = [
         { api: 21, label: "API 21: Android 5.0 (Lollipop)" },
         { api: 23, label: "API 23: Android 6.0 (Marshmallow)" },
-        { api: 24, label: "API 24: Android 7.0 (Nougat) — Recommended" },
+        { api: 24, label: "API 24: Android 7.0 (Nougat)" },
         { api: 26, label: "API 26: Android 8.0 (Oreo)" },
         { api: 28, label: "API 28: Android 9.0 (Pie)" },
         { api: 30, label: "API 30: Android 11 (R)" },
@@ -363,21 +324,12 @@
 
       const TARGET_SDK_OPTIONS = [
         { api: 34, label: "API 34: Android 14 (UpsideDownCake)" },
-        { api: 35, label: "API 35: Android 15 (VanillaIceCream) — Latest" }
-      ];
-
-      const ACCENT_COLORS = [
-        { id: "emerald", label: "Emerald", hex: "#10B981" },
-        { id: "blue", label: "Royal Blue", hex: "#3B82F6" },
-        { id: "purple", label: "Purple", hex: "#8B5CF6" },
-        { id: "amber", label: "Amber", hex: "#F59E0B" },
-        { id: "rose", label: "Rose", hex: "#F43F5E" }
+        { api: 35, label: "API 35: Android 15 (VanillaIceCream)" }
       ];
 
       function generateAuthenticAndroidProject({
         name,
         packageSuffix,
-        templateId,
         codeLang,
         minSdk,
         targetSdk,
@@ -388,591 +340,36 @@
         customLogoDataUrl,
         customLogoName
       }) {
-        const cleanName = String(name || "Bangla News").trim();
+        const cleanName = String(name || "Droid App").trim();
         const lockedPkg = buildLockedPackageName(packageSuffix || cleanName);
-        const pkgPath = lockedPkg.replace(/\./g, "/");
         const isJava = codeLang === "java";
         const isGroovy = buildConfigDsl === "groovy";
         const parsedMinSdk = Number(minSdk) || 24;
         const parsedTargetSdk = Number(targetSdk) || 35;
         const vbEnabled = useViewBinding !== false;
         const m3Enabled = useMaterial3 !== false;
-        const colorHex = accentHex || "#10B981";
+        const colorHex =
+          typeof accentHex === "string" && /^#[0-9A-Fa-f]{6}$/.test(accentHex.trim())
+            ? accentHex.trim()
+            : "";
         const hasLogo = Boolean(customLogoDataUrl);
         const now = Date.now();
 
-        const templatePresets = {
-          "empty-views": {
-            isCleanEmpty: true,
-            subtitle: "",
-            buttonText: "",
-            items: []
-          },
-          "bottom-nav": {
-            subtitle: "Bottom Navigation ট্যাব অ্যাক্টিভিটি সক্রিয়",
-            buttonText: "ট্যাব পরিবর্তন",
-            items: [
-              {
-                cat: "Home",
-                title: "ড্যাশবোর্ড ও কুইক অ্যাকশন",
-                summary: "BottomNavigationView থেকে ৩টি ফ্র্যাগমেন্ট সরাসরি নিয়ন্ত্রণ করুন।",
-                time: "সক্রিয়"
-              },
-              {
-                cat: "Explore",
-                title: "নতুন ফিচার ও কন্টেন্ট",
-                summary: "Material 3 নেভিগেশন বার ও স্মুথ ট্রানজিশন যুক্ত করা হয়েছে।",
-                time: "API " + parsedTargetSdk
-              }
-            ]
-          },
-          "nav-drawer": {
-            subtitle: "Navigation Drawer মেনু ও হেডার লেআউট",
-            buttonText: "মেনু খুলুন",
-            items: [
-              {
-                cat: "Drawer",
-                title: "সাইড নেভিগেশন ড্রয়ার প্রস্তুত",
-                summary: "NavigationView হেডারে অ্যাপ লোগো ও মেনু আইটেম যুক্ত রয়েছে।",
-                time: "Ready"
-              },
-              {
-                cat: "Settings",
-                title: "অ্যাপ কনফিগারেশন ও প্রোফাইল",
-                summary: "DrawerLayout ও ActionBarDrawerToggle সম্পূর্ণ সেটআপ করা।",
-                time: "v1.0"
-              }
-            ]
-          },
-          "login-auth": {
-            subtitle: "নিরাপদ ইমেইল ও পাসওয়ার্ড লগইন স্ক্রিন",
-            buttonText: "সাইন-ইন করুন",
-            items: [
-              {
-                cat: "Security",
-                title: "ইমেইল ও পাসওয়ার্ড ভ্যালিডেশন",
-                summary: "TextInputLayout ও MaterialButton দিয়ে লগইন ফর্ম তৈরি।",
-                time: "Auth"
-              },
-              {
-                cat: "Account",
-                title: "নতুন ইউজার রেজিস্ট্রেশন সাপোর্ট",
-                summary: "Firebase Auth বা REST API-এর সাথে সহজেই যুক্ত করা যাবে।",
-                time: "Ready"
-              }
-            ]
-          },
-          "bangla-news": {
-            subtitle: "সর্বশেষ ব্রেকিং সংবাদ",
-            buttonText: "থিম বদলান",
-            items: [
-              {
-                cat: "জাতীয়",
-                title: "ডিজিটাল উদ্ভাবনে নতুন মাইলফলক স্পর্শ করল তরুণ ডেভেলপাররা",
-                summary: "মোবাইল অ্যাপ ও কৃত্রিম বুদ্ধিমত্তা প্রযুক্তিতে দেশীয় উদ্যোগের বড় সাফল্য।",
-                time: "১০ মিনিট আগে"
-              },
-              {
-                cat: "প্রযুক্তি",
-                title: "অ্যান্ড্রয়েড ১৫ ও জেমিনি এআই ইন্টিগ্রেশনে অ্যাপ ডেভেলপমেন্ট এখন আরও দ্রুত",
-                summary: "আধুনিক Kotlin DSL ও Material 3 ডিজাইনে তৈরি হচ্ছে স্মার্ট অ্যাপ।",
-                time: "২৫ মিনিট আগে"
-              },
-              {
-                cat: "আন্তর্জাতিক",
-                title: "বিশ্বজুড়ে মোবাইল সফটওয়্যার ইকোসিস্টেমে নতুন প্রজন্মের এআই টুলস",
-                summary: "ডেভেলপারদের উৎপাদনশীলতা বাড়াতে ক্লাউড ও অন-ডিভাইস এআইয়ের ব্যবহার বাড়ছে।",
-                time: "১ ঘণ্টা আগে"
-              }
-            ]
-          },
-          "ecommerce-store": {
-            subtitle: "জনপ্রিয় কালেকশন ও অফার",
-            buttonText: "কার্ট দেখুন",
-            items: [
-              {
-                cat: "গ্যাজেট",
-                title: "স্মার্ট ওয়াচ আল্ট্রা প্রো — ৳৩,৪৯০",
-                summary: "অ্যামোলেড ডিসপ্লে, হার্ট-রেট মনিটর ও ৭ দিনের ব্যাটারি ব্যাকআপ।",
-                time: "ইন স্টক"
-              },
-              {
-                cat: "অডিও",
-                title: "ওয়্যারলেস নয়েজ ক্যানসেলিং ইয়ারবাডস — ৳১,৮৫০",
-                summary: "ক্রিস্টাল ক্লিয়ার সাউন্ড ও ফাস্ট চার্জিং কেসসহ।",
-                time: "২০% ছাড়"
-              }
-            ]
-          }
-        };
-
-        const preset = templatePresets[templateId] || templatePresets["bangla-news"];
-        const isCleanEmpty = Boolean(preset.isCleanEmpty);
-
-        const mainSourceFile = isJava
-          ? isCleanEmpty
-            ? {
-                path: `app/src/main/java/${pkgPath}/MainActivity.java`,
-                content: `package ${lockedPkg};
-
-import android.os.Bundle;
-import androidx.activity.EdgeToEdge;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
-
-public class MainActivity extends AppCompatActivity {
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
-        setContentView(R.layout.activity_main);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
-    }
-}`
-              }
-            : {
-                path: `app/src/main/java/${pkgPath}/MainActivity.java`,
-                content: `package ${lockedPkg};
-
-import android.os.Bundle;
-import android.widget.Button;
-import android.widget.ImageView;
-import android.widget.TextView;
-import android.widget.Toast;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.app.AppCompatDelegate;
-
-public class MainActivity extends AppCompatActivity {
-    private boolean isDarkMode = true;
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-
-        ImageView ivLogo = findViewById(R.id.ivAppLogo);
-        TextView tvTitle = findViewById(R.id.tvAppTitle);
-        TextView tvSubtitle = findViewById(R.id.tvHeadlineCount);
-        Button btnAction = findViewById(R.id.btnThemeToggle);
-
-        ivLogo.setImageResource(${hasLogo ? "R.drawable.app_logo_custom" : "R.mipmap.ic_launcher"});
-        tvTitle.setText("${cleanName}");
-        tvSubtitle.setText("${preset.subtitle} (${preset.items.length}টি)");
-
-        btnAction.setOnClickListener(v -> {
-            isDarkMode = !isDarkMode;
-            AppCompatDelegate.setDefaultNightMode(
-                isDarkMode ? AppCompatDelegate.MODE_NIGHT_YES : AppCompatDelegate.MODE_NIGHT_NO
-            );
-            Toast.makeText(this, isDarkMode ? "ডার্ক মোড চালু" : "লাইট মোড চালু", Toast.LENGTH_SHORT).show();
-        });
-    }
-}`
-              }
-          : isCleanEmpty
-          ? {
-              path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
-              content: `package ${lockedPkg}
-
-import android.os.Bundle
-import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-
-class MainActivity : AppCompatActivity() {
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContentView(R.layout.activity_main)
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-            insets
-        }
-    }
-}`
-            }
-          : {
-              path: `app/src/main/java/${pkgPath}/MainActivity.kt`,
-              content: `package ${lockedPkg}
-
-import android.os.Bundle
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.recyclerview.widget.LinearLayoutManager
-import ${lockedPkg}.databinding.ActivityMainBinding
-
-data class AppItem(
-    val id: Int,
-    val category: String,
-    val title: String,
-    val summary: String,
-    val meta: String
-)
-
-class MainActivity : AppCompatActivity() {
-
-    private lateinit var binding: ActivityMainBinding
-    private var isDarkMode = true
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        binding.ivAppLogo.setImageResource(${
-          hasLogo ? "R.drawable.app_logo_custom" : "R.mipmap.ic_launcher"
-        })
-
-        val itemList = listOf(
-${preset.items
-  .map(
-    (it, idx) =>
-      `            AppItem(${idx + 1}, "${it.cat}", "${it.title}", "${it.summary}", "${it.time}")`
-  )
-  .join(",\n")}
-        )
-
-        binding.btnThemeToggle.setOnClickListener {
-            isDarkMode = !isDarkMode
-            AppCompatDelegate.setDefaultNightMode(
-                if (isDarkMode) AppCompatDelegate.MODE_NIGHT_YES
-                else AppCompatDelegate.MODE_NIGHT_NO
-            )
-            Toast.makeText(this, if (isDarkMode) "ডার্ক মোড চালু" else "লাইট মোড চালু", Toast.LENGTH_SHORT).show()
-        }
-
-        binding.tvHeadlineCount.text = "${preset.subtitle} (\${itemList.size}টি)"
-        binding.recyclerNews.layoutManager = LinearLayoutManager(this)
-    }
-}`
-            };
-
-        const extraXmlControls =
-          templateId === "login-auth"
-            ? `
-    <EditText
-        android:id="@+id/etLoginEmail"
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:hint="ইমেইল ঠিকানা লিখুন"
-        android:inputType="textEmailAddress"
-        android:padding="10dp" />
-
-    <EditText
-        android:id="@+id/etLoginPassword"
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:layout_marginTop="8dp"
-        android:hint="পাসওয়ার্ড লিখুন"
-        android:inputType="textPassword"
-        android:padding="10dp" />
-`
-            : "";
-
-        const files = [
-          mainSourceFile,
-          isCleanEmpty
-            ? {
-                path: "app/src/main/res/layout/activity_main.xml",
-                content: `<?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/main"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    tools:context=".MainActivity">
-
-    <TextView
-        android:id="@+id/tvHelloWorld"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Hello World!"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-</androidx.constraintlayout.widget.ConstraintLayout>`
-              }
-            : {
-                path: "app/src/main/res/layout/activity_main.xml",
-                content: `<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="#0F172A"
-    android:padding="16dp">
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingBottom="12dp">
-
-        <ImageView
-            android:id="@+id/ivAppLogo"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:src="${hasLogo ? "@drawable/app_logo_custom" : "@mipmap/ic_launcher"}"
-            android:contentDescription="@string/app_name" />
-
-        <TextView
-            android:id="@+id/tvAppTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="10dp"
-            android:text="@string/app_name"
-            android:textColor="${colorHex}"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/btnThemeToggle"
-            android:layout_width="wrap_content"
-            android:layout_height="38dp"
-            android:backgroundTint="${colorHex}"
-            android:text="${preset.buttonText}"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/tvHeadlineCount"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="${preset.subtitle}"
-        android:textColor="#94A3B8"
-        android:textSize="13sp"
-        android:paddingBottom="10dp" />${extraXmlControls}
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerNews"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
-
-</LinearLayout>`
-              },
-          {
-            path: "app/src/main/AndroidManifest.xml",
-            content: `<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="${lockedPkg}">
-
-    <uses-permission android:name="android.permission.INTERNET" />
-
-    <application
-        android:allowBackup="true"
-        android:icon="${hasLogo ? "@drawable/app_logo_custom" : "@mipmap/ic_launcher"}"
-        android:label="@string/app_name"
-        android:roundIcon="${hasLogo ? "@drawable/app_logo_custom" : "@mipmap/ic_launcher_round"}"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.DroidApp">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-    </application>
-</manifest>`
-          },
-          {
-            path: "app/src/main/res/values/strings.xml",
-            content: isCleanEmpty
-              ? `<resources>
-    <string name="app_name">${cleanName}</string>
-</resources>`
-              : `<resources>
-    <string name="app_name">${cleanName}</string>
-    <string name="subtitle_text">${preset.subtitle}</string>
-    <string name="action_button">${preset.buttonText}</string>
-</resources>`
-          },
-          {
-            path: "app/src/main/res/values/colors.xml",
-            content: isCleanEmpty
-              ? `<resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
-    <color name="primary_accent">${colorHex}</color>
-    <color name="ic_launcher_background">${colorHex}</color>
-</resources>`
-              : `<resources>
-    <color name="primary_accent">${colorHex}</color>
-    <color name="ic_launcher_background">${colorHex}</color>
-    <color name="bg_dark">#0F172A</color>
-    <color name="surface_dark">#1E293B</color>
-</resources>`
-          },
-          {
-            path: "app/src/main/res/values/themes.xml",
-            content: isCleanEmpty
-              ? `<resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Base.Theme.DroidApp" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/primary_accent</item>
-    </style>
-
-    <style name="Theme.DroidApp" parent="Base.Theme.DroidApp" />
-</resources>`
-              : `<resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.DroidApp" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/primary_accent</item>
-        <item name="android:statusBarColor">@color/bg_dark</item>
-    </style>
-</resources>`
-          },
-          {
-            path: "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
-            content: `<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="${
-      hasLogo ? "@drawable/app_logo_custom" : "@android:drawable/sym_def_app_icon"
-    }" />
-</adaptive-icon>`
-          },
-          isGroovy
-            ? {
-                path: "app/build.gradle",
-                content: `plugins {
-    id 'com.android.application'
-    ${isJava ? "" : "id 'org.jetbrains.kotlin.android'"}
-}
-
-android {
-    namespace '${lockedPkg}'
-    compileSdk ${parsedTargetSdk}
-
-    defaultConfig {
-        applicationId "${lockedPkg}"
-        minSdk ${parsedMinSdk}
-        targetSdk ${parsedTargetSdk}
-        versionCode 1
-        versionName "1.0"
-    }
-
-    buildFeatures {
-        viewBinding ${vbEnabled}
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
-}
-
-dependencies {
-    implementation 'androidx.core:core-ktx:1.13.1'
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    ${m3Enabled ? "implementation 'com.google.android.material:material:1.12.0'" : ""}
-    implementation 'androidx.activity:activity:1.9.2'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.recyclerview:recyclerview:1.3.2'
-}`
-              }
-            : {
-                path: "app/build.gradle.kts",
-                content: `plugins {
-    id("com.android.application")
-    ${isJava ? "" : 'id("org.jetbrains.kotlin.android")'}
-}
-
-android {
-    namespace = "${lockedPkg}"
-    compileSdk = ${parsedTargetSdk}
-
-    defaultConfig {
-        applicationId = "${lockedPkg}"
-        minSdk = ${parsedMinSdk}
-        targetSdk = ${parsedTargetSdk}
-        versionCode = 1
-        versionName = "1.0"
-    }
-
-    buildFeatures {
-        viewBinding = ${vbEnabled}
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-}
-
-dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    ${m3Enabled ? 'implementation("com.google.android.material:material:1.12.0")' : ""}
-    implementation("androidx.activity:activity:1.9.2")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
-}`
-              },
-          isGroovy
-            ? {
-                path: "build.gradle",
-                content: `plugins {
-    id 'com.android.application' version '8.5.2' apply false
-    id 'org.jetbrains.kotlin.android' version '1.9.24' apply false
-}`
-              }
-            : {
-                path: "build.gradle.kts",
-                content: `plugins {
-    id("com.android.application") version "8.5.2" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
-}`
-              },
-          {
-            path: "gradle.properties",
-            content: `org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-android.useAndroidX=true
-kotlin.code.style=official
-android.nonTransitiveRClass=true`
-          },
-          {
-            path: isGroovy ? "settings.gradle" : "settings.gradle.kts",
-            content: isGroovy
-              ? `rootProject.name = "${cleanName}"
-include ':app'`
-              : `rootProject.name = "${cleanName}"
-include(":app")`
-          }
-        ];
-
+        // STRICT RULE: Zero default files on creation. Only explicitly uploaded logo asset is included if provided.
+        const files = [];
         if (hasLogo) {
           files.push({
             path: "app/src/main/res/drawable/app_logo_custom.png",
             assetDataUrl: customLogoDataUrl,
-            content: `<!-- Custom App Launcher Logo Asset (${customLogoName || "app_logo_custom.png"}) -->
-<!-- Referenced in AndroidManifest.xml & activity_main.xml as @drawable/app_logo_custom -->
-${customLogoDataUrl}`
+            content: customLogoDataUrl
           });
         }
 
         return {
-          id: `proj_${now}`,
+          id: `proj_${now}_${Math.random().toString(36).slice(2, 5)}`,
           name: cleanName,
           packageName: lockedPkg,
-          templateId: templateId || "empty-views",
+          templateId: "raw-custom",
           language: isJava ? "java" : "kotlin",
           minSdk: parsedMinSdk,
           targetSdk: parsedTargetSdk,
@@ -988,7 +385,7 @@ ${customLogoDataUrl}`
       }
 
       // =========================================================================
-      // 4. ROBUST MULTI-FORMAT AI CODE EXTRACTION PARSER
+      // 4. ROBUST MULTI-FORMAT AI CODE EXTRACTION PARSER & SMART PATH MATCHING
       // =========================================================================
       function stripAccidentalOuterCodeFences(rawBody) {
         let text = String(rawBody || "").replace(/\r\n/g, "\n").trim();
@@ -1040,7 +437,7 @@ ${customLogoDataUrl}`
           }
         }
 
-        // Format B: Standard Markdown fenced code blocks (runs alongside Format A so mixed responses never miss files)
+        // Format B: Standard Markdown fenced code blocks (captures mixed or untitled blocks too)
         const mdFenceRegex =
           /(?:(?:^|\n)(?:#{1,4}\s*|\*\*\s*|File:\s*|Path:\s*|ফাইল:\s*)?`?([A-Za-z0-9_./-]+\.(?:kt|java|xml|gradle|kts|json|properties))`?\s*\**\s*\n)?```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
         let mdMatch;
@@ -1122,12 +519,11 @@ ${customLogoDataUrl}`
         const accentHex =
           typeof meta.accentColor === "string" && /^#[0-9A-Fa-f]{6}$/.test(meta.accentColor.trim())
             ? meta.accentColor.trim()
-            : "#10B981";
+            : "";
 
         const baseProject = generateAuthenticAndroidProject({
           name: extractedName,
           packageSuffix: pkgSuffix,
-          templateId: "empty-views",
           codeLang,
           minSdk,
           targetSdk,
@@ -1164,17 +560,21 @@ ${customLogoDataUrl}`
       }
 
       // =========================================================================
-      // 5. FULL INTERACTIVE ANDROID EMULATOR & MULTI-LAYOUT PARSER
+      // 5. LIVE ANDROID EMULATOR & MULTI-LAYOUT PARSER (NO FAKE HELLO WORLD)
       // =========================================================================
       function parseProjectForLivePreview(project, selectedLayoutPath) {
         const files = Array.isArray(project?.files) ? project.files : [];
+        const codeAndXmlFiles = files.filter((f) => !f.assetDataUrl);
+        const hasAnyCodeFiles = codeAndXmlFiles.length > 0;
         const stringsXml = files.find((f) => f.path.endsWith("strings.xml"))?.content || "";
         const colorsXml = files.find((f) => f.path.endsWith("colors.xml"))?.content || "";
 
         const layoutFiles = files.filter(
           (f) =>
-            f.path.includes("/res/layout/") &&
-            f.path.endsWith(".xml") &&
+            (f.path.includes("/res/layout/") || f.path.endsWith(".xml")) &&
+            !f.path.endsWith("AndroidManifest.xml") &&
+            !f.path.endsWith("strings.xml") &&
+            !f.path.endsWith("colors.xml") &&
             !f.path.split("/").pop().startsWith("item_")
         );
 
@@ -1221,7 +621,6 @@ ${customLogoDataUrl}`
           return val;
         };
 
-        // Extract dynamic text overrides set in Kotlin/Java code (e.g., tvHelloWorld.text = "...")
         const codeTextOverrides = {};
         const propTextRegex =
           /(?:binding\.)?([A-Za-z0-9_]+)\s*\.\s*(?:text\s*=|setText\s*\()\s*"([^"]*)"/g;
@@ -1251,7 +650,7 @@ ${customLogoDataUrl}`
           colorMap.primary_accent ||
           (hexInLayout ? hexInLayout[1] : null) ||
           project?.accentColor ||
-          "#10B981";
+          "#334155";
 
         const widgets = [];
         const tagRegex =
@@ -1345,22 +744,23 @@ ${customLogoDataUrl}`
 
         const bodyWidgets = widgets.filter((w) => w.id !== "tvAppTitle");
         const isCenteredSingleTextLayout =
+          hasAnyCodeFiles &&
           layoutXml.includes("ConstraintLayout") &&
           bodyWidgets.length === 1 &&
           bodyWidgets[0].kind === "text";
 
         return {
+          hasAnyCodeFiles,
           appTitle,
           accentColor,
           logoDataUrl,
           isPureBlackScreen,
           resolvedRootBg,
           isCenteredSingleTextLayout,
-          templateId: project?.templateId || "empty-views",
           minSdk: project?.minSdk || 24,
           targetSdk: project?.targetSdk || 35,
           layoutFiles,
-          activeLayoutPath: activeLayoutFile?.path || "activity_main.xml",
+          activeLayoutPath: activeLayoutFile?.path || "",
           widgets: bodyWidgets,
           allWidgets: widgets,
           clickHandlers,
@@ -1370,36 +770,10 @@ ${customLogoDataUrl}`
       }
 
       // =========================================================================
-      // 6. CLOUD BUILD & EXPORT HELPERS (GITHUB ACTIONS APK/AAB + ZIP EXPORT)
+      // 6. CLOUD BUILD & EXPORT HELPERS (STRICTLY ONLY PROJECT FILES)
       // =========================================================================
-      function buildSupplementaryAndroidFiles(project) {
-        const isGroovy = project?.buildConfigDsl === "groovy";
-        const rootBuildGradle = isGroovy
-          ? {
-              path: "build.gradle",
-              content: `plugins {
-    id 'com.android.application' version '8.5.2' apply false
-    id 'org.jetbrains.kotlin.android' version '1.9.24' apply false
-}`
-            }
-          : {
-              path: "build.gradle.kts",
-              content: `plugins {
-    id("com.android.application") version "8.5.2" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
-}`
-            };
-
-        const gradleProperties = {
-          path: "gradle.properties",
-          content: `org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-android.useAndroidX=true
-kotlin.code.style=official
-android.nonTransitiveRClass=true`
-        };
-
-        const existingPaths = new Set((project?.files || []).map((f) => f.path));
-        return [rootBuildGradle, gradleProperties].filter((item) => !existingPaths.has(item.path));
+      function buildSupplementaryAndroidFiles() {
+        return [];
       }
 
       function generateDroidAiBuildWorkflowYaml(project) {
@@ -1457,16 +831,16 @@ jobs:
       }
 
       // =========================================================================
-      // 7. DEFAULT AI SETTINGS & SYSTEM PROMPTS
+      // 7. DEFAULT AI SETTINGS & STRICT RAW-PROJECT SYSTEM PROMPT
       // =========================================================================
       const DEFAULT_AI_SETTINGS = {
         preferredModel: "gemini-3.8-flash",
-        temperature: 0.25,
+        temperature: 0.15,
         maxOutputTokens: 8192,
         chatMode: "auto",
         autoApplyCodeUpdates: false,
         systemPersona:
-          "তুমি Droid AI Studio-এর একজন সিনিয়র Android (Kotlin/Java/XML/Gradle) আর্কিটেক্ট। সবসময় পরিষ্কার বাংলায় উত্তর দাও। কোনো কোড লেখার আগে অবশ্যই প্রজেক্টের সব ফাইল, প্যাকেজ নেম, XML ভিউ আইডি (@+id/...) ও Gradle ডিপেন্ডেন্সি গভীরভাবে বিশ্লেষণ করে সংক্ষেপে পরিকল্পনা ব্যাখ্যা করবে। এরপর প্রতিটি পরিবর্তিত বা নতুন ফাইলের সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত রানযোগ্য কোড (কোনো অংশ বাদ বা সংক্ষিপ্ত না করে) অবশ্যই <<<FILE:পাথ>>> এবং <<<END_FILE>>> ব্লকের ভেতরে দেবে।"
+          "তুমি Droid AI Studio-এর একজন সিনিয়র Android (Kotlin/Java/XML/Gradle) আর্কিটেক্ট। সবসময় পরিষ্কার বাংলায় উত্তর দাও। মনে রাখবে প্রতিটি নতুন প্রজেক্ট ০টি ফাইল (সম্পূর্ণ ফাঁকা/raw) দিয়ে শুরু হয়—আগে থেকে কোনো ডিফল্ট ফাইল, ডিফল্ট কালার বা ডিফল্ট লোগো কোড তৈরি থাকে না। ইউজার যে অ্যাপ বা ফিচার চাইবে, শূন্য থেকে একদম ইউনিক ডিজাইন ও পূর্ণাঙ্গ কার্যকর লজিকসহ ঠিক যে কয়টি ফাইল প্রয়োজন কেবল সেই কয়টি ফাইলের সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত রানযোগ্য কোড (কোনো TODO বা সংক্ষেপণ ছাড়া) <<<FILE:পাথ>>> এবং <<<END_FILE>>> ব্লকের ভেতরে দেবে।"
       };
 
       // =========================================================================
@@ -1484,7 +858,6 @@ jobs:
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
             >
-              {/* Antenna */}
               <line
                 x1="32"
                 y1="9.5"
@@ -1495,10 +868,8 @@ jobs:
                 strokeLinecap="round"
               />
               <circle cx="32" cy="8.5" r="3.6" fill="#ef4444" />
-              {/* Side Red Ears */}
               <rect x="11.5" y="25" width="4.5" height="14" rx="2.25" fill="#ef4444" />
               <rect x="48" y="25" width="4.5" height="14" rx="2.25" fill="#ef4444" />
-              {/* Robot Metallic Head */}
               <rect
                 x="16"
                 y="18"
@@ -1509,12 +880,9 @@ jobs:
                 stroke="#e2e8f0"
                 strokeWidth="1.5"
               />
-              {/* Eyes */}
               <circle cx="25" cy="28.5" r="4.1" fill="#ffffff" stroke="#1e293b" strokeWidth="1" />
               <circle cx="39" cy="28.5" r="4.1" fill="#ffffff" stroke="#1e293b" strokeWidth="1" />
-              {/* Red Nose Triangle */}
               <polygon points="32,32.5 29.2,36.8 34.8,36.8" fill="#ef4444" />
-              {/* Mouth Grill */}
               <rect x="21.5" y="39" width="21" height="4.8" rx="2.2" fill="#1e293b" />
               <line x1="25.5" y1="39" x2="25.5" y2="43.8" stroke="#ffffff" strokeWidth="1.5" />
               <line x1="29.8" y1="39" x2="29.8" y2="43.8" stroke="#ffffff" strokeWidth="1.5" />
@@ -1554,7 +922,7 @@ jobs:
         const [authChecked, setAuthChecked] = useState(false);
         const [rtdbSynced, setRtdbSynced] = useState(false);
 
-        // --- Auth Modal State ---
+        // --- Auth Modal State (Email/Password + Google Sign-In + Guest Demo) ---
         const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
         const [authMode, setAuthMode] = useState("login");
         const [authEmail, setAuthEmail] = useState("");
@@ -1594,29 +962,34 @@ jobs:
         // --- Per-Project Isolated Chat History Map (Auto-Saved Locally & RTDB) ---
         const [projectChatMap, setProjectChatMap] = useState({});
 
-        // --- New Project Wizard State (Android Studio Authentic + Locked com.droid.) ---
+        // --- New Project Wizard State (Zero Default Templates, Zero Default Colors, Optional Logo) ---
         const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
         const [newProjName, setNewProjName] = useState("");
         const [newProjPkgSuffix, setNewProjPkgSuffix] = useState("myapp");
         const [newProjPkgManual, setNewProjPkgManual] = useState(false);
-        const [newProjTemplate, setNewProjTemplate] = useState("empty-views");
         const [newProjLang, setNewProjLang] = useState("kotlin");
         const [newProjMinSdk, setNewProjMinSdk] = useState(24);
         const [newProjTargetSdk, setNewProjTargetSdk] = useState(35);
         const [newProjDsl, setNewProjDsl] = useState("kts");
         const [newProjViewBinding, setNewProjViewBinding] = useState(true);
         const [newProjMaterial3, setNewProjMaterial3] = useState(true);
-        const [newProjAccent, setNewProjAccent] = useState("#10B981");
+        const [newProjAccent, setNewProjAccent] = useState("");
         const [newProjLogoDataUrl, setNewProjLogoDataUrl] = useState("");
         const [newProjLogoName, setNewProjLogoName] = useState("");
         const [newProjLogoError, setNewProjLogoError] = useState("");
 
-        // --- Workspace Navigation & Code Editor State ---
+        // --- Workspace Navigation & Code Editor State (Undo/Redo, Search/Replace, Delete File) ---
         const [activeTab, setActiveTab] = useState("chat");
         const [selectedFilePath, setSelectedFilePath] = useState("");
         const [isNewFileModalOpen, setIsNewFileModalOpen] = useState(false);
         const [newFilePathInput, setNewFilePathInput] = useState("");
         const [codeSavedToast, setCodeSavedToast] = useState(false);
+        const [editorUndoStack, setEditorUndoStack] = useState({});
+        const [editorRedoStack, setEditorRedoStack] = useState({});
+        const [isEditorSearchOpen, setIsEditorSearchOpen] = useState(false);
+        const [editorFindText, setEditorFindText] = useState("");
+        const [editorReplaceText, setEditorReplaceText] = useState("");
+        const [editorActionMsg, setEditorActionMsg] = useState("");
 
         // --- Chat Composer, Image/Screenshot Attachment & Manual Accept/Reject Staging ---
         const [chatInput, setChatInput] = useState("");
@@ -1643,7 +1016,6 @@ jobs:
           });
         }, []);
 
-        // Active project reference (null when in unselected "কথা বলে নতুন অ্যাপ বানান" session)
         const activeProject = useMemo(() => {
           if (isNewAppSessionActive || !activeProjectId) return null;
           return projects.find((p) => p.id === activeProjectId) || null;
@@ -1745,7 +1117,6 @@ jobs:
           [isNewAppSessionActive, currentProjectKey, activeProject?.name, currentUser]
         );
 
-        // Sync active model dropdown when switching projects
         useEffect(() => {
           if (!aiSettings.preferredModel) return;
           if (availableModels.length === 0) {
@@ -1759,18 +1130,18 @@ jobs:
         const [previewRefreshTick, setPreviewRefreshTick] = useState(0);
         const [previewDarkMode, setPreviewDarkMode] = useState(true);
         const [previewLayoutPath, setPreviewLayoutPath] = useState("");
+        const [previewApiSelector, setPreviewApiSelector] = useState("API 35");
         const [emuInputValues, setEmuInputValues] = useState({});
         const [emuToggleValues, setEmuToggleValues] = useState({});
         const [emuDynamicOutputs, setEmuDynamicOutputs] = useState({});
         const [emuEventLogs, setEmuEventLogs] = useState([]);
         const [isEmuLogOpen, setIsEmuLogOpen] = useState(false);
         const [previewSearchQuery, setPreviewSearchQuery] = useState("");
-        const [previewNavIndex, setPreviewNavIndex] = useState(0);
         const [previewToast, setPreviewToast] = useState("");
 
         // --- GitHub Push & Build APK / AAB Hub State ---
         const [isGithubModalOpen, setIsGithubModalOpen] = useState(false);
-        const [hubActiveView, setHubActiveView] = useState("build"); // "build" | "github" | "zip"
+        const [hubActiveView, setHubActiveView] = useState("build");
         const [ghToken, setGhToken] = useState(() => localStorage.getItem("droid_gh_token") || "");
         const [ghOwner, setGhOwner] = useState(
           () => localStorage.getItem("droid_gh_owner") || "ssb-dev-hasan"
@@ -1783,7 +1154,6 @@ jobs:
         const [isPushingGh, setIsPushingGh] = useState(false);
         const [ghPushStatus, setGhPushStatus] = useState(null);
 
-        // --- Cloud Build (APK & AAB) + 1-Click ZIP Export State ---
         const [buildAppRepo, setBuildAppRepo] = useState("");
         const [isCloudBuilding, setIsCloudBuilding] = useState(false);
         const [cloudBuildStep, setCloudBuildStep] = useState("");
@@ -1795,12 +1165,10 @@ jobs:
         const [zipExportStatus, setZipExportStatus] = useState(null);
         const cloudPollRef = useRef(null);
 
-        // Auto-scroll chat
         useEffect(() => {
           scrollToChatBottom(true);
         }, [chatMessages, isGenerating, activeProjectId, isNewAppSessionActive, scrollToChatBottom]);
 
-        // Cleanup cloud polling on unmount
         useEffect(() => {
           return () => {
             if (cloudPollRef.current) clearInterval(cloudPollRef.current);
@@ -1813,24 +1181,20 @@ jobs:
         }, []);
 
         // =========================================================================
-        // MANDATORY LOGIN GATE ON ANY CLICK/INTERACTION WHEN SIGNED OUT
+        // GLOBAL LOGIN GATE & FIREBASE AUTH LISTENER
         // =========================================================================
         const handleGlobalInteractionCapture = useCallback(
           (e) => {
             if (showSplash || !authChecked) return;
             if (!currentUser && !isAuthModalOpen) {
-              e.stopPropagation();
               e.preventDefault();
-              setAuthError("");
+              e.stopPropagation();
               setIsAuthModalOpen(true);
             }
           },
           [showSplash, authChecked, currentUser, isAuthModalOpen]
         );
 
-        // =========================================================================
-        // FIREBASE AUTH LISTENER & STRICT PER-USER DATA / BYOK KEY ISOLATION
-        // =========================================================================
         useEffect(() => {
           const auth = window.DroidAuth;
           const db = window.DroidDB;
@@ -1841,7 +1205,6 @@ jobs:
           }
 
           const unsubscribe = auth.onAuthStateChanged(async (user) => {
-            // Immediately clear previous user's API key & model state on user switch/logout
             setGeminiApiKey("");
             setAvailableModels([]);
             setApiStatusBanner(null);
@@ -1850,21 +1213,20 @@ jobs:
             if (!user) {
               setCurrentUser(null);
               const guestDefault = generateAuthenticAndroidProject({
-                name: "Bangla News",
-                packageSuffix: "banglanews",
-                templateId: "bangla-news",
+                name: "My Android App",
+                packageSuffix: "myapp",
                 codeLang: "kotlin",
                 minSdk: 24,
                 targetSdk: 35,
                 buildConfigDsl: "kts",
                 useViewBinding: true,
                 useMaterial3: true,
-                accentHex: "#10B981"
+                accentHex: ""
               });
               setProjects([guestDefault]);
               setActiveProjectId(guestDefault.id);
               setIsNewAppSessionActive(false);
-              setSelectedFilePath(guestDefault.files[0].path);
+              setSelectedFilePath(guestDefault.files[0]?.path || "");
               setProjectHistoryMap({});
               setProjectChatMap({
                 [guestDefault.id]: createInitialProjectChatMessages(guestDefault.name)
@@ -1956,9 +1318,12 @@ jobs:
                 ]);
                 const cloudObj = projSnap.val();
                 if (cloudObj && typeof cloudObj === "object") {
-                  const cloudList = Object.values(cloudObj).filter(
-                    (p) => p && Array.isArray(p.files) && p.files.length > 0
-                  );
+                  const cloudList = Object.values(cloudObj)
+                    .filter((p) => p && typeof p.id === "string")
+                    .map((p) => ({
+                      ...p,
+                      files: Array.isArray(p.files) ? p.files : []
+                    }));
                   if (cloudList.length > 0) {
                     cloudList.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
                     userProjects = cloudList;
@@ -1995,16 +1360,15 @@ jobs:
 
             if (userProjects.length === 0) {
               const starterProj = generateAuthenticAndroidProject({
-                name: "Bangla News",
-                packageSuffix: "banglanews",
-                templateId: "bangla-news",
+                name: "My Android App",
+                packageSuffix: "myapp",
                 codeLang: "kotlin",
                 minSdk: 24,
                 targetSdk: 35,
                 buildConfigDsl: "kts",
                 useViewBinding: true,
                 useMaterial3: true,
-                accentHex: "#10B981"
+                accentHex: ""
               });
               userProjects = [starterProj];
               localStorage.setItem(
@@ -2024,7 +1388,7 @@ jobs:
             setProjects(userProjects);
             setActiveProjectId(userProjects[0].id);
             setIsNewAppSessionActive(false);
-            setSelectedFilePath(userProjects[0].files[0]?.path || "");
+            setSelectedFilePath(userProjects[0].files?.[0]?.path || "");
             setAuthChecked(true);
           });
 
@@ -2057,7 +1421,6 @@ jobs:
           setEmuDynamicOutputs({});
           setEmuEventLogs([]);
           setPreviewSearchQuery("");
-          setPreviewNavIndex(0);
           setChatAttachments([]);
           if (!isNewAppSessionActive) {
             setStagedDraftProject(null);
@@ -2085,11 +1448,10 @@ jobs:
           setEmuToggleValues({});
           setEmuDynamicOutputs({});
           setPreviewSearchQuery("");
-          setPreviewNavIndex(0);
           setPreviewLayoutPath("");
           setPreviewRefreshTick((t) => t + 1);
-          appendEmuLog("🔄 Activity restarted (onCreate called)");
-          showPreviewToast("🔄 অ্যাপ রিস্টার্ট হয়েছে");
+          appendEmuLog("🔄 অ্যাপ রিস্টার্ট হয়েছে");
+          showPreviewToast("🔄 অ্যাপ রিস্টার্ট সম্পন্ন");
         };
 
         const handleEmulatorButtonClick = (btnWidget) => {
@@ -2099,27 +1461,22 @@ jobs:
           const lowerLabel = btnLabel.toLowerCase();
           const codeStr = livePreviewData.combinedCode || "";
 
-          // 1. Navigate to another screen if multiple layout XMLs exist
-          if (livePreviewData.layoutFiles.length > 1) {
-            const otherLayout = livePreviewData.layoutFiles.find(
-              (lf) => lf.path !== livePreviewData.activeLayoutPath
+          // 1. Navigation / Intent screen transition detection
+          const navMatch = codeStr.match(
+            new RegExp(
+              `(?:binding\\.)?${btnId}\\.setOnClickListener[\\s\\S]{0,300}?Intent\\([^,]+,\\s*([A-Za-z0-9_]+)::class`,
+              "m"
+            )
+          );
+          if (navMatch && livePreviewData.layoutFiles.length > 1) {
+            const targetActivity = navMatch[1].toLowerCase().replace("activity", "");
+            const targetXml = livePreviewData.layoutFiles.find((lf) =>
+              lf.path.toLowerCase().includes(targetActivity)
             );
-            if (
-              otherLayout &&
-              (lowerId.includes("next") ||
-                lowerId.includes("open") ||
-                lowerId.includes("login") ||
-                lowerId.includes("detail") ||
-                lowerLabel.includes("পরবর্তী") ||
-                lowerLabel.includes("লগইন") ||
-                lowerLabel.includes("সাইন"))
-            ) {
-              setPreviewLayoutPath(otherLayout.path);
-              const navMsg = `✅ Button [${btnId}] → স্ক্রিন পরিবর্তন: ${otherLayout.path
-                .split("/")
-                .pop()}`;
-              appendEmuLog(navMsg);
-              showPreviewToast(navMsg);
+            if (targetXml) {
+              setPreviewLayoutPath(targetXml.path);
+              appendEmuLog(`Button [${btnId}] → স্ক্রিন পরিবর্তন: ${targetXml.path.split("/").pop()}`);
+              showPreviewToast(`📱 ${targetXml.path.split("/").pop()} ওপেন হয়েছে`);
               return;
             }
           }
@@ -2153,40 +1510,6 @@ jobs:
             if (numericValues.length >= 2) {
               const sum = numericValues.reduce((a, b) => a + b, 0);
               const product = numericValues.reduce((a, b) => a * b, 1);
-              const isSip =
-                codeStr.toLowerCase().includes("sip") ||
-                livePreviewData.appTitle.toLowerCase().includes("sip");
-
-              if (isSip) {
-                const monthly = numericValues[0] || 0;
-                const rate = numericValues[1] || 12;
-                const years = numericValues[2] || 5;
-                const months = years * 12;
-                const r = rate / 12 / 100;
-                const invested = monthly * months;
-                const maturity =
-                  r > 0
-                    ? Math.round(monthly * ((Math.pow(1 + r, months) - 1) / r) * (1 + r))
-                    : invested;
-                const profit = Math.max(0, maturity - invested);
-
-                const nextOutputs = { ...emuDynamicOutputs };
-                if (outputTextWidgets[0]) {
-                  nextOutputs[outputTextWidgets[0].id] = `মোট বিনিয়োগ: ৳${invested.toLocaleString()}`;
-                }
-                if (outputTextWidgets[1]) {
-                  nextOutputs[outputTextWidgets[1].id] = `প্রত্যাশিত লাভ: ৳${profit.toLocaleString()}`;
-                }
-                if (outputTextWidgets[2]) {
-                  nextOutputs[outputTextWidgets[2].id] = `মোট মূল্য: ৳${maturity.toLocaleString()}`;
-                }
-                setEmuDynamicOutputs(nextOutputs);
-                const sipMsg = `✅ SIP হিসাব সম্পন্ন: মোট ৳${maturity.toLocaleString()}`;
-                appendEmuLog(`Button [${btnId}] (${btnLabel}) → ${sipMsg}`);
-                showPreviewToast(sipMsg);
-                return;
-              }
-
               const calcSummary = `ফলাফল: যোগফল = ${sum} | গুণফল = ${product}`;
               if (outputTextWidgets[0]) {
                 setEmuDynamicOutputs((prev) => ({
@@ -2317,7 +1640,7 @@ jobs:
         };
 
         // =========================================================================
-        // DELETE ACTIVE PROJECT HANDLER (LOCAL + FIREBASE RTDB + ISOLATED DATA)
+        // DELETE ACTIVE PROJECT HANDLER
         // =========================================================================
         const handleDeleteActiveProject = async () => {
           if (!activeProject) return;
@@ -2331,14 +1654,13 @@ jobs:
             createdFallback = generateAuthenticAndroidProject({
               name: "My Android App",
               packageSuffix: "myapp",
-              templateId: "empty-views",
               codeLang: "kotlin",
               minSdk: 24,
               targetSdk: 35,
               buildConfigDsl: "kts",
               useViewBinding: true,
               useMaterial3: true,
-              accentHex: "#10B981"
+              accentHex: ""
             });
             remainingProjects = [createdFallback];
           }
@@ -2347,7 +1669,7 @@ jobs:
           setActiveProjectId(remainingProjects[0].id);
           setIsNewAppSessionActive(false);
           if (rebuildBannerProjectId === deletedId) setRebuildBannerProjectId("");
-          setSelectedFilePath(remainingProjects[0].files[0]?.path || "");
+          setSelectedFilePath(remainingProjects[0].files?.[0]?.path || "");
           setPreviewLayoutPath("");
           setPreviewRefreshTick((t) => t + 1);
 
@@ -2358,7 +1680,6 @@ jobs:
             );
           } catch {}
 
-          // Clean up deleted project's isolated chat history, AI settings, and history snapshots
           setProjectChatMap((prev) => {
             const next = { ...prev };
             delete next[deletedId];
@@ -2450,7 +1771,7 @@ jobs:
 
             setApiStatusBanner({
               type: "success",
-              text: `✅ সংযোগ সফল! ${models.length}টি সক্রিয় টেক্সট/কোড মডেল লোড হয়েছে (অডিও/TTS/ইমেজ মডেল বাদ দেওয়া হয়েছে)।`
+              text: `✅ সংযোগ সফল! ${models.length}টি সক্রিয় টেক্সট/কোড মডেল লোড হয়েছে।`
             });
             setIsApiPanelExpanded(false);
           } catch (err) {
@@ -2481,7 +1802,7 @@ jobs:
         };
 
         // =========================================================================
-        // FIREBASE EMAIL/PASSWORD LOGIN & SIGNUP HANDLERS
+        // FIREBASE EMAIL, GOOGLE SIGN-IN & GUEST DEMO LOGIN HANDLERS
         // =========================================================================
         const handleEmailAuthSubmit = async (e) => {
           e.preventDefault();
@@ -2524,17 +1845,59 @@ jobs:
           }
         };
 
+        const handleGoogleSignIn = async () => {
+          setAuthError("");
+          const auth = window.DroidAuth;
+          if (!auth || !window.firebase?.auth?.GoogleAuthProvider) {
+            setAuthError("Google Auth প্রোভাইডার উপলব্ধ নয়।");
+            return;
+          }
+          setAuthLoading(true);
+          try {
+            const provider = new window.firebase.auth.GoogleAuthProvider();
+            await auth.signInWithPopup(provider);
+            setIsAuthModalOpen(false);
+          } catch (err) {
+            setAuthError(err?.message || "Google সাইন-ইন ব্যর্থ হয়েছে।");
+          } finally {
+            setAuthLoading(false);
+          }
+        };
+
+        const handleGuestDemoLogin = async () => {
+          setAuthError("");
+          const auth = window.DroidAuth;
+          setAuthLoading(true);
+          try {
+            if (auth && typeof auth.signInAnonymously === "function") {
+              await auth.signInAnonymously();
+            } else {
+              setCurrentUser({ uid: "guest_demo_user", email: "guest@droid.studio", isAnonymous: true });
+            }
+            setIsAuthModalOpen(false);
+          } catch {
+            setCurrentUser({ uid: "guest_demo_user", email: "guest@droid.studio", isAnonymous: true });
+            setIsAuthModalOpen(false);
+          } finally {
+            setAuthLoading(false);
+          }
+        };
+
         const handleLogout = async () => {
-          if (!window.DroidAuth) return;
           setGeminiApiKey("");
           setAvailableModels([]);
           setApiStatusBanner(null);
-          await window.DroidAuth.signOut();
+          if (window.DroidAuth) {
+            try {
+              await window.DroidAuth.signOut();
+            } catch {}
+          }
+          setCurrentUser(null);
           setIsAuthModalOpen(true);
         };
 
         // =========================================================================
-        // MANUAL ACCEPT / REJECT & APPLY FILE UPDATES
+        // 100% ATOMIC SYNCHRONOUS ACCEPT / REJECT & FILE UPDATE APPLICATION
         // =========================================================================
         const applyFileUpdatesToActiveProject = useCallback(
           (updates, sourceLabel = "AI কোড আপডেট") => {
@@ -2668,7 +2031,6 @@ jobs:
           const updatedList = [finalizedProject, ...projects];
           persistProjectList(updatedList, finalizedProject);
 
-          // Copy current conversational session & settings to the newly confirmed project
           const carriedMessages = chatMessages.map((m) =>
             m.id === messageId || m.draftProject?.id === draftProj.id
               ? { ...m, draftStatus: "accepted" }
@@ -2837,7 +2199,7 @@ jobs:
         };
 
         // =========================================================================
-        // GEMINI REST API (v1beta) CHAT & CODE GENERATION WITH AUTO-CASCADING
+        // GEMINI REST API (v1beta) CHAT & DEEP PROJECT ANALYSIS CODE GENERATION
         // =========================================================================
         const handleStopGeneration = () => {
           if (abortControllerRef.current) {
@@ -2866,6 +2228,7 @@ jobs:
               type: "error",
               text: "⚠️ চ্যাট বা কোড তৈরির আগে উপরে আপনার নিজস্ব Gemini API Key বসিয়ে 'API টেস্ট' করুন।"
             });
+            setIsApiPanelExpanded(true);
             return;
           }
 
@@ -2938,15 +2301,16 @@ jobs:
                     .join("\n\n")
                 : "";
 
-              systemInstructionText += `\n\nতুমি এখন "Conversational AI Android App Builder" মোডে আছো (পুরনো কোনো প্রজেক্টের সাথে এটি মেশানো যাবে না)। ইউজার তোমার সাথে সরাসরি বাংলায় বা ইংরেজিতে কথা বলে একটি সম্পূর্ণ নতুন Android অ্যাপ তৈরি বা পরিমার্জন করছে।
+              systemInstructionText += `\n\nতুমি এখন "Conversational AI Android App Builder" মোডে আছো (পুরনো কোনো প্রজেক্টের সাথে এটি মেশানো যাবে না)। ইউজার তোমার সাথে সরাসরি বাংলায় বা ইংরেজিতে কথা বলে শূন্য (০টি ফাইল) থেকে একটি সম্পূর্ণ নতুন ও ইউনিক Android অ্যাপ তৈরি বা পরিমার্জন করছে।
 
 বাধ্যতামূলক আউটপুট নিয়ম:
-১. প্রথমে বাংলায় সংক্ষেপে ব্যাখ্যা করো ইউজারের কথা অনুযায়ী অ্যাপটির নাম, প্যাকেজ নেম (অবশ্যই com.droid. দিয়ে শুরু হবে) এবং কী কী ফিচার তৈরি করা হলো।
-২. এরপর অবশ্যই নিচের ফরম্যাটে প্রজেক্টের মেটাডাটা JSON দেবে:
+১. কোনো প্রি-বিল্ট টেমপ্লেট অনুকরণ করবে না—ইউজারের বর্ণনা অনুযায়ী একদম ইউনিক ডিজাইন ও পূর্ণাঙ্গ কার্যকর লজিক তৈরি করবে।
+২. প্রথমে \`### 🔍 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা\` শিরোনামে বাংলায় ব্যাখ্যা করো ইউজারের কথা অনুযায়ী অ্যাপটির নাম, প্যাকেজ নেম (অবশ্যই com.droid. দিয়ে শুরু হবে) এবং কোন কোন ফাইল তৈরি করা হলো।
+৩. এরপর অবশ্যই নিচের ফরম্যাটে প্রজেক্টের মেটাডাটা JSON দেবে (ইউজার নির্দিষ্ট কালার না চাইলে accentColor অবশ্যই ফাঁকা "" রাখবে):
 <<<PROJECT_META>>>
-{"appName":"অ্যাপের নাম","packageSuffix":"englishlowercaseonly","language":"kotlin","minSdk":24,"targetSdk":35,"accentColor":"#10B981"}
+{"appName":"অ্যাপের নাম","packageSuffix":"englishlowercaseonly","language":"kotlin","minSdk":24,"targetSdk":35,"accentColor":""}
 <<<END_PROJECT_META>>>
-৩. এরপর অ্যাপটির সম্পূর্ণ রানযোগ্য ফাইলগুলো (অন্তত \`app/src/main/res/layout/activity_main.xml\`, \`app/src/main/java/com/droid/<packageSuffix>/MainActivity.kt\`, \`app/src/main/res/values/strings.xml\`, এবং \`app/src/main/res/values/colors.xml\`) সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত নিচের ফরম্যাটে দেবে (কোনো অংশ সংক্ষিপ্ত না করে):
+৪. এরপর তৈরি করা ঠিক সেই কয়টি প্রয়োজনীয় ফাইলের সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত রানযোগ্য কোড নিচের ফরম্যাটে দেবে (কোনো TODO বা সংক্ষেপণ ছাড়া):
 <<<FILE:app/src/main/res/layout/activity_main.xml>>>
 সম্পূর্ণ XML কোড
 <<<END_FILE>>>`;
@@ -2956,13 +2320,19 @@ jobs:
                 : `ইউজারের নতুন অ্যাপ তৈরির চাহিদা:\n${promptText}`;
             } else if (!isFastChatOnly && activeProject) {
               const nonBinaryFiles = activeProject.files.filter((f) => !f.assetDataUrl);
-              const projectFileTree = nonBinaryFiles
-                .map((f) => `• ${f.path} (${(f.content || "").split("\n").length} লাইন)`)
-                .join("\n");
+              const projectFileTree =
+                nonBinaryFiles.length > 0
+                  ? nonBinaryFiles
+                      .map((f) => `• ${f.path} (${(f.content || "").split("\n").length} লাইন)`)
+                      .join("\n")
+                  : "(এই প্রজেক্টে এখনো কোনো কোড ফাইল তৈরি হয়নি — ০টি ফাইল)";
 
-              const projectSummaryFiles = nonBinaryFiles
-                .map((f) => `--- FILE: ${f.path} ---\n${f.content}`)
-                .join("\n\n");
+              const projectSummaryFiles =
+                nonBinaryFiles.length > 0
+                  ? nonBinaryFiles
+                      .map((f) => `--- FILE: ${f.path} ---\n${f.content}`)
+                      .join("\n\n")
+                  : "(কোনো ফাইল নেই — শূন্য থেকে প্রয়োজনীয় ফাইল তৈরি করতে হবে)";
 
               if (isAnalyzeOnlyMode) {
                 systemInstructionText += `\n\nবর্তমান Android প্রজেক্টের সম্পূর্ণ তথ্য:
@@ -2970,37 +2340,35 @@ jobs:
 - Package Name: ${activeProject.packageName}
 - Language: ${activeProject.language}
 - Min SDK: API ${activeProject.minSdk}, Target SDK: API ${activeProject.targetSdk}
-- Template: ${activeProject.templateId}
+- মোট কোড ফাইল: ${nonBinaryFiles.length}টি
 
 প্রজেক্টের ফাইল-ট্রি:
 ${projectFileTree}
 
 গুরুত্বপূর্ণ নির্দেশনা (Deep Project Analysis Mode):
 - এখনই কোনো <<<FILE:...>>> কোড ব্লক লিখবে না।
-- প্রথমে প্রজেক্টের প্রতিটি ফাইল (Manifest, Gradle, strings.xml, colors.xml, layout XML এবং Kotlin/Java কোড) গভীরভাবে পড়ে বাংলায় বিস্তারিত বিশ্লেষণ দাও:
-  ১. বর্তমান আর্কিটেকচার ও কী কী ফিচার আছে,
-  ২. কোথায় কোথায় ত্রুটি বা অসম্পূর্ণতা আছে,
-  ৩. ইউজারের চাহিদা পূরণে কোন কোন ফাইলে কী কী পরিবর্তন করতে হবে তার ধাপে ধাপে পরিকল্পনা।`;
+- বর্তমান ফাইলগুলো (অথবা প্রজেক্টটি ০টি ফাইলে ফাঁকা থাকলে সেটি উল্লেখ করে) গভীরভাবে বিশ্লেষণ করে বাংলায় বিস্তারিত অডিট ও ধাপে ধাপে পরিকল্পনা দাও।`;
               } else {
                 systemInstructionText += `\n\nবর্তমান Android প্রজেক্টের সম্পূর্ণ তথ্য:
 - App Name: ${activeProject.name}
 - Package Name: ${activeProject.packageName}
 - Language: ${activeProject.language}
 - Min SDK: API ${activeProject.minSdk}, Target SDK: API ${activeProject.targetSdk}
-- Template: ${activeProject.templateId}
+- মোট কোড ফাইল: ${nonBinaryFiles.length}টি
 
 প্রজেক্টের ফাইল-ট্রি:
 ${projectFileTree}
 
-বাধ্যতামূলক কোডিং নিয়ম (Strict Analysis-Before-Code):
-১. ঝটপট অনুমান করে কোড লিখবে না। প্রথমে প্রজেক্টের সব ফাইল, প্যাকেজ নেম (${activeProject.packageName}), XML ভিউ আইডি (@+id/...) ও build.gradle ডিপেন্ডেন্সি যাচাই করে \`### 🔍 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা\` শিরোনামে ৩–৫ লাইনে ব্যাখ্যা লিখবে কী কী পরিবর্তন করা হচ্ছে।
-২. এরপর পরিবর্তিত বা নতুন প্রতিটি ফাইলের সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত রানযোগ্য কোড (কোনো \`// বাকি কোড আগের মতো\` সংক্ষেপণ ছাড়া) নিচের ফরম্যাটে দেবে যাতে ইউজার Accept বাটনে ক্লিক করলেই সরাসরি ফাইল ও প্রিভিউ আপডেট হয়:
+বাধ্যতামূলক কোডিং নিয়ম (Deep Analysis-Before-Code & Zero Default Boilerplate):
+১. নতুন প্রজেক্ট ০টি ফাইল দিয়ে শুরু হয়—আগে থেকে কোনো ডিফল্ট ফাইল, ডিফল্ট কালার বা ডিফল্ট লোগো কোড ধরে নেবে না।
+২. প্রথমে \`### 🔍 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা\` শিরোনামে ৩–৫ লাইনে লিখবে কী বিশ্লেষণ করা হলো এবং ঠিক কোন কোন ফাইল তৈরি বা আপডেট করা হচ্ছে।
+৩. এরপর শুধুমাত্র প্রয়োজনীয় প্রতিটি ফাইলের সম্পূর্ণ শুরু থেকে শেষ পর্যন্ত রানযোগ্য কোড (কোনো TODO বা সংক্ষেপণ ছাড়া) নিচের ফরম্যাটে দেবে যাতে ইউজার Accept বাটনে ক্লিক করলেই ঠিক ওই ফাইলগুলো প্রজেক্টে যুক্ত হয় ও প্রিভিউতে দেখায়:
 <<<FILE:app/src/main/path/FileName.ext>>>
 সম্পূর্ণ কোড
 <<<END_FILE>>>`;
               }
 
-              composedUserPrompt = `বর্তমান প্রজেক্টের সম্পূর্ণ ফাইলসমূহ:\n${projectSummaryFiles}\n\nইউজারের নির্দেশনা:\n${promptText}`;
+              composedUserPrompt = `বর্তমান প্রজেক্টের ফাইলসমূহ:\n${projectSummaryFiles}\n\nইউজারের নির্দেশনা:\n${promptText}`;
             }
 
             const recentHistory = chatMessages
@@ -3058,8 +2426,8 @@ ${projectFileTree}
                     contents: contentsPayload,
                     generationConfig: {
                       temperature: isFastChatOnly
-                        ? Number(aiSettings.temperature) || 0.35
-                        : Math.min(Number(aiSettings.temperature) || 0.2, 0.2),
+                        ? Number(aiSettings.temperature) || 0.3
+                        : Math.min(Number(aiSettings.temperature) || 0.15, 0.15),
                       maxOutputTokens: isFastChatOnly
                         ? 1024
                         : Math.max(Number(aiSettings.maxOutputTokens) || 8192, 8192)
@@ -3179,7 +2547,7 @@ ${projectFileTree}
         };
 
         // =========================================================================
-        // NEW PROJECT WIZARD HANDLERS (LOCKED com.droid. PREFIX + LOGO UPLOAD)
+        // NEW PROJECT WIZARD HANDLERS (ZERO DEFAULT FILES, ZERO DEFAULT COLORS, OPTIONAL LOGO)
         // =========================================================================
         const handleLogoFileUpload = (e) => {
           setNewProjLogoError("");
@@ -3203,7 +2571,6 @@ ${projectFileTree}
           const created = generateAuthenticAndroidProject({
             name: finalName,
             packageSuffix: newProjPkgSuffix,
-            templateId: newProjTemplate,
             codeLang: newProjLang,
             minSdk: newProjMinSdk,
             targetSdk: newProjTargetSdk,
@@ -3222,7 +2589,6 @@ ${projectFileTree}
           setActiveProjectId(created.id);
           setSelectedFilePath(created.files[0]?.path || "");
 
-          // Initialize & auto-save isolated chat & AI settings for the newly created project
           const freshChat = createInitialProjectChatMessages(created.name);
           const freshSettings = { ...DEFAULT_AI_SETTINGS, preferredModel: activeModelId };
           const uid = currentUser?.uid;
@@ -3258,21 +2624,34 @@ ${projectFileTree}
               .catch(() => {});
           }
 
-          recordProjectSnapshot(created, "নতুন প্রজেক্ট তৈরি", "Created");
+          recordProjectSnapshot(created, "নতুন প্রজেক্ট তৈরি (০ ডিফল্ট ফাইল)", "Created");
           setPreviewRefreshTick((t) => t + 1);
           setIsNewProjectModalOpen(false);
           setNewProjName("");
           setNewProjPkgSuffix("myapp");
           setNewProjPkgManual(false);
+          setNewProjAccent("");
           setNewProjLogoDataUrl("");
           setNewProjLogoName("");
         };
 
         // =========================================================================
-        // CODE EDITOR & FILE MANAGEMENT HANDLERS
+        // CODE EDITOR HANDLERS (UNDO/REDO, SEARCH/REPLACE, COPY/DOWNLOAD, DELETE FILE)
         // =========================================================================
+        const showEditorNotice = (msg) => {
+          setEditorActionMsg(msg);
+          setTimeout(() => setEditorActionMsg(""), 2200);
+        };
+
         const handleUpdateActiveFileContent = (newContent) => {
           if (!activeProject || !activeFile) return;
+          const fileKey = `${activeProject.id}::${activeFile.path}`;
+          setEditorUndoStack((prev) => ({
+            ...prev,
+            [fileKey]: [...(prev[fileKey] || []).slice(-30), activeFile.content]
+          }));
+          setEditorRedoStack((prev) => ({ ...prev, [fileKey]: [] }));
+
           const updatedFiles = activeProject.files.map((f) =>
             f.path === activeFile.path ? { ...f, content: newContent } : f
           );
@@ -3285,6 +2664,109 @@ ${projectFileTree}
             p.id === updatedProject.id ? updatedProject : p
           );
           setProjects(updatedList);
+        };
+
+        const handleEditorUndo = () => {
+          if (!activeProject || !activeFile) return;
+          const fileKey = `${activeProject.id}::${activeFile.path}`;
+          const stack = editorUndoStack[fileKey] || [];
+          if (stack.length === 0) return;
+          const previousText = stack[stack.length - 1];
+          setEditorUndoStack((prev) => ({ ...prev, [fileKey]: stack.slice(0, -1) }));
+          setEditorRedoStack((prev) => ({
+            ...prev,
+            [fileKey]: [...(prev[fileKey] || []), activeFile.content]
+          }));
+
+          const updatedProject = {
+            ...activeProject,
+            updatedAt: Date.now(),
+            files: activeProject.files.map((f) =>
+              f.path === activeFile.path ? { ...f, content: previousText } : f
+            )
+          };
+          setProjects(projects.map((p) => (p.id === updatedProject.id ? updatedProject : p)));
+        };
+
+        const handleEditorRedo = () => {
+          if (!activeProject || !activeFile) return;
+          const fileKey = `${activeProject.id}::${activeFile.path}`;
+          const stack = editorRedoStack[fileKey] || [];
+          if (stack.length === 0) return;
+          const nextText = stack[stack.length - 1];
+          setEditorRedoStack((prev) => ({ ...prev, [fileKey]: stack.slice(0, -1) }));
+          setEditorUndoStack((prev) => ({
+            ...prev,
+            [fileKey]: [...(prev[fileKey] || []), activeFile.content]
+          }));
+
+          const updatedProject = {
+            ...activeProject,
+            updatedAt: Date.now(),
+            files: activeProject.files.map((f) =>
+              f.path === activeFile.path ? { ...f, content: nextText } : f
+            )
+          };
+          setProjects(projects.map((p) => (p.id === updatedProject.id ? updatedProject : p)));
+        };
+
+        const handleEditorReplaceAll = (e) => {
+          e.preventDefault();
+          if (!activeProject || !activeFile || !editorFindText) return;
+          if (!activeFile.content.includes(editorFindText)) {
+            showEditorNotice("⚠️ টেক্সট পাওয়া যায়নি");
+            return;
+          }
+          const updatedText = activeFile.content.split(editorFindText).join(editorReplaceText);
+          handleUpdateActiveFileContent(updatedText);
+          showEditorNotice("✅ রিপ্লেস সম্পন্ন");
+        };
+
+        const handleCopyActiveFileCode = () => {
+          if (!activeFile?.content) return;
+          try {
+            const ta = document.createElement("textarea");
+            ta.value = activeFile.content;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            showEditorNotice("📋 কোড কপি হয়েছে");
+          } catch {
+            showEditorNotice("⚠️ কপি ব্যর্থ");
+          }
+        };
+
+        const handleDownloadSingleFile = () => {
+          if (!activeFile) return;
+          const blob = new Blob([activeFile.content || ""], { type: "text/plain;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = activeFile.path.split("/").pop() || "file.txt";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        };
+
+        const handleDeleteSingleFile = (targetPath) => {
+          if (!activeProject || !targetPath) return;
+          const nextFiles = activeProject.files.filter((f) => f.path !== targetPath);
+          const updatedProject = {
+            ...activeProject,
+            updatedAt: Date.now(),
+            files: nextFiles
+          };
+          const updatedList = projects.map((p) =>
+            p.id === updatedProject.id ? updatedProject : p
+          );
+          persistProjectList(updatedList, updatedProject);
+          if (selectedFilePath === targetPath) {
+            setSelectedFilePath(nextFiles[0]?.path || "");
+          }
+          setPreviewRefreshTick((t) => t + 1);
+          showEditorNotice("🗑️ ফাইল ডিলিট হয়েছে");
         };
 
         const handleManualSaveCode = () => {
@@ -3320,16 +2802,11 @@ ${projectFileTree}
             return;
           }
 
-          const starterContent = rawPath.endsWith(".xml")
-            ? `<?xml version="1.0" encoding="utf-8"?>\n<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"\n    android:layout_width="match_parent"\n    android:layout_height="match_parent"\n    android:orientation="vertical"\n    android:padding="16dp">\n\n</LinearLayout>`
-            : rawPath.endsWith(".kt")
-            ? `package ${activeProject.packageName}\n\n// ${rawPath.split("/").pop()}\n`
-            : "";
-
+          // Pure raw empty content for manually added files (no pre-filled stubs)
           const updatedProject = {
             ...activeProject,
             updatedAt: Date.now(),
-            files: [...activeProject.files, { path: rawPath, content: starterContent }]
+            files: [...activeProject.files, { path: rawPath, content: "" }]
           };
           const updatedList = projects.map((p) =>
             p.id === updatedProject.id ? updatedProject : p
@@ -3393,7 +2870,7 @@ ${projectFileTree}
         };
 
         // =========================================================================
-        // GITHUB PUSH HANDLER (EXISTING FEATURE PRESERVED 100%)
+        // GITHUB PUSH, ZIP EXPORT & CLOUD APK/AAB BUILD HANDLERS
         // =========================================================================
         const handlePushToGitHub = async (e) => {
           e.preventDefault();
@@ -3405,6 +2882,10 @@ ${projectFileTree}
 
           if (!token || !owner || !repo) {
             setGhPushStatus({ ok: false, msg: "GitHub Token, Owner ও Repository নাম দিন।" });
+            return;
+          }
+          if (activeProject.files.length === 0) {
+            setGhPushStatus({ ok: false, msg: "প্রজেক্টে এখনো কোনো ফাইল নেই (০টি ফাইল)।" });
             return;
           }
 
@@ -3448,15 +2929,19 @@ ${projectFileTree}
           }
         };
 
-        // =========================================================================
-        // 1-CLICK ANDROID STUDIO PROJECT ZIP EXPORT HANDLER
-        // =========================================================================
         const handleExportProjectZip = async () => {
           if (!activeProject) return;
           if (typeof window.JSZip === "undefined") {
             setZipExportStatus({
               ok: false,
               msg: "❌ JSZip লোড হয়নি। ইন্টারনেট সংযোগ পরীক্ষা করে পেজ রিফ্রেশ করুন।"
+            });
+            return;
+          }
+          if (activeProject.files.length === 0) {
+            setZipExportStatus({
+              ok: false,
+              msg: "⚠️ প্রজেক্টে এখনো কোনো ফাইল নেই (০টি ফাইল)। আগে AI চ্যাটে কোড তৈরি করুন।"
             });
             return;
           }
@@ -3469,10 +2954,7 @@ ${projectFileTree}
             const slug = sanitizeAppPackageSuffix(activeProject.name);
             const root = zip.folder(slug);
 
-            const exportFiles = [
-              ...activeProject.files,
-              ...buildSupplementaryAndroidFiles(activeProject)
-            ];
+            const exportFiles = [...activeProject.files];
 
             for (const f of exportFiles) {
               if (f.assetDataUrl && f.assetDataUrl.includes(",")) {
@@ -3486,7 +2968,7 @@ ${projectFileTree}
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `${slug}-android-studio.zip`;
+            a.download = `${slug}-android-project.zip`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -3494,7 +2976,7 @@ ${projectFileTree}
 
             setZipExportStatus({
               ok: true,
-              msg: `✅ ${slug}-android-studio.zip ডাউনলোড সম্পন্ন (${exportFiles.length}টি ফাইল)!`
+              msg: `✅ ${slug}-android-project.zip ডাউনলোড সম্পন্ন (${exportFiles.length}টি ফাইল)!`
             });
           } catch (err) {
             setZipExportStatus({
@@ -3506,9 +2988,6 @@ ${projectFileTree}
           }
         };
 
-        // =========================================================================
-        // CLOUD BUILD APK & AAB ENGINE (.github/workflows/droid-ai-build.yml)
-        // =========================================================================
         const fetchArtifactsForRun = async (token, owner, repo, runId) => {
           try {
             const res = await fetch(
@@ -3533,13 +3012,21 @@ ${projectFileTree}
 
         const pollCloudBuildStatus = (token, owner, repo) => {
           if (cloudPollRef.current) clearInterval(cloudPollRef.current);
+          let attempts = 0;
 
           const checkRun = async () => {
+            attempts++;
+            if (attempts > 60) {
+              clearInterval(cloudPollRef.current);
+              setIsCloudBuilding(false);
+              setCloudBuildStep("⏱️ বিল্ড সময়সীমা শেষ। GitHub Actions পেজ চেক করুন।");
+              return;
+            }
             try {
               const res = await fetch(
                 `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
                   repo
-                )}/actions/runs?branch=main&per_page=3`,
+                )}/actions/runs?per_page=1`,
                 {
                   headers: {
                     Authorization: `Bearer ${token}`,
@@ -3553,26 +3040,21 @@ ${projectFileTree}
               if (!latest) return;
 
               setCloudBuildRun(latest);
-
               if (latest.status === "completed") {
-                if (cloudPollRef.current) {
-                  clearInterval(cloudPollRef.current);
-                  cloudPollRef.current = null;
-                }
+                clearInterval(cloudPollRef.current);
                 setIsCloudBuilding(false);
-
                 if (latest.conclusion === "success") {
-                  setCloudBuildStep("✅ APK ও AAB বিল্ড সফল! নিচ থেকে সরাসরি ডাউনলোড করুন:");
+                  setCloudBuildStep("✅ APK ও AAB বিল্ড সফলভাবে সম্পন্ন হয়েছে!");
                   await fetchArtifactsForRun(token, owner, repo, latest.id);
                 } else {
                   setCloudBuildStep("");
                   setCloudBuildError(
-                    `❌ Gradle বিল্ড ব্যর্থ হয়েছে (${latest.conclusion || "failure"})। নিচের AI ফিক্স বাটনে ক্লিক করে কোড ঠিক করুন।`
+                    `❌ Gradle বিল্ড ব্যর্থ হয়েছে (${latest.conclusion})। নিচের বাটনে ক্লিক করে AI দিয়ে ফিক্স করুন।`
                   );
                 }
               } else {
                 setCloudBuildStep(
-                  `⏳ ক্লাউড সার্ভারে APK ও AAB কম্পাইল হচ্ছে... (${latest.status})`
+                  `⚙️ GitHub Actions বিল্ড চলছে (${latest.status})... অনুগ্রহ করে অপেক্ষা করুন`
                 );
               }
             } catch {}
@@ -3592,6 +3074,11 @@ ${projectFileTree}
 
           if (!token || !owner || !targetRepo) {
             setCloudBuildError("GitHub Token (repo + workflow পারমিশন), Owner ও App Repo নাম দিন।");
+            return;
+          }
+
+          if (activeProject.files.length === 0) {
+            setCloudBuildError("⚠️ প্রজেক্টে এখনো কোনো ফাইল নেই (০টি ফাইল)। আগে AI চ্যাটে কোড তৈরি করুন।");
             return;
           }
 
@@ -3650,11 +3137,10 @@ ${projectFileTree}
               await new Promise((r) => setTimeout(r, 2000));
             }
 
-            setCloudBuildStep("২/৩: সোর্স কোড, লোগো ও Gradle Workflow আপলোড হচ্ছে...");
+            setCloudBuildStep("২/৩: সোর্স কোড ও Gradle Workflow আপলোড হচ্ছে...");
 
             const filesToBuild = [
               ...activeProject.files,
-              ...buildSupplementaryAndroidFiles(activeProject),
               {
                 path: ".github/workflows/droid-ai-build.yml",
                 content: generateDroidAiBuildWorkflowYaml(activeProject)
@@ -3769,7 +3255,7 @@ ${projectFileTree}
         }
 
         // =========================================================================
-        // RENDER 2: MAIN WORKSPACE (WITH GLOBAL LOGIN GATE WHEN SIGNED OUT)
+        // RENDER 2: MAIN WORKSPACE
         // =========================================================================
         const userDisplayHandle = currentUser?.email
           ? currentUser.email.split("@")[0]
@@ -3780,10 +3266,9 @@ ${projectFileTree}
             onClickCapture={handleGlobalInteractionCapture}
             className="flex min-h-screen flex-col bg-[#070b14] text-slate-100"
           >
-            {/* TOP HEADER BAR — OFFICIAL DROID AI STUDIO BRAND LOGO LOCKED ON LEFT */}
+            {/* TOP HEADER BAR */}
             <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#0b1120]/95 px-3 py-2.5 backdrop-blur-md">
               <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
-                {/* Brand + Sync + Project Selector */}
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <div className="flex items-center gap-2">
                     <DroidBrandLogo sizeClass="h-8 w-8" roundedClass="rounded-xl" />
@@ -3802,7 +3287,6 @@ ${projectFileTree}
                     {rtdbSynced ? "RTDB সিঙ্কড" : "লোকাল মোড"}
                   </span>
 
-                  {/* Project Selector (Shows Unselected State When Creating New App via Conversation) */}
                   <select
                     value={isNewAppSessionActive ? "" : activeProject?.id || ""}
                     onChange={(e) => {
@@ -3812,7 +3296,7 @@ ${projectFileTree}
                       setStagedDraftProject(null);
                       setActiveProjectId(nextId);
                       const found = projects.find((p) => p.id === nextId);
-                      if (found?.files?.[0]) setSelectedFilePath(found.files[0].path);
+                      setSelectedFilePath(found?.files?.[0]?.path || "");
                     }}
                     className={`max-w-[175px] truncate rounded-xl border px-2.5 py-1 text-xs font-semibold focus:border-purple-500 focus:outline-none ${
                       isNewAppSessionActive
@@ -4091,7 +3575,6 @@ ${projectFileTree}
                         </div>
                       </div>
 
-                      {/* Per-User API Key Input + Test + Clear */}
                       <div className="flex items-center gap-1.5">
                         <input
                           type="password"
@@ -4120,7 +3603,6 @@ ${projectFileTree}
                         )}
                       </div>
 
-                      {/* BYOK Isolation Notice & Active Model Selector */}
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                         <span className="text-amber-300/90">
                           🔒 নিজস্ব API Key (BYOK) — শুধুমাত্র{" "}
@@ -4166,7 +3648,6 @@ ${projectFileTree}
                         </div>
                       )}
 
-                      {/* Collapsible AI Studio Settings Drawer (Per-Project Auto-Saved) */}
                       {isAiSettingsOpen && (
                         <div className="mt-3 space-y-2.5 rounded-xl border border-slate-800 bg-slate-950/90 p-3 text-xs">
                           <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-[11px]">
@@ -4255,7 +3736,6 @@ ${projectFileTree}
                         </div>
                       )}
 
-                      {/* Quick Prompt Chips */}
                       {!isNewAppSessionActive && activeProject && (
                         <div className="no-scrollbar mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5">
                           <button
@@ -4286,17 +3766,6 @@ ${projectFileTree}
                             type="button"
                             onClick={() =>
                               handleSendMessage(
-                                "এই অ্যাপে একটি সুন্দর বাটন, ইনপুট ফিল্ড এবং ক্লিক করলে Toast মেসেজ দেখানোর ফিচার যোগ করো।"
-                              )
-                            }
-                            className="shrink-0 rounded-full border border-purple-500/40 bg-purple-950/60 px-3 py-1 text-[11px] font-semibold text-purple-200 hover:bg-purple-900"
-                          >
-                            নতুন ফিচার যোগ করো
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleSendMessage(
                                 `বর্তমান প্রজেক্ট (${activeProject?.name}) কী কাজ করছে সংক্ষেপে বাংলায় বুঝিয়ে বলো।`
                               )
                             }
@@ -4310,7 +3779,7 @@ ${projectFileTree}
                   )}
                 </section>
 
-                {/* CHAT MESSAGES STREAM (INDEPENDENT SCROLL CONTAINER) */}
+                {/* CHAT MESSAGES STREAM */}
                 <section
                   ref={chatContainerRef}
                   className="custom-scrollbar my-2 min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-slate-800/80 bg-[#0a101d] p-3"
@@ -4351,7 +3820,7 @@ ${projectFileTree}
                         )}
                         <div className="whitespace-pre-wrap break-words">{msg.text}</div>
 
-                        {/* CONVERSATIONAL DRAFT PROJECT REVIEW CARD (PREVIEW FIRST -> CONFIRM TO SAVE) */}
+                        {/* CONVERSATIONAL DRAFT PROJECT REVIEW CARD */}
                         {msg.draftProject && (
                           <div className="mt-3 rounded-xl border border-fuchsia-500/45 bg-slate-950/95 p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4530,7 +3999,7 @@ ${projectFileTree}
                   <div ref={chatEndRef} />
                 </section>
 
-                {/* BOTTOM CHAT COMPOSER WITH MODE PILLS & IMAGE/SCREENSHOT SHARING */}
+                {/* BOTTOM CHAT COMPOSER */}
                 <section className="shrink-0 rounded-2xl border border-slate-800 bg-[#0d1424] p-2.5">
                   <div className="no-scrollbar mb-2 flex items-center gap-1.5 overflow-x-auto text-[11px]">
                     <span className="shrink-0 text-slate-400">মোড:</span>
@@ -4562,7 +4031,6 @@ ${projectFileTree}
                     ))}
                   </div>
 
-                  {/* Selected Screenshot / Image Preview Strip */}
                   {chatAttachments.length > 0 && (
                     <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-purple-500/30 bg-slate-950/90 p-2">
                       {chatAttachments.map((att) => (
@@ -4669,7 +4137,6 @@ ${projectFileTree}
             {/* =================================================================== */}
             {activeTab === "code" && (activeProject || stagedDraftProject) && (
               <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-2.5 p-3">
-                {/* Project Metadata Strip */}
                 {(() => {
                   const codeTarget = activeProject || stagedDraftProject;
                   return (
@@ -4693,7 +4160,7 @@ ${projectFileTree}
                         </div>
 
                         {activeProject && (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => setIsNewFileModalOpen(true)}
@@ -4701,6 +4168,50 @@ ${projectFileTree}
                             >
                               + ফাইল
                             </button>
+                            {activeFile && !activeFile.assetDataUrl && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={handleEditorUndo}
+                                  title="Undo"
+                                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300 hover:bg-slate-800"
+                                >
+                                  ↶
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleEditorRedo}
+                                  title="Redo"
+                                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300 hover:bg-slate-800"
+                                >
+                                  ↷
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsEditorSearchOpen((v) => !v)}
+                                  title="Search & Replace"
+                                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300 hover:bg-slate-800"
+                                >
+                                  🔍
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCopyActiveFileCode}
+                                  title="Copy Code"
+                                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300 hover:bg-slate-800"
+                                >
+                                  📋
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleDownloadSingleFile}
+                                  title="Download File"
+                                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300 hover:bg-slate-800"
+                                >
+                                  ⬇️
+                                </button>
+                              </>
+                            )}
                             <button
                               type="button"
                               onClick={handleManualSaveCode}
@@ -4712,38 +4223,122 @@ ${projectFileTree}
                         )}
                       </div>
 
+                      {editorActionMsg && (
+                        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/60 px-3 py-1.5 text-[11px] font-semibold text-emerald-200">
+                          {editorActionMsg}
+                        </div>
+                      )}
+
+                      {isEditorSearchOpen && activeFile && !activeFile.assetDataUrl && (
+                        <form
+                          onSubmit={handleEditorReplaceAll}
+                          className="flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-950 p-2 text-xs"
+                        >
+                          <input
+                            type="text"
+                            value={editorFindText}
+                            onChange={(e) => setEditorFindText(e.target.value)}
+                            placeholder="খুঁজুন (Find)..."
+                            className="min-w-[120px] flex-1 rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-100"
+                          />
+                          <input
+                            type="text"
+                            value={editorReplaceText}
+                            onChange={(e) => setEditorReplaceText(e.target.value)}
+                            placeholder="পরিবর্তন (Replace)..."
+                            className="min-w-[120px] flex-1 rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-100"
+                          />
+                          <button
+                            type="submit"
+                            className="rounded-lg bg-purple-600 px-3 py-1 font-bold text-white"
+                          >
+                            Replace All
+                          </button>
+                        </form>
+                      )}
+
                       {/* Horizontal File Tabs */}
-                      <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1">
-                        {codeTarget.files.map((f) => {
-                          const shortName = f.path.split("/").pop();
-                          const isSelected = activeFile?.path === f.path;
-                          return (
-                            <button
-                              key={f.path}
-                              type="button"
-                              onClick={() => setSelectedFilePath(f.path)}
-                              title={f.path}
-                              className={`shrink-0 rounded-xl border px-3 py-1.5 font-mono text-xs transition ${
-                                isSelected
-                                  ? "border-purple-500 bg-purple-950/80 font-bold text-white"
-                                  : "border-slate-800 bg-slate-900/80 text-slate-400 hover:text-slate-200"
-                              }`}
-                            >
-                              {shortName}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      {codeTarget.files.length > 0 && (
+                        <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1">
+                          {codeTarget.files.map((f) => {
+                            const shortName = f.path.split("/").pop();
+                            const isSelected = activeFile?.path === f.path;
+                            return (
+                              <div
+                                key={f.path}
+                                className={`flex shrink-0 items-center rounded-xl border transition ${
+                                  isSelected
+                                    ? "border-purple-500 bg-purple-950/80 text-white"
+                                    : "border-slate-800 bg-slate-900/80 text-slate-400 hover:text-slate-200"
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedFilePath(f.path)}
+                                  title={f.path}
+                                  className="px-3 py-1.5 font-mono text-xs font-semibold"
+                                >
+                                  {shortName}
+                                </button>
+                                {activeProject && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteSingleFile(f.path)}
+                                    title="ফাইল মুছুন"
+                                    className="pr-2 text-[10px] text-rose-400 hover:text-rose-200"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </>
                   );
                 })()}
 
-                {/* Active File Editor */}
-                {activeFile && (
+                {/* Empty Project Code State (0 Files) or Active File Editor */}
+                {!activeFile ? (
+                  <div className="flex min-h-[380px] flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-[#0a0f1c] p-6 text-center">
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900 text-xl">
+                      📂
+                    </div>
+                    <h3 className="text-sm font-extrabold text-slate-200">
+                      এই প্রজেক্টে এখনো কোনো ফাইল তৈরি হয়নি (০টি ফাইল)
+                    </h3>
+                    <p className="mt-1.5 max-w-md text-xs leading-relaxed text-slate-400">
+                      ডিফল্টভাবে কোনো ফাইল বা কোড তৈরি করা হয়নি। AI চ্যাটে কোডিং করান বা{" "}
+                      <strong className="text-emerald-300">+ ফাইল</strong> বাটনে ক্লিক করুন—কোডিং করার সময় ঠিক যে কয়টা ফাইল তৈরি হবে, কেবল সেই কয়টা ফাইলই এখানে কাজ করবে।
+                    </p>
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("chat");
+                          scrollToChatBottom(true);
+                        }}
+                        className="rounded-xl bg-purple-600 px-3.5 py-2 font-bold text-white shadow hover:bg-purple-500"
+                      >
+                        💬 AI চ্যাটে কোডিং করান
+                      </button>
+                      {activeProject && (
+                        <button
+                          type="button"
+                          onClick={() => setIsNewFileModalOpen(true)}
+                          className="rounded-xl border border-emerald-500/40 bg-emerald-950/70 px-3.5 py-2 font-bold text-emerald-300 hover:bg-emerald-900"
+                        >
+                          + ফাইল যোগ করুন
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
                   <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-800 bg-[#0a0f1c]">
                     <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/70 px-3 py-1.5 font-mono text-[11px] text-slate-400">
                       <span className="truncate">{activeFile.path}</span>
-                      <span>{activeFile.content.split("\n").length} লাইন</span>
+                      <span>{(activeFile.content || "").split("\n").length} লাইন</span>
                     </div>
 
                     {activeFile.assetDataUrl ? (
@@ -4754,7 +4349,7 @@ ${projectFileTree}
                           className="h-28 w-28 rounded-3xl border-2 border-emerald-500/50 object-cover shadow-xl"
                         />
                         <p className="text-xs font-semibold text-emerald-300">
-                          ✅ কাস্টম অ্যাপ লোগো প্রজেক্টের রিসোর্সে যুক্ত আছে (শুধুমাত্র ইমুলেটর ও প্রজেক্টে দৃশ্যমান)
+                          ✅ ঐচ্ছিক অ্যাপ লোগো প্রজেক্টে যুক্ত আছে
                         </p>
                       </div>
                     ) : (
@@ -4772,11 +4367,10 @@ ${projectFileTree}
             )}
 
             {/* =================================================================== */}
-            {/* TAB 3: FULL INTERACTIVE ANDROID EMULATOR (PROJECT LOGO ONLY HERE)   */}
+            {/* TAB 3: LIVE ANDROID EMULATOR PREVIEW (NO FAKE HELLO WORLD)          */}
             {/* =================================================================== */}
             {activeTab === "preview" && (
               <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center p-3">
-                {/* Draft Project Staging Banner (Preview Before Confirming Into Saved Projects) */}
                 {stagedDraftProject && (
                   <div className="mb-2.5 w-full max-w-[390px] rounded-2xl border border-fuchsia-500/50 bg-fuchsia-950/50 p-3 text-xs shadow-lg">
                     <div className="flex items-center justify-between gap-2">
@@ -4813,9 +4407,22 @@ ${projectFileTree}
                 <div className="mb-2.5 flex w-full max-w-[390px] flex-wrap items-center justify-between gap-1.5 rounded-2xl border border-slate-800 bg-[#0d1424] px-3 py-2 text-xs">
                   <div className="flex items-center gap-1.5">
                     <span className="font-extrabold text-emerald-400">📱 অ্যান্ড্রয়েড ইমুলেটর</span>
-                    <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-300">
-                      API {livePreviewData.minSdk}–{livePreviewData.targetSdk}
-                    </span>
+                    <select
+                      value={previewApiSelector}
+                      onChange={(e) => {
+                        setPreviewApiSelector(e.target.value);
+                        appendEmuLog(`Emulator Target: ${e.target.value}`);
+                      }}
+                      className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-200"
+                    >
+                      {["API 21", "API 24", "API 28", "API 30", "API 33", "API 34", "API 35"].map(
+                        (apiLabel) => (
+                          <option key={apiLabel} value={apiLabel}>
+                            {apiLabel}
+                          </option>
+                        )
+                      )}
+                    </select>
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -4845,7 +4452,7 @@ ${projectFileTree}
                           : "border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
                       }`}
                     >
-                      📋 লগ ({emuEventLogs.length})
+                      📋 Logcat ({emuEventLogs.length})
                     </button>
 
                     <button
@@ -4859,12 +4466,12 @@ ${projectFileTree}
                   </div>
                 </div>
 
-                {/* Collapsible Emulator Click / Event Inspector Drawer */}
+                {/* Collapsible Logcat Event Drawer */}
                 {isEmuLogOpen && (
                   <div className="mb-2.5 w-full max-w-[390px] rounded-2xl border border-slate-800 bg-slate-950/95 p-2.5 text-[11px]">
                     <div className="mb-1 flex items-center justify-between text-slate-400">
                       <span className="font-bold text-emerald-300">
-                        ⚡ বাটন ও ইভেন্ট টেস্ট লগ
+                        ⚡ Android Logcat & Event Inspector
                       </span>
                       <button
                         type="button"
@@ -4876,7 +4483,7 @@ ${projectFileTree}
                     </div>
                     {emuEventLogs.length === 0 ? (
                       <p className="py-2 text-center text-[10px] text-slate-500">
-                        ফোনের স্ক্রিনে যেকোনো বাটনে চাপ দিয়ে পরীক্ষা করুন—এখানে বিস্তারিত ইভেন্ট দেখাবে।
+                        ফোনের স্ক্রিনে যেকোনো বাটনে চাপ দিয়ে পরীক্ষা করুন—এখানে Logcat ইভেন্ট দেখাবে।
                       </p>
                     ) : (
                       <div className="custom-scrollbar max-h-28 space-y-1 overflow-y-auto font-mono text-[10px]">
@@ -4916,7 +4523,7 @@ ${projectFileTree}
                     <span>5G 🔋 98%</span>
                   </div>
 
-                  {/* Top App Bar inside Emulator (Project's Custom Logo + Project App Name) */}
+                  {/* Top App Bar inside Emulator */}
                   <div
                     className={`flex items-center justify-between gap-2 px-4 pt-3 pb-2.5 ${
                       livePreviewData.isPureBlackScreen
@@ -4932,32 +4539,34 @@ ${projectFileTree}
                           className="h-9 w-9 shrink-0 rounded-xl border border-white/15 object-cover shadow"
                         />
                       ) : (
-                        <div
-                          style={{ backgroundColor: livePreviewData.accentColor }}
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-extrabold text-white shadow"
-                        >
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 text-sm font-extrabold text-slate-200">
                           {livePreviewData.appTitle.slice(0, 1).toUpperCase()}
                         </div>
                       )}
-                      <h2
-                        className="truncate text-base font-extrabold"
-                        style={{
-                          color: livePreviewData.isPureBlackScreen
-                            ? "#FFFFFF"
-                            : livePreviewData.accentColor
-                        }}
-                      >
+                      <h2 className="truncate text-base font-extrabold text-slate-100">
                         {livePreviewData.appTitle}
                       </h2>
                     </div>
 
-                    <span className="rounded-full border border-emerald-500/30 bg-emerald-950/50 px-2 py-0.5 font-mono text-[9px] font-bold text-emerald-300">
-                      LIVE
+                    <span className="rounded-full border border-slate-700 bg-slate-900/70 px-2 py-0.5 font-mono text-[9px] font-bold text-slate-300">
+                      {previewApiSelector}
                     </span>
                   </div>
 
-                  {/* Emulator Screen Canvas */}
-                  {livePreviewData.isCenteredSingleTextLayout ? (
+                  {/* Emulator Screen Canvas (Strict Empty State When 0 Code Files Exist) */}
+                  {!livePreviewData.hasAnyCodeFiles ? (
+                    <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+                      <div className="mb-2.5 flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/80 text-lg">
+                        📱
+                      </div>
+                      <p className="text-xs font-bold leading-relaxed text-slate-300">
+                        কোনো কোড ফাইল নেই — কোডিং করার পর এখানে প্রিভিউ দেখাবে
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        AI চ্যাটে কোড তৈরি করে Accept করলেই সাথে সাথে লাইভ অ্যাপ স্ক্রিন রেন্ডার হবে।
+                      </p>
+                    </div>
+                  ) : livePreviewData.isCenteredSingleTextLayout ? (
                     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
                       <p
                         style={
@@ -4969,7 +4578,7 @@ ${projectFileTree}
                       >
                         {emuDynamicOutputs[livePreviewData.widgets[0]?.id] ??
                           livePreviewData.widgets[0]?.text ??
-                          "Hello World!"}
+                          ""}
                       </p>
                     </div>
                   ) : (
@@ -4987,8 +4596,8 @@ ${projectFileTree}
                               style={w.textColor ? { color: w.textColor } : undefined}
                               className={`text-xs leading-relaxed ${
                                 idx === 0
-                                  ? "font-medium opacity-80"
-                                  : "rounded-xl border border-slate-800/70 bg-slate-900/50 px-3 py-2 font-semibold text-emerald-300"
+                                  ? "font-medium opacity-85"
+                                  : "rounded-xl border border-slate-800/70 bg-slate-900/50 px-3 py-2 font-semibold text-slate-100"
                               }`}
                             >
                               {displayVal}
@@ -5023,7 +4632,7 @@ ${projectFileTree}
                                   }
                                 }}
                                 placeholder={w.hint || w.text || `${w.id} লিখুন...`}
-                                className={`w-full rounded-xl border px-3 py-2 text-xs transition focus:border-emerald-500 focus:outline-none ${
+                                className={`w-full rounded-xl border px-3 py-2 text-xs transition focus:border-slate-500 focus:outline-none ${
                                   previewDarkMode
                                     ? "border-slate-700 bg-slate-900/95 text-slate-100 placeholder-slate-500"
                                     : "border-slate-300 bg-white text-slate-900 placeholder-slate-400"
@@ -5058,7 +4667,7 @@ ${projectFileTree}
                                   appendEmuLog(`Toggle [${w.id}] → ${msg}`);
                                   showPreviewToast(msg);
                                 }}
-                                className="h-4 w-4 accent-emerald-500"
+                                className="h-4 w-4 accent-slate-400"
                               />
                             </label>
                           );
@@ -5123,33 +4732,6 @@ ${projectFileTree}
 
                         return null;
                       })}
-                    </div>
-                  )}
-
-                  {livePreviewData.templateId === "bottom-nav" && (
-                    <div
-                      className={`grid grid-cols-3 border-t py-2 text-center text-[10px] font-bold ${
-                        previewDarkMode
-                          ? "border-slate-800 bg-slate-950 text-slate-300"
-                          : "border-slate-200 bg-white text-slate-700"
-                      }`}
-                    >
-                      {["🏠 হোম", "🧭 এক্সপ্লোর", "👤 প্রোফাইল"].map((tabLabel, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => {
-                            setPreviewNavIndex(idx);
-                            appendEmuLog(`BottomNav → ${tabLabel}`);
-                            showPreviewToast(`${tabLabel} ট্যাব নির্বাচিত`);
-                          }}
-                          style={{
-                            color: previewNavIndex === idx ? livePreviewData.accentColor : undefined
-                          }}
-                        >
-                          {tabLabel}
-                        </button>
-                      ))}
                     </div>
                   )}
 
@@ -5274,7 +4856,7 @@ ${projectFileTree}
             )}
 
             {/* =================================================================== */}
-            {/* MODAL 1: AUTHENTIC ANDROID STUDIO NEW PROJECT WIZARD (LOCKED PREFIX) */}
+            {/* MODAL 1: NEW RAW PROJECT WIZARD (NO TEMPLATES, NO DEFAULT COLORS, OPTIONAL LOGO) */}
             {/* =================================================================== */}
             {isNewProjectModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm">
@@ -5282,10 +4864,10 @@ ${projectFileTree}
                   <div className="mb-3 flex items-center justify-between border-b border-slate-800 pb-2.5">
                     <div>
                       <h2 className="text-sm font-extrabold text-white">
-                        🤖 New Android Studio Project
+                        🤖 New Raw Android Project
                       </h2>
                       <p className="text-[11px] text-slate-400">
-                        টেমপ্লেট, SDK লেভেল ও অ্যাপ লোগো সেট করুন — AI সরাসরি প্রজেক্ট রিড ও কোড করতে পারবে
+                        ০টি ডিফল্ট ফাইল, কোনো ডিফল্ট কালার বা টেমপ্লেট ছাড়া সম্পূর্ণ র (Raw) প্রজেক্ট তৈরি হবে
                       </p>
                     </div>
                     <button
@@ -5298,38 +4880,7 @@ ${projectFileTree}
                   </div>
 
                   <form onSubmit={handleCreateNewProject} className="space-y-3.5 text-xs">
-                    {/* Step 1: Android Studio Template Gallery */}
-                    <div>
-                      <label className="mb-1.5 block font-bold text-emerald-300">
-                        ১. অ্যাক্টিভিটি টেমপ্লেট বেছে নিন (Phone & Tablet)
-                      </label>
-                      <div className="custom-scrollbar grid max-h-40 grid-cols-1 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
-                        {ANDROID_STUDIO_TEMPLATES.map((tpl) => (
-                          <button
-                            key={tpl.id}
-                            type="button"
-                            onClick={() => setNewProjTemplate(tpl.id)}
-                            className={`rounded-xl border p-2.5 text-left transition ${
-                              newProjTemplate === tpl.id
-                                ? "border-emerald-500 bg-emerald-950/60 text-white shadow"
-                                : "border-slate-800 bg-slate-950/80 text-slate-300 hover:border-slate-700"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="font-bold">{tpl.label}</span>
-                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
-                                {tpl.badge}
-                              </span>
-                            </div>
-                            <div className="mt-1 text-[10px] leading-snug opacity-75">
-                              {tpl.desc}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Step 2: App Name & LOCKED com.droid. Package Name */}
+                    {/* App Name & LOCKED com.droid. Package Name */}
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                       <div>
                         <label className="mb-1 block font-semibold text-slate-300">
@@ -5381,7 +4932,7 @@ ${projectFileTree}
                       </div>
                     </div>
 
-                    {/* Step 3: Language & Build Configuration Language */}
+                    {/* Language & Build Configuration Language */}
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                       <div>
                         <label className="mb-1 block font-semibold text-slate-300">
@@ -5392,7 +4943,7 @@ ${projectFileTree}
                           onChange={(e) => setNewProjLang(e.target.value)}
                           className="w-full rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-2 text-slate-100"
                         >
-                          <option value="kotlin">Kotlin (Recommended)</option>
+                          <option value="kotlin">Kotlin</option>
                           <option value="java">Java</option>
                         </select>
                       </div>
@@ -5412,7 +4963,7 @@ ${projectFileTree}
                       </div>
                     </div>
 
-                    {/* Step 4: Minimum SDK & Target/Compile SDK */}
+                    {/* Minimum SDK & Target/Compile SDK */}
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                       <div>
                         <label className="mb-1 block font-semibold text-slate-300">
@@ -5449,15 +5000,15 @@ ${projectFileTree}
                       </div>
                     </div>
 
-                    {/* Step 5: App Logo Upload + Theme Accent */}
+                    {/* Optional App Logo Upload (Zero Default Logo Code If Skipped) */}
                     <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <label className="block font-bold text-slate-200">
-                            🖼️ অ্যাপ লোগো আপলোড (ic_launcher)
+                            🖼️ অ্যাপ লোগো আপলোড (ঐচ্ছিক / Optional)
                           </label>
                           <p className="text-[10px] text-slate-400">
-                            সরাসরি প্রজেক্ট রিসোর্স ও অ্যান্ড্রয়েড ইমুলেটরে যুক্ত হবে
+                            লোগো আপলোড না করলে কোনো ডিফল্ট লোগো ফাইল বা কোড তৈরি হবে না
                           </p>
                         </div>
 
@@ -5502,20 +5053,9 @@ ${projectFileTree}
                       )}
 
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-2.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-slate-400">থিম কালার:</span>
-                          {ACCENT_COLORS.map((c) => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => setNewProjAccent(c.hex)}
-                              style={{ backgroundColor: c.hex }}
-                              className={`h-5 w-5 rounded-full transition ${
-                                newProjAccent === c.hex ? "scale-110 ring-2 ring-white" : "opacity-75"
-                              }`}
-                            />
-                          ))}
-                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          🎨 ডিফল্ট কালার নেই (AI কোডিংয়ের সময় নির্ধারিত হবে)
+                        </span>
 
                         <div className="flex items-center gap-3 text-[11px] text-slate-300">
                           <label className="flex items-center gap-1">
@@ -5552,7 +5092,7 @@ ${projectFileTree}
                         type="submit"
                         className="rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white shadow hover:bg-emerald-500"
                       >
-                        Finish & প্রজেক্ট তৈরি করুন
+                        Finish & র (Raw) প্রজেক্ট তৈরি করুন
                       </button>
                     </div>
                   </form>
@@ -5695,7 +5235,7 @@ ${projectFileTree}
                       required
                       value={newFilePathInput}
                       onChange={(e) => setNewFilePathInput(e.target.value)}
-                      placeholder="যেমন: NewsAdapter.kt বা item_news.xml"
+                      placeholder="যেমন: MainActivity.kt বা activity_main.xml"
                       className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-slate-100 focus:border-emerald-500 focus:outline-none"
                     />
                     <div className="flex justify-end gap-2">
@@ -5719,14 +5259,14 @@ ${projectFileTree}
             )}
 
             {/* =================================================================== */}
-            {/* MODAL 4: MANDATORY EMAIL LOGIN & SIGNUP MODAL (BYOK ISOLATION)      */}
+            {/* MODAL 4: FIREBASE EMAIL, GOOGLE SIGN-IN & GUEST DEMO AUTH MODAL     */}
             {/* =================================================================== */}
             {isAuthModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 backdrop-blur-md">
                 <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-[#0d1424] p-4 shadow-2xl">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-sm font-extrabold text-white">
-                      🔐 ড্রয়েড এআই স্টুডিও — ইমেইল লগইন
+                      🔐 ড্রয়েড এআই স্টুডিও — অ্যাকাউন্ট লগইন
                     </h2>
                     {currentUser && (
                       <button
@@ -5763,8 +5303,27 @@ ${projectFileTree}
                   ) : (
                     <div className="space-y-3 text-xs">
                       <p className="text-[11px] leading-relaxed text-slate-300">
-                        আপনার নিজস্ব প্রজেক্ট ও API Key সুরক্ষিত রাখতে ইমেইল ও পাসওয়ার্ড দিয়ে প্রবেশ করুন:
+                        আপনার নিজস্ব প্রজেক্ট ও API Key সুরক্ষিত রাখতে সাইন-ইন করুন অথবা Guest Demo হিসেবে প্রবেশ করুন:
                       </p>
+
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          disabled={authLoading}
+                          onClick={handleGoogleSignIn}
+                          className="rounded-xl border border-sky-500/40 bg-sky-950/70 py-2 font-bold text-sky-200 hover:bg-sky-900 disabled:opacity-50"
+                        >
+                          🌐 Google Sign-In
+                        </button>
+                        <button
+                          type="button"
+                          disabled={authLoading}
+                          onClick={handleGuestDemoLogin}
+                          className="rounded-xl border border-amber-500/40 bg-amber-950/70 py-2 font-bold text-amber-200 hover:bg-amber-900 disabled:opacity-50"
+                        >
+                          👤 Guest Demo
+                        </button>
+                      </div>
 
                       <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-950 p-1">
                         <button
@@ -5779,7 +5338,7 @@ ${projectFileTree}
                               : "text-slate-400"
                           }`}
                         >
-                          লগইন
+                          ইমেইল লগইন
                         </button>
                         <button
                           type="button"
@@ -5862,7 +5421,6 @@ ${projectFileTree}
                     </button>
                   </div>
 
-                  {/* 3-Tab Switcher inside Build & Export Center */}
                   <div className="mb-3.5 grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-800 bg-slate-950 p-1 text-[11px]">
                     <button
                       type="button"
@@ -5899,7 +5457,6 @@ ${projectFileTree}
                     </button>
                   </div>
 
-                  {/* VIEW A: 1-CLICK CLOUD APK & AAB BUILDER + DIRECT DOWNLOAD */}
                   {hubActiveView === "build" && (
                     <form onSubmit={handleStartCloudApkAabBuild} className="space-y-3 text-xs">
                       <div className="rounded-xl border border-sky-500/40 bg-sky-950/35 p-3 leading-relaxed">
@@ -5907,10 +5464,7 @@ ${projectFileTree}
                           ☁️ GitHub Actions Cloud Gradle Build (.apk ও .aab)
                         </div>
                         <p className="mt-1 text-[11px] text-slate-200">
-                          স্বয়ংক্রিয়ভাবে <code className="text-sky-300">.github/workflows/droid-ai-build.yml</code> তৈরি হয়ে ক্লাউডে <strong>app-debug.apk</strong> এবং <strong>app-release.aab</strong> কম্পাইল হবে—বিল্ড শেষ হলে এখানেই ডাউনলোড বাটন চলে আসবে।
-                        </p>
-                        <p className="mt-1 text-[10px] text-amber-300">
-                          ⚠️ প্রতিটি অ্যাপের জন্য আলাদা রিপোজিটরি নাম দিন (মূল <strong>Droid-AI.Studio</strong> রিপোজিটরি ব্যবহার করবেন না)।
+                          স্বয়ংক্রিয়ভাবে <code className="text-sky-300">.github/workflows/droid-ai-build.yml</code> তৈরি হয়ে ক্লাউডে <strong>app-debug.apk</strong> এবং <strong>app-release.aab</strong> কম্পাইল হবে।
                         </p>
                       </div>
 
@@ -6032,17 +5586,14 @@ ${projectFileTree}
                     </form>
                   )}
 
-                  {/* VIEW B: 1-CLICK ANDROID STUDIO PROJECT .ZIP EXPORT */}
                   {hubActiveView === "zip" && (
                     <div className="space-y-3 text-xs">
                       <div className="rounded-xl border border-emerald-500/35 bg-emerald-950/35 p-3 leading-relaxed">
                         <div className="font-bold text-emerald-300">
-                          🗜️ সম্পূর্ণ Android Studio প্রজেক্ট .zip ডাউনলোড
+                          🗜️ প্রজেক্ট ফাইল .zip ডাউনলোড
                         </div>
                         <p className="mt-1 text-[11px] text-slate-200">
-                          এক ক্লিকে সম্পূর্ণ Gradle প্রজেক্ট,{" "}
-                          <code className="text-emerald-300">AndroidManifest.xml</code>, কাস্টম{" "}
-                          <code className="text-emerald-300">app_logo_custom.png</code> ও সব Kotlin/Java/XML ফাইলসহ রেডিমেড <strong>.zip</strong> ডাউনলোড হবে—যা সরাসরি পিসির Android Studio বা মোবাইলের AndroidIDE-তে ওপেন করতে পারবেন।
+                          এই প্রজেক্টে তৈরি হওয়া ঠিক যে কয়টি ফাইল আছে ({activeProject?.files?.length || 0}টি ফাইল), কেবল সেই ফাইলগুলোই .zip হিসেবে ডাউনলোড হবে।
                         </p>
                       </div>
 
@@ -6053,10 +5604,7 @@ ${projectFileTree}
                           {activeProject?.targetSdk}
                         </div>
                         <div className="mt-0.5">
-                          📄 মোট ফাইল:{" "}
-                          {(activeProject?.files?.length || 0) +
-                            buildSupplementaryAndroidFiles(activeProject).length}
-                          টি
+                          📄 মোট ফাইল: {activeProject?.files?.length || 0}টি
                         </div>
                       </div>
 
@@ -6092,7 +5640,6 @@ ${projectFileTree}
                     </div>
                   )}
 
-                  {/* VIEW C: EXISTING GITHUB REPOSITORY PUSH */}
                   {hubActiveView === "github" && (
                     <form onSubmit={handlePushToGitHub} className="space-y-2.5 text-xs">
                       <div>
