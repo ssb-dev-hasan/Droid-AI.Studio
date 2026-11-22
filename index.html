@@ -172,7 +172,9 @@
       }
 
       function buildInitialProjectWelcomeMessages(projectObj) {
-        const projLabel = projectObj?.name ? `"${projectObj.name}" (${projectObj.packageName})` : "এই প্রজেক্ট";
+        const projLabel = projectObj?.name
+          ? `"${projectObj.name}" (${projectObj.packageName})`
+          : "এই প্রজেক্ট";
         return [
           {
             id: `welcome_${projectObj?.id || Date.now()}`,
@@ -1046,7 +1048,9 @@ ${customLogoDataUrl}`
 
       function stripAccidentalOuterCodeFences(rawCode) {
         const trimmed = String(rawCode || "").replace(/\n$/, "");
-        const fenceWrapped = trimmed.match(/^```[a-zA-Z0-9_-]*\r?\n([\s\S]*?)(?:\r?\n```)?$/);
+        const fenceWrapped = trimmed.match(
+          /^```[a-zA-Z0-9_-]*\r?\n([\s\S]*?)(?:\r?\n```)?$/
+        );
         return fenceWrapped ? fenceWrapped[1] : trimmed;
       }
 
@@ -1242,8 +1246,7 @@ ${customLogoDataUrl}`
           const textSizeMatch = attrs.match(/android:textSize="(\d+)sp"/);
 
           const xmlText = textMatch ? resolveXmlAttr(textMatch[1]) : "";
-          const text =
-            codeTextOverrides[id] !== undefined ? codeTextOverrides[id] : xmlText;
+          const text = codeTextOverrides[id] !== undefined ? codeTextOverrides[id] : xmlText;
           const hint = hintMatch ? resolveXmlAttr(hintMatch[1]) : "";
           const inputType = inputTypeMatch ? inputTypeMatch[1] : "text";
           const checked = checkedMatch ? checkedMatch[1] === "true" : false;
@@ -1436,11 +1439,11 @@ jobs:
       const DEFAULT_AI_SETTINGS = {
         preferredModel: "gemini-3.8-flash",
         temperature: 0.35,
-        maxOutputTokens: 4096,
+        maxOutputTokens: 8192,
         chatMode: "auto",
         autoApplyCodeUpdates: false,
         systemPersona:
-          "তুমি Droid AI Studio-এর একজন দক্ষ Android (Kotlin/Java/XML/Gradle) ডেভেলপমেন্ট সহকারী। সবসময় পরিষ্কার বাংলায় উত্তর দাও। কোড আপডেট বা নতুন ফাইল তৈরি করার সময় প্রতিটি ফাইলের সম্পূর্ণ রানযোগ্য কোড অবশ্যই <<<FILE:পাথ>>> এবং <<<END_FILE>>> ব্লকের ভেতরে দেবে।"
+          "তুমি Droid AI Studio-এর একজন সিনিয়র Android (Kotlin/Java/XML/Gradle) আর্কিটেক্ট ও ডেভেলপমেন্ট সহকারী। সবসময় পরিষ্কার বাংলায় উত্তর দাও। কোনো কোড লেখার আগে অবশ্যই প্রজেক্টের সব ফাইল, প্যাকেজ নেম, XML ID ও Gradle ডিপেন্ডেন্সি গভীরভাবে বিশ্লেষণ করে নিশ্চিত হবে যেন কোনো বাগ বা অসম্পূর্ণ কোড না থাকে।"
       };
 
       // =========================================================================
@@ -1707,7 +1710,6 @@ jobs:
                 );
               } catch {}
               if (uid && window.DroidDB) {
-                // Strip heavy inline base64 previews for cloud RTDB while keeping full text & code updates
                 const cloudSafeMsgs = trimmedMsgs.map((m) => {
                   if (!Array.isArray(m.attachments) || m.attachments.length === 0) return m;
                   return {
@@ -1775,7 +1777,6 @@ jobs:
           }
 
           const unsubscribe = auth.onAuthStateChanged(async (user) => {
-            // Immediately clear previous user's API key & model state on user switch/logout
             setGeminiApiKey("");
             setAvailableModels([]);
             setApiStatusBanner(null);
@@ -2688,12 +2689,14 @@ jobs:
             );
 
             const mode = aiSettings.chatMode || "auto";
+            const isAnalyzeOnlyMode = mode === "analyze";
             const isFastChatOnly =
+              !isAnalyzeOnlyMode &&
               pendingAttachments.length === 0 &&
               (mode === "fast-chat" ||
                 (mode === "auto" &&
                   promptText.length < 70 &&
-                  !/কোড|ফাইল|ফিক্স|বাগ|তৈরি|বাটন|স্ক্রিন|লগইন|add|fix|code|create|activity|xml|kotlin|java/i.test(
+                  !/কোড|ফাইল|ফিক্স|বাগ|তৈরি|বাটন|স্ক্রিন|লগইন|বিশ্লেষণ|পরিকল্পনা|add|fix|code|create|activity|xml|kotlin|java|analyze|plan/i.test(
                     promptText
                   )));
 
@@ -2702,31 +2705,56 @@ jobs:
               promptText ||
               "সংযুক্ত স্ক্রিনশট/ছবিটি দেখে বর্তমান Android প্রজেক্ট অনুযায়ী সমাধান বা কোড দাও।";
 
-            if ((!isFastChatOnly || pendingAttachments.length > 0) && targetProjectSnapshot) {
-              const projectSummaryFiles = targetProjectSnapshot.files
-                .filter((f) => !f.assetDataUrl)
-                .slice(0, 8)
+            if (
+              (!isFastChatOnly || isAnalyzeOnlyMode || pendingAttachments.length > 0) &&
+              targetProjectSnapshot
+            ) {
+              const nonBinaryFiles = (targetProjectSnapshot.files || []).filter(
+                (f) => !f.assetDataUrl
+              );
+              const fullFileTree = nonBinaryFiles
+                .map((f, idx) => `${idx + 1}. ${f.path} (${f.content.split("\n").length} লাইন)`)
+                .join("\n");
+              const projectSummaryFiles = nonBinaryFiles
                 .map((f) => `--- FILE: ${f.path} ---\n${f.content}`)
                 .join("\n\n");
 
-              systemInstructionText += `\n\nবর্তমান সক্রিয় Android প্রজেক্টের তথ্য:
+              if (isAnalyzeOnlyMode) {
+                systemInstructionText += `\n\nবর্তমান সক্রিয় Android প্রজেক্টের তথ্য:
 - App Name: ${targetProjectSnapshot.name}
 - Package Name: ${targetProjectSnapshot.packageName}
 - Language: ${targetProjectSnapshot.language}
 - Min SDK: API ${targetProjectSnapshot.minSdk}, Target SDK: API ${targetProjectSnapshot.targetSdk}
 - Template: ${targetProjectSnapshot.templateId}
 
-গুরুত্বপূর্ণ নিয়ম:
-১. যখনই তুমি কোনো ফাইল তৈরি বা আপডেট করবে (বিশেষ করে app/src/main/res/layout/activity_main.xml এবং MainActivity), তখন প্রতিটি পরিবর্তিত ফাইলের সম্পূর্ণ রানযোগ্য কোড অবশ্যই নিচের ফরম্যাটে আলাদা আলাদা ব্লকে দেবে যাতে ইউজার Accept বাটনে ক্লিক করলেই সরাসরি ফাইল ও প্রিভিউ আপডেট হয়:
+তুমি এখন [🧠 বিশ্লেষণ ও পরিকল্পনা (Analyze First)] মোডে আছো। এই মোডে কঠোর নির্দেশনা:
+১. কোনো <<<FILE:...>>> ব্লক বা কোড আপডেট আউটপুট দেবে না।
+২. প্রথমে পুরো প্রজেক্টের সব ফাইল পড়ে বাংলায় নিচের ৩টি অংশে স্পষ্ট রিপোর্ট দাও:
+   - ### 🔍 বর্তমান প্রজেক্ট অডিট (ফাইল কাঠামো, প্যাকেজ নেম, বিদ্যমান XML ID ও লজিক)
+   - ### ⚠️ সম্ভাব্য সমস্যা বা সীমাবদ্ধতা (যদি থাকে)
+   - ### 📋 ধাপে ধাপে বাস্তবায়ন পরিকল্পনা (কোন কোন ফাইলে কী কী পরিবর্তন করা হবে)
+৩. শেষে ইউজারকে জিজ্ঞেস করো: "আপনি কি এই পরিকল্পনা অনুযায়ী কোড তৈরি করতে চান?"`;
+              } else {
+                systemInstructionText += `\n\nবর্তমান সক্রিয় Android প্রজেক্টের তথ্য:
+- App Name: ${targetProjectSnapshot.name}
+- Package Name: ${targetProjectSnapshot.packageName}
+- Language: ${targetProjectSnapshot.language}
+- Min SDK: API ${targetProjectSnapshot.minSdk}, Target SDK: API ${targetProjectSnapshot.targetSdk}
+- Template: ${targetProjectSnapshot.templateId}
+
+কঠোর Deep Project Analysis ও নির্ভুল কোডিং নিয়ম:
+১. কোড লেখার আগে অবশ্যই প্রজেক্টের সব ফাইল ভালোভাবে পড়ে নাও এবং উত্তরের শুরুতে সংক্ষেপে "### 🔍 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা" শিরোনামে উল্লেখ করো কোন কোন ফাইল পরিবর্তন হবে এবং XML ID (\`@+id/...\`), Package Name (\`${targetProjectSnapshot.packageName}\`) ও Gradle ডিপেন্ডেন্সি কীভাবে ম্যাচ করা হয়েছে।
+২. যেসব ফাইল তৈরি বা পরিবর্তন করবে (বিশেষ করে app/src/main/res/layout/activity_main.xml এবং MainActivity), সেগুলোর সম্পূর্ণ রানযোগ্য কোড নিচের ফরম্যাটে আলাদা আলাদা ব্লকে দেবে:
 <<<FILE:app/src/main/res/layout/activity_main.xml>>>
 সম্পূর্ণ XML কোড
 <<<END_FILE>>>
 <<<FILE:app/src/main/path/FileName.ext>>>
 সম্পূর্ণ কোড
 <<<END_FILE>>>
-২. কোনো ফাইল আংশিক বা সংক্ষিপ্ত করবে না; প্রতিটি ফাইলের শুরু থেকে শেষ পর্যন্ত সম্পূর্ণ কোড দেবে।`;
+৩. কখনোই "// বাকি কোড আগের মতো" বা আংশিক কোড লিখবে না; প্রতিটি পরিবর্তিত ফাইলের শুরু থেকে শেষ পর্যন্ত ১০০% সম্পূর্ণ ও নির্ভুল কোড দেবে।`;
+              }
 
-              composedUserPrompt = `বর্তমান প্রজেক্টের (${targetProjectSnapshot.name}) ফাইলসমূহ:\n${projectSummaryFiles}\n\nইউজারের নির্দেশনা:\n${composedUserPrompt}`;
+              composedUserPrompt = `প্রজেক্টের সম্পূর্ণ ফাইল ট্রি (${nonBinaryFiles.length}টি ফাইল):\n${fullFileTree}\n\nপ্রজেক্টের সব ফাইলের সম্পূর্ণ কোড:\n${projectSummaryFiles}\n\nইউজারের নির্দেশনা:\n${composedUserPrompt}`;
             }
 
             const recentHistory = chatMessages
@@ -2734,7 +2762,7 @@ jobs:
               .filter((m) => m.role === "user" || m.role === "assistant")
               .map((m) => ({
                 role: m.role === "assistant" ? "model" : "user",
-                parts: [{ text: String(m.text || "").slice(0, 2000) }]
+                parts: [{ text: String(m.text || "").slice(0, 2500) }]
               }));
 
             const currentUserParts = [{ text: composedUserPrompt }];
@@ -2754,6 +2782,16 @@ jobs:
               { role: "user", parts: currentUserParts }
             ];
 
+            const isCodingTurn = !isFastChatOnly && !isAnalyzeOnlyMode;
+            const effectiveTemperature = isCodingTurn
+              ? Math.min(Number(aiSettings.temperature) || 0.15, 0.15)
+              : isAnalyzeOnlyMode
+              ? 0.25
+              : Number(aiSettings.temperature) || 0.35;
+            const effectiveMaxTokens = isFastChatOnly
+              ? 1024
+              : Math.max(Number(aiSettings.maxOutputTokens) || 8192, 8192);
+
             let finalResponseText = "";
             let succeededModel = "";
             let lastErrMessage = "";
@@ -2764,7 +2802,7 @@ jobs:
               }
 
               const perAttemptController = new AbortController();
-              const timeoutHandle = setTimeout(() => perAttemptController.abort(), 30000);
+              const timeoutHandle = setTimeout(() => perAttemptController.abort(), 35000);
               const onMasterAbort = () => perAttemptController.abort();
               masterController.signal.addEventListener("abort", onMasterAbort, { once: true });
 
@@ -2783,10 +2821,8 @@ jobs:
                     },
                     contents: contentsPayload,
                     generationConfig: {
-                      temperature: Number(aiSettings.temperature) || 0.35,
-                      maxOutputTokens: isFastChatOnly
-                        ? 1024
-                        : Number(aiSettings.maxOutputTokens) || 4096
+                      temperature: effectiveTemperature,
+                      maxOutputTokens: effectiveMaxTokens
                     }
                   })
                 });
@@ -2835,10 +2871,12 @@ jobs:
               );
             }
 
-            const extractedUpdates = extractFileUpdatesFromAiResponse(
-              finalResponseText,
-              targetProjectSnapshot?.files || []
-            );
+            const extractedUpdates = isAnalyzeOnlyMode
+              ? []
+              : extractFileUpdatesFromAiResponse(
+                  finalResponseText,
+                  targetProjectSnapshot?.files || []
+                );
 
             let reviewStatus = "none";
             if (extractedUpdates.length > 0) {
@@ -2942,7 +2980,6 @@ jobs:
           setActiveProjectId(created.id);
           setSelectedFilePath(created.files[0]?.path || "");
 
-          // Initialize & auto-persist isolated chat history & AI settings for the new project
           const freshWelcome = buildInitialProjectWelcomeMessages(created);
           const freshSettings = { ...DEFAULT_AI_SETTINGS, preferredModel: activeModelId };
           const uid = currentUser?.uid;
@@ -3769,9 +3806,7 @@ jobs:
                         <span className="font-bold text-purple-300">
                           📁 প্রজেক্ট সেটিংস: {activeProject?.name}
                         </span>
-                        <span className="text-[10px] text-emerald-400">
-                          ✅ অটো-সেভ সক্রিয়
-                        </span>
+                        <span className="text-[10px] text-emerald-400">✅ অটো-সেভ সক্রিয়</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -3852,6 +3887,18 @@ jobs:
 
                   {/* Quick Prompt Chips */}
                   <div className="no-scrollbar mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateActiveProjectAiSettings((s) => ({ ...s, chatMode: "analyze" }));
+                        handleSendMessage(
+                          `পুরো প্রজেক্টের (${activeProject?.name}) সব ফাইল, লেআউট ও লজিক গভীরভাবে বিশ্লেষণ করে বর্তমান অবস্থা, সম্ভাব্য সমস্যা এবং উন্নতির ধাপে ধাপে পরিকল্পনা দাও।`
+                        );
+                      }}
+                      className="shrink-0 rounded-full border border-amber-500/40 bg-amber-950/60 px-3 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-900"
+                    >
+                      🧠 প্রজেক্ট বিশ্লেষণ ও পরিকল্পনা দাও
+                    </button>
                     <button
                       type="button"
                       onClick={() =>
@@ -4028,10 +4075,11 @@ jobs:
 
                 {/* BOTTOM CHAT COMPOSER WITH MODE PILLS & IMAGE/SCREENSHOT SHARING */}
                 <section className="rounded-2xl border border-slate-800 bg-[#0d1424] p-2.5">
-                  <div className="mb-2 flex items-center gap-1.5 text-[11px]">
-                    <span className="text-slate-400">মোড:</span>
+                  <div className="no-scrollbar mb-2 flex items-center gap-1.5 overflow-x-auto text-[11px]">
+                    <span className="shrink-0 text-slate-400">মোড:</span>
                     {[
                       { id: "auto", label: "অটো" },
+                      { id: "analyze", label: "🧠 বিশ্লেষণ" },
                       { id: "fast-chat", label: "চ্যাট (দ্রুত)" },
                       { id: "code-fix", label: "কোড-ফিক্স" }
                     ].map((m) => (
@@ -4041,9 +4089,11 @@ jobs:
                         onClick={() =>
                           updateActiveProjectAiSettings((s) => ({ ...s, chatMode: m.id }))
                         }
-                        className={`rounded-full px-2.5 py-0.5 font-bold transition ${
+                        className={`shrink-0 rounded-full px-2.5 py-0.5 font-bold transition ${
                           aiSettings.chatMode === m.id
-                            ? "bg-emerald-600 text-white"
+                            ? m.id === "analyze"
+                              ? "bg-amber-600 text-white"
+                              : "bg-emerald-600 text-white"
                             : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                         }`}
                       >
